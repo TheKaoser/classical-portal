@@ -6,9 +6,9 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 
-export const formatYearRange = (startYear: number, endYear: number) => {
+export const formatYearRange = (startYear: number, endYear?: number | null) => {
   if (startYear === endYear) {
     return startYear.toString()
   }
-  return `${startYear} - ${endYear}`
+  return `${startYear} - ${endYear || "Present"}`
 }

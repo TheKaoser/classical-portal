@@ -1,6 +1,7 @@
-import { ArrowLeft, Calendar, View } from "lucide-react"
+import { ArrowLeft, Calendar } from "lucide-react"
 import Link from "next/link"
 import { unstable_ViewTransition as ViewTransition } from 'react'
+import { motion } from "framer-motion"
 
 export const PageHeader = ({
     viewTransitionName,
@@ -27,7 +28,7 @@ export const PageHeader = ({
                     {title}
                 </h1>
             </ViewTransition>
-            <div className="flex items-center gap-2 mt-2 fade-in">
+            <div className="flex items-center gap-2 mt-2">
                 <Calendar className="h-4 w-4 text-[#336FBD]" />
                 <span className="text-[#336FBD] font-medium">{subtitle}</span>
             </div>

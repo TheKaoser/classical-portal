@@ -27,6 +27,7 @@ export function CategoriesGrid({ categories }: CategoriesGridProps) {
     return (
         <div>
             <h2 className="text-2xl font-semibold mb-4 text-[#29323E]">Categories</h2>
+
             <div className="space-y-6">
                 {categories.map((category) => (
                     <Card key={category.id} className="border-[#336FBD]/10">

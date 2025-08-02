@@ -19,7 +19,7 @@ export default async function PeriodPage({ params }: { params: { periodId: strin
       <PageHeader
         title={period.name}
         viewTransitionName={`period-name-${period.id}`}
-        subtitle={period.start_year && period.end_year ? formatYearRange(period.start_year, period.end_year) : undefined}
+        subtitle={period.start_year ? formatYearRange(period.start_year, period.end_year) : undefined}
         description={period.description}
         backTo='/periods'
       />
