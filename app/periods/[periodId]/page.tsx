@@ -64,20 +64,7 @@ export default function PeriodPage() {
   }
 
   const handleAuthorClick = (author: Author) => {
-    // Add view transition name for the clicked author
-    const authorElement = document.querySelector(`[data-author-id="${author.id}"]`)
-    if (authorElement) {
-      authorElement.style.viewTransitionName = "author-title"
-    }
-
-    // Use view transition API if supported
-    if (document.startViewTransition) {
-      document.startViewTransition(() => {
-        router.push(`/periods/${params.periodId}/authors/${author.id}`)
-      })
-    } else {
-      router.push(`/periods/${params.periodId}/authors/${author.id}`)
-    }
+    router.push(`/periods/${params.periodId}/authors/${author.id}`)
   }
 
   const handleBack = () => {

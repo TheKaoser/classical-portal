@@ -7,16 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Search, Calendar } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import Link from "next/link"
-
-type Period = {
-  id: string
-  name: string
-  description: string | null
-  color: string | null
-  pattern: string | null
-  start_year: number | null
-  end_year: number | null
-}
+import { Author, Period, Piece } from "@/types"
 
 const getPeriodClassName = (periodName: string) => {
   const name = periodName.toLowerCase().replace(/\s+/g, "-").replace("&", "").replace("contemporary", "modern")
@@ -35,17 +26,8 @@ export default function PeriodsPage() {
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<{
-    authors: Array<{
-      id: string
-      name: string
-      bio: string | null
-    }>
-    pieces: Array<{
-      id: string
-      title: string
-      author_name: string
-      popularity: number | null
-    }>
+    authors: Array<Partial<Author>>
+    pieces: Array<Partial<Piece> & { author_name?: string; popularity?: number }>
   }>({ authors: [], pieces: [] })
   const [isSearching, setIsSearching] = useState(false)
   const router = useRouter()
@@ -78,15 +60,10 @@ export default function PeriodsPage() {
     setIsSearching(true)
 
     const [authorsRes, piecesRes] = await Promise.all([
-      supabase.from("authors").select("id, name, bio").ilike("name", `%${query}%`).limit(5),
+      supabase.from("authors").select("*").ilike("name", `%${query}%`).limit(5),
       supabase
         .from("pieces")
-        .select(`
-        id,
-        title,
-        popularity,
-        authors!inner(name)
-      `)
+        .select(`*`)
         .ilike("title", `%${query}%`)
         .limit(10),
     ])
@@ -104,20 +81,7 @@ export default function PeriodsPage() {
   }
 
   const handlePeriodClick = (period: Period) => {
-    // Add view transition name for the clicked period
-    const periodElement = document.querySelector(`[data-period-id="${period.id}"]`)
-    if (periodElement) {
-      periodElement.style.viewTransitionName = "period-title"
-    }
-
-    // Use view transition API if supported
-    if (document.startViewTransition) {
-      document.startViewTransition(() => {
-        router.push(`/periods/${period.id}`)
-      })
-    } else {
-      router.push(`/periods/${period.id}`)
-    }
+    router.push(`/periods/${period.id}`)
   }
 
   if (loading) {
@@ -190,34 +154,39 @@ export default function PeriodsPage() {
             )}
           </div>
         )}
-
         {/* Periods List */}
-        <div className="flex flex-col gap-6 max-w-4xl mx-auto">
+        <div className="flex flex-col gap-6 mx-auto">
           {periods.map((period) => (
-            <Card
-              key={period.id}
-              data-period-id={period.id}
-              className={`cursor-pointer transition-all duration-300 hover:scale-[1.02] hover:shadow-lg period-card ${getPeriodClassName(period.name)} border-0`}
-              onClick={() => handlePeriodClick(period)}
-            >
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-2xl text-[#29323E]">{period.name}</CardTitle>
-                  <div className="flex items-center gap-2 text-[#336FBD]">
-                    <Calendar className="h-4 w-4" />
-                    <span className="font-semibold">{formatYearRange(period.start_year, period.end_year)}</span>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <CardDescription className="text-base text-[#3A4657] leading-relaxed">
-                  {period.description}
-                </CardDescription>
-              </CardContent>
-            </Card>
+            <PeriodCard key={period.id} period={period} onClick={() => handlePeriodClick(period)} />
           ))}
         </div>
       </div>
     </div>
+  )
+}
+
+
+const PeriodCard = ({ period, onClick }: { period: Period; onClick: () => void }) => {
+  return (
+    <Card
+      data-period-id={period.id}
+      onClick={onClick}
+      className={`cursor-pointer transition-all duration-300 hover:scale-[1.02] hover:shadow-lg period-card ${getPeriodClassName(period.name)} border-0`}
+    >
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-2xl text-[#29323E]">{period.name}</CardTitle>
+          <div className="flex items-center gap-2 text-[#336FBD]">
+            <Calendar className="h-4 w-4" />
+            <span className="font-semibold">{formatYearRange(period.start_year, period.end_year)}</span>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <CardDescription className="text-base text-[#3A4657] leading-relaxed">
+          {period.description}
+        </CardDescription>
+      </CardContent>
+    </Card>
   )
 }
