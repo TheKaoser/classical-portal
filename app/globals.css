@@ -1,0 +1,266 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --background: #ffffff;
+  --foreground: #29323e;
+  --card: #ffffff;
+  --card-foreground: #29323e;
+  --popover: #ffffff;
+  --popover-foreground: #29323e;
+  --primary: #336fbd;
+  --primary-foreground: #ffffff;
+  --secondary: #41608a;
+  --secondary-foreground: #ffffff;
+  --muted: #f8fafc;
+  --muted-foreground: #3a4657;
+  --accent: #1171f0;
+  --accent-foreground: #ffffff;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --ring: #336fbd;
+  --chart-1: #336fbd;
+  --chart-2: #41608a;
+  --chart-3: #1171f0;
+  --chart-4: #3a4657;
+  --chart-5: #29323e;
+  --radius: 0.625rem;
+  --sidebar: #f8fafc;
+  --sidebar-foreground: #29323e;
+  --sidebar-primary: #336fbd;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f1f5f9;
+  --sidebar-accent-foreground: #29323e;
+  --sidebar-border: #e2e8f0;
+  --sidebar-ring: #336fbd;
+}
+
+.dark {
+  --background: #29323e;
+  --foreground: #ffffff;
+  --card: #3a4657;
+  --card-foreground: #ffffff;
+  --popover: #3a4657;
+  --popover-foreground: #ffffff;
+  --primary: #1171f0;
+  --primary-foreground: #ffffff;
+  --secondary: #41608a;
+  --secondary-foreground: #ffffff;
+  --muted: #41608a;
+  --muted-foreground: #cbd5e1;
+  --accent: #336fbd;
+  --accent-foreground: #ffffff;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #41608a;
+  --input: #41608a;
+  --ring: #1171f0;
+  --chart-1: #1171f0;
+  --chart-2: #336fbd;
+  --chart-3: #41608a;
+  --chart-4: #3a4657;
+  --chart-5: #29323e;
+  --sidebar: #29323e;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #1171f0;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #3a4657;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: #41608a;
+  --sidebar-ring: #1171f0;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* View Transitions */
+@view-transition {
+  navigation: auto;
+}
+
+/* Main title transitions */
+::view-transition-old(main-title),
+::view-transition-new(main-title) {
+  animation-duration: 0.5s;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+::view-transition-old(main-title) {
+  animation-name: slide-out-up;
+}
+
+::view-transition-new(main-title) {
+  animation-name: slide-in-down;
+}
+
+/* Period title transitions */
+::view-transition-old(period-title),
+::view-transition-new(period-title) {
+  animation-duration: 0.6s;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+::view-transition-old(period-title) {
+  animation-name: morph-out;
+}
+
+::view-transition-new(period-title) {
+  animation-name: morph-in;
+}
+
+/* Author title transitions */
+::view-transition-old(author-title),
+::view-transition-new(author-title) {
+  animation-duration: 0.6s;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+::view-transition-old(author-title) {
+  animation-name: morph-out;
+}
+
+::view-transition-new(author-title) {
+  animation-name: morph-in;
+}
+
+/* Root transitions for page changes */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.4s;
+  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+::view-transition-old(root) {
+  animation-name: slide-out-to-left;
+}
+
+::view-transition-new(root) {
+  animation-name: slide-in-from-right;
+}
+
+/* Keyframe animations */
+@keyframes slide-out-to-left {
+  to {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+}
+
+@keyframes slide-in-from-right {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}
+
+@keyframes slide-out-up {
+  to {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+}
+
+@keyframes slide-in-down {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+}
+
+@keyframes morph-out {
+  to {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+}
+
+@keyframes morph-in {
+  from {
+    transform: scale(1.2);
+    opacity: 0;
+  }
+}
+
+/* Custom gradient backgrounds for periods */
+.period-renaissance {
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+  border-left: 4px solid #41608a;
+}
+
+.period-baroque {
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border-left: 4px solid #336fbd;
+}
+
+.period-classical {
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border-left: 4px solid #1171f0;
+}
+
+.period-romantic {
+  background: linear-gradient(135deg, #fafafa 0%, #f4f4f5 100%);
+  border-left: 4px solid #3a4657;
+}
+
+.period-modern {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-left: 4px solid #29323e;
+}
+
+/* Smooth transitions for cards */
+.period-card {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.period-card:hover {
+  transform: translateY(-4px);
+}
