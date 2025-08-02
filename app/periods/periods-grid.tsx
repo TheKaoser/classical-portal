@@ -2,8 +2,6 @@ import { unstable_ViewTransition as ViewTransition } from "react"
 import Link from "next/link"
 import type { Period } from "@/types"
 import { cn, formatYearRange } from "@/lib/utils"
-import "@/styles/patterns.css"
-import { Badge } from "@/components/ui/badge"
 
 interface PeriodsGridProps {
     periods: Period[]
