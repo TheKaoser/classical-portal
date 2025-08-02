@@ -1,266 +1,134 @@
 @import "tailwindcss";
-@import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
-
-:root {
-  --background: #ffffff;
-  --foreground: #29323e;
-  --card: #ffffff;
-  --card-foreground: #29323e;
-  --popover: #ffffff;
-  --popover-foreground: #29323e;
-  --primary: #336fbd;
-  --primary-foreground: #ffffff;
-  --secondary: #41608a;
-  --secondary-foreground: #ffffff;
-  --muted: #f8fafc;
-  --muted-foreground: #3a4657;
-  --accent: #1171f0;
-  --accent-foreground: #ffffff;
-  --destructive: #ef4444;
-  --destructive-foreground: #ffffff;
-  --border: #e2e8f0;
-  --input: #e2e8f0;
-  --ring: #336fbd;
-  --chart-1: #336fbd;
-  --chart-2: #41608a;
-  --chart-3: #1171f0;
-  --chart-4: #3a4657;
-  --chart-5: #29323e;
-  --radius: 0.625rem;
-  --sidebar: #f8fafc;
-  --sidebar-foreground: #29323e;
-  --sidebar-primary: #336fbd;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #f1f5f9;
-  --sidebar-accent-foreground: #29323e;
-  --sidebar-border: #e2e8f0;
-  --sidebar-ring: #336fbd;
+@theme {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
 }
 
-.dark {
-  --background: #29323e;
-  --foreground: #ffffff;
-  --card: #3a4657;
-  --card-foreground: #ffffff;
-  --popover: #3a4657;
-  --popover-foreground: #ffffff;
-  --primary: #1171f0;
-  --primary-foreground: #ffffff;
-  --secondary: #41608a;
-  --secondary-foreground: #ffffff;
-  --muted: #41608a;
-  --muted-foreground: #cbd5e1;
-  --accent: #336fbd;
-  --accent-foreground: #ffffff;
-  --destructive: #ef4444;
-  --destructive-foreground: #ffffff;
-  --border: #41608a;
-  --input: #41608a;
-  --ring: #1171f0;
-  --chart-1: #1171f0;
-  --chart-2: #336fbd;
-  --chart-3: #41608a;
-  --chart-4: #3a4657;
-  --chart-5: #29323e;
-  --sidebar: #29323e;
-  --sidebar-foreground: #ffffff;
-  --sidebar-primary: #1171f0;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #3a4657;
-  --sidebar-accent-foreground: #ffffff;
-  --sidebar-border: #41608a;
-  --sidebar-ring: #1171f0;
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
-  --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-primary: var(--primary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--muted);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
-  --color-border: var(--border);
-  --color-input: var(--input);
-  --color-ring: var(--ring);
-  --color-chart-1: var(--chart-1);
-  --color-chart-2: var(--chart-2);
-  --color-chart-3: var(--chart-3);
-  --color-chart-4: var(--chart-4);
-  --color-chart-5: var(--chart-5);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
+.fade-in {
+  animation: fadeIn .5s ease-in-out forwards;
 }
+
+
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translate(0, 0);
+  }
+  to {
+    transform: translate(0, 10px);
+    opacity: 1;
+  }
+}
+
+
 
 @layer base {
-  * {
-    @apply border-border outline-ring/50;
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 3.9%;
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96.1%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96.1%;
+    --muted-foreground: 0 0% 45.1%;
+    --accent: 0 0% 96.1%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 89.8%;
+    --input: 0 0% 89.8%;
+    --ring: 0 0% 3.9%;
+    --chart-1: 12 76% 61%;
+    --chart-2: 173 58% 39%;
+    --chart-3: 197 37% 24%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+    --radius: 0.5rem;
   }
-  body {
-    @apply bg-background text-foreground;
-  }
-}
 
-/* View Transitions */
-@view-transition {
-  navigation: auto;
-}
-
-/* Main title transitions */
-::view-transition-old(main-title),
-::view-transition-new(main-title) {
-  animation-duration: 0.5s;
-  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-::view-transition-old(main-title) {
-  animation-name: slide-out-up;
-}
-
-::view-transition-new(main-title) {
-  animation-name: slide-in-down;
-}
-
-/* Period title transitions */
-::view-transition-old(period-title),
-::view-transition-new(period-title) {
-  animation-duration: 0.6s;
-  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-::view-transition-old(period-title) {
-  animation-name: morph-out;
-}
-
-::view-transition-new(period-title) {
-  animation-name: morph-in;
-}
-
-/* Author title transitions */
-::view-transition-old(author-title),
-::view-transition-new(author-title) {
-  animation-duration: 0.6s;
-  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-::view-transition-old(author-title) {
-  animation-name: morph-out;
-}
-
-::view-transition-new(author-title) {
-  animation-name: morph-in;
-}
-
-/* Root transitions for page changes */
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation-duration: 0.4s;
-  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-::view-transition-old(root) {
-  animation-name: slide-out-to-left;
-}
-
-::view-transition-new(root) {
-  animation-name: slide-in-from-right;
-}
-
-/* Keyframe animations */
-@keyframes slide-out-to-left {
-  to {
-    transform: translateX(-100%);
-    opacity: 0;
+  .dark {
+    --background: 0 0% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+    --secondary: 0 0% 14.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 14.9%;
+    --muted-foreground: 0 0% 63.9%;
+    --accent: 0 0% 14.9%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 14.9%;
+    --input: 0 0% 14.9%;
+    --ring: 0 0% 83.1%;
+    --chart-1: 220 70% 50%;
+    --chart-2: 160 60% 45%;
+    --chart-3: 30 80% 55%;
+    --chart-4: 280 65% 60%;
+    --chart-5: 340 75% 55%;
   }
 }
 
-@keyframes slide-in-from-right {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
+[data-support-yes],
+[data-support-no] {
+  display: none;
+}
+
+
+@supports (view-transition-name: test) {
+  [data-support] [data-support-yes] {
+    display: inline;
+  }
+
+  [data-support] [data-support-no] {
+    display: none;
   }
 }
 
-@keyframes slide-out-up {
-  to {
-    transform: translateY(-20px);
-    opacity: 0;
+@supports not (view-transition-name: test) {
+  [data-support] [data-support-yes] {
+    display: none;
+  }
+
+  [data-support] [data-support-no] {
+    display: inline;
   }
 }
 
-@keyframes slide-in-down {
-  from {
-    transform: translateY(-20px);
-    opacity: 0;
+/* Safari */
+@supports (-webkit-hyphens: none) and (not (-moz-appearance: none)) {
+  [data-support] [data-support-yes] {
+    display: none;
   }
-}
 
-@keyframes morph-out {
-  to {
-    transform: scale(0.8);
-    opacity: 0;
+  [data-support] [data-support-no] {
+    display: inline;
   }
-}
-
-@keyframes morph-in {
-  from {
-    transform: scale(1.2);
-    opacity: 0;
-  }
-}
-
-/* Custom gradient backgrounds for periods */
-.period-renaissance {
-  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
-  border-left: 4px solid #41608a;
-}
-
-.period-baroque {
-  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-  border-left: 4px solid #336fbd;
-}
-
-.period-classical {
-  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
-  border-left: 4px solid #1171f0;
-}
-
-.period-romantic {
-  background: linear-gradient(135deg, #fafafa 0%, #f4f4f5 100%);
-  border-left: 4px solid #3a4657;
-}
-
-.period-modern {
-  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-  border-left: 4px solid #29323e;
-}
-
-/* Smooth transitions for cards */
-.period-card {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.period-card:hover {
-  transform: translateY(-4px);
 }

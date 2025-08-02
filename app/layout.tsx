@@ -9,7 +9,7 @@ const inter = Inter({ subsets: ["latin"] })
 export const metadata: Metadata = {
   title: "Structured Classical Music",
   description: "Explore classical music through structured periods, composers, and masterpieces",
-    generator: 'v0.dev'
+  generator: 'v0.dev'
 }
 
 export default function RootLayout({
@@ -20,7 +20,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
-        {children}
+        <div className="bg-gradient-to-br from-slate-50 via-blue-50 to-slate-100 min-h-screen">
+          <div className="container mx-auto px-4 py-8">
+            {children}
+          </div>
+        </div>
         <Toaster />
       </body>
     </html>
