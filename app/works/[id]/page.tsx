@@ -3,7 +3,7 @@ import { notFound } from "next/navigation"
 import { PageHeader } from "@/components/page-header"
 import { SpotifyRecordings } from "@/components/spotify-recordings"
 import { Badge } from "@/components/ui/badge"
-import { getWork } from "@/lib/openopus"
+import { getWork, workParts, workSearchTerms } from "@/lib/openopus"
 import { searchSpotifyForWork } from "@/lib/spotify"
 
 export const revalidate = 600
@@ -28,8 +28,21 @@ export default async function WorkPage({
   const { composer, work } = await getWork(id)
   if (!work || !composer) notFound()
 
-  const spotify = await searchSpotifyForWork(composer.name, work.title)
+  const parts = workParts(work)
+  const spotify = await searchSpotifyForWork({
+    composerName: composer.name,
+    composerCompleteName: composer.complete_name,
+    title: work.title,
+    subtitle: work.subtitle,
+    genre: work.genre,
+    catalogue: work.catalogue,
+    catalogueNumber: work.catalogue_number,
+    additionalNumber: work.additional_number,
+    searchterms: workSearchTerms(work),
+    parts,
+  })
   const subtitle = [work.genre, composer.complete_name].filter(Boolean).join(" · ")
+  const playlistName = `${composer.name}: ${work.title}`.slice(0, 100)
 
   return (
     <div className="space-y-10">
@@ -45,13 +58,21 @@ export default async function WorkPage({
           <Badge variant="outline">{work.genre}</Badge>
           {composer.epoch && <Badge variant="secondary">{composer.epoch}</Badge>}
         </div>
+        {parts.length > 0 && (
+          <ol className="mt-4 list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
+            {parts.map((part) => (
+              <li key={part}>{part}</li>
+            ))}
+          </ol>
+        )}
       </div>
 
       <SpotifyRecordings
         configured={spotify.configured}
+        oauthConfigured={spotify.oauthConfigured}
         searchUrl={spotify.searchUrl}
-        albums={spotify.albums}
-        tracks={spotify.tracks}
+        recordings={spotify.recordings}
+        playlistName={playlistName}
       />
     </div>
   )

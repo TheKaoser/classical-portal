@@ -10,6 +10,8 @@ export type OpenOpusComposer = {
   portrait?: string
 }
 
+export type OpenOpusWorkPart = string | { title?: string; name?: string }
+
 export type OpenOpusWork = {
   id: string
   title: string
@@ -20,10 +22,13 @@ export type OpenOpusWork = {
   searchterms?: string | string[]
   catalogue?: string
   catalogue_number?: string
+  additional_number?: string
 }
 
 export type OpenOpusWorkDetail = OpenOpusWork & {
   searchmode?: string
+  parts?: OpenOpusWorkPart[]
+  movements?: OpenOpusWorkPart[]
 }
 
 export type OmniSearchHit = {
@@ -150,6 +155,21 @@ export async function omniSearch(query: string, offset = 0): Promise<OmniSearchH
         work: hit.work ? normalizeWork(hit.work) : null,
       }))
     : []
+}
+
+export function workSearchTerms(work: Pick<OpenOpusWork, "searchterms">): string[] {
+  if (!work.searchterms) return []
+  return (Array.isArray(work.searchterms) ? work.searchterms : [work.searchterms])
+    .map((term) => term.trim())
+    .filter(Boolean)
+}
+
+export function workParts(work: Pick<OpenOpusWorkDetail, "parts" | "movements">): string[] {
+  const raw = work.parts ?? work.movements ?? []
+  return raw
+    .map((part) => (typeof part === "string" ? part : part.title || part.name || ""))
+    .map((part) => part.trim())
+    .filter(Boolean)
 }
 
 export function groupWorksByGenre(works: OpenOpusWork[]): { genre: string; works: OpenOpusWork[] }[] {
