@@ -316,22 +316,55 @@ function numbersEqual(a: string, b: string): boolean {
   return a.replace(/^0+/, "") === b.replace(/^0+/, "")
 }
 
+// Movement break only. A leading "Composer:" must stay in the work title —
+// otherwise every "Brahms: …" track collapses to the same stem.
+const MOVEMENT_BREAK =
+  /^(.*?)(?:(?::\s*|\s+[-–—]\s+)(?=(?:[IVXLC]{1,6}\b\.?\s|\d{1,2}\.\s|no\.?\s*\d)))/i
+
+function workTitle(name: string): string {
+  const match = name.match(MOVEMENT_BREAK)
+  return (match?.[1] ?? name).trim()
+}
+
+function looksLikeBareMovement(name: string): boolean {
+  const trimmed = name.trim()
+  return /^[IVXLC]+\.\s+\S/i.test(trimmed) || /^\d+\.\s+[A-Za-z]/.test(trimmed)
+}
+
 function conflictingCatalogue(parsed: ParsedWork, trackName: string): boolean {
   if (!parsed.catalogueLabel || !parsed.catalogueNumber) return false
-  const hits = extractCatalogues(trackName, [parsed.catalogueLabel])
+  const title = workTitle(trackName)
+  const stemHits = extractCatalogues(title, [parsed.catalogueLabel])
+  const hits = stemHits.length ? stemHits : extractCatalogues(trackName, [parsed.catalogueLabel])
   if (!hits.length) return false
-  return !hits.some((hit) => numbersEqual(hit.number, parsed.catalogueNumber!))
+  // A second, different number on the work title is a different piece,
+  // even when the expected number is also mentioned.
+  return hits.some((hit) => !numbersEqual(hit.number, parsed.catalogueNumber!))
 }
 
 function conflictingWorkNumber(parsed: ParsedWork, trackName: string): boolean {
   if (!parsed.form || !parsed.workNumber || parsed.formIsSet) return false
-  const src = soften(trackName)
+  const title = workTitle(trackName)
   const formRe = FORMS.find((entry) => entry.canonical === parsed.form)?.pattern
-  if (!formRe) return false
-  if (!formRe.test(src)) return false
-  const found = extractWorkNumber(trackName, parsed.form)
+  if (!formRe || !formRe.test(soften(title))) return false
+  const found = extractWorkNumber(title, parsed.form)
   if (!found) return false
   return !numbersEqual(found, parsed.workNumber)
+}
+
+function conflictingForm(parsed: ParsedWork, trackName: string): boolean {
+  if (!parsed.form || looksLikeBareMovement(trackName)) return false
+  const found = extractForm(workTitle(trackName))
+  if (!found) return false
+  return found.form !== parsed.form
+}
+
+function rejectedForThisWork(parsed: ParsedWork, trackName: string): boolean {
+  return (
+    conflictingCatalogue(parsed, trackName) ||
+    conflictingWorkNumber(parsed, trackName) ||
+    conflictingForm(parsed, trackName)
+  )
 }
 
 function matchingCatalogue(parsed: ParsedWork, trackName: string): boolean {
@@ -361,8 +394,7 @@ export function scoreTrack(track: TrackLike, parsed: ParsedWork): number {
   const composerOnTrack = composerPresent(parsed, identity)
   const composerAnywhere = composerPresent(parsed, composerHaystack)
   if (!composerAnywhere) return -1
-  if (conflictingCatalogue(parsed, trackName)) return -1
-  if (conflictingWorkNumber(parsed, trackName)) return -1
+  if (rejectedForThisWork(parsed, trackName)) return -1
 
   let score = 0
   const hasCatalogue = matchingCatalogue(parsed, trackName)
@@ -407,14 +439,56 @@ export function scoreTrack(track: TrackLike, parsed: ParsedWork): number {
 export const MATCH_THRESHOLD = 20
 
 export function trackStem(name: string): string {
-  return normalize(name.split(/:\s*(?=[IVXLC0-9]|[A-Z][a-z])/)[0] ?? name)
+  return normalize(workTitle(name))
+}
+
+function cataloguesDisagree(a: string, b: string): boolean {
+  const aHits = extractCatalogues(workTitle(a))
+  const bHits = extractCatalogues(workTitle(b))
+  for (const label of new Set(aHits.map((hit) => hit.label))) {
+    const right = bHits.filter((hit) => hit.label === label)
+    if (!right.length) continue
+    const shares = aHits
+      .filter((hit) => hit.label === label)
+      .some((hit) => right.some((other) => numbersEqual(hit.number, other.number)))
+    if (!shares) return true
+  }
+  return false
+}
+
+function sameWorkIdentity(a: string, b: string): boolean {
+  if (cataloguesDisagree(a, b)) return false
+  if (looksLikeBareMovement(a) || looksLikeBareMovement(b)) return true
+  const formA = extractForm(workTitle(a))
+  const formB = extractForm(workTitle(b))
+  if (formA && formB && formA.form !== formB.form) return false
+  if (!formA || !formB || formA.form !== formB.form || formA.set || formB.set) return true
+  const sharedCatalogue = extractCatalogues(workTitle(a)).some((hit) =>
+    extractCatalogues(workTitle(b)).some(
+      (other) => other.label === hit.label && numbersEqual(hit.number, other.number)
+    )
+  )
+  if (sharedCatalogue) return true
+  const leftNo = extractWorkNumber(workTitle(a), formA.form)
+  const rightNo = extractWorkNumber(workTitle(b), formB.form)
+  if (leftNo && rightNo && !numbersEqual(leftNo, rightNo)) return false
+  return true
 }
 
 function sameRecordingStem(a: string, b: string): boolean {
+  if (!sameWorkIdentity(a, b)) return false
   const left = trackStem(a)
   const right = trackStem(b)
   if (!left || !right) return false
   return left === right || left.startsWith(right) || right.startsWith(left) || tokenOverlap(left, right) >= 0.7
+}
+
+function belongsWithPrevious(prev: TrackLike, track: TrackLike): boolean {
+  if (prev.discNumber !== track.discNumber) return false
+  if (track.trackNumber - prev.trackNumber > 2) return false
+  if (sameRecordingStem(prev.name, track.name)) return true
+  const bare = looksLikeBareMovement(prev.name) || looksLikeBareMovement(track.name)
+  return bare && !cataloguesDisagree(prev.name, track.name)
 }
 
 export function clusterTracks(tracks: ScoredTrack[]): RecordingGroup[] {
@@ -461,15 +535,7 @@ export function clusterTracks(tracks: ScoredTrack[]): RecordingGroup[] {
 
     for (const track of ordered) {
       const prev = current[current.length - 1]
-      const consecutive =
-        prev &&
-        prev.discNumber === track.discNumber &&
-        track.trackNumber - prev.trackNumber <= 2 &&
-        sameRecordingStem(prev.name, track.name)
-      if (!prev || consecutive) {
-        if (prev && track.trackNumber - prev.trackNumber === 2) {
-          // gap of one track: keep the cluster only when stems already match
-        }
+      if (!prev || belongsWithPrevious(prev, track)) {
         current.push(track)
       } else {
         pushCurrent()
@@ -480,11 +546,6 @@ export function clusterTracks(tracks: ScoredTrack[]): RecordingGroup[] {
   }
 
   return groups.sort((a, b) => b.score - a.score || b.tracks.length - a.tracks.length)
-}
-
-function looksLikeBareMovement(name: string): boolean {
-  const trimmed = name.trim()
-  return /^[IVXLC]+\.\s+\S/.test(trimmed) || /^\d+\.\s+[A-Za-z]/.test(trimmed)
 }
 
 export function fillAlbumGaps(albumTracks: TrackLike[], matched: ScoredTrack[], parsed: ParsedWork): ScoredTrack[] {
@@ -504,14 +565,14 @@ export function fillAlbumGaps(albumTracks: TrackLike[], matched: ScoredTrack[], 
     if (right.trackNumber - left.trackNumber !== 2) continue
     const middle = byKey.get(`${left.discNumber}:${left.trackNumber + 1}`)
     if (!middle || matchedIds.has(middle.id)) continue
-    if (
-      !sameRecordingStem(left.name, middle.name) &&
-      !sameRecordingStem(middle.name, right.name) &&
-      !looksLikeBareMovement(middle.name)
-    ) {
-      continue
-    }
+    if (rejectedForThisWork(parsed, middle.name)) continue
+    const bare = looksLikeBareMovement(middle.name)
+    const stemMatch =
+      sameRecordingStem(left.name, middle.name) || sameRecordingStem(middle.name, right.name)
+    if (!stemMatch && !bare) continue
     const score = scoreTrack(middle, parsed)
+    // Only unlabeled movements may be kept when they do not score on their own.
+    if (score < 0 && !bare) continue
     extra.push({ ...middle, score: score > 0 ? score : Math.min(left.score, right.score) - 1 })
     matchedIds.add(middle.id)
   }
@@ -520,10 +581,15 @@ export function fillAlbumGaps(albumTracks: TrackLike[], matched: ScoredTrack[], 
     for (const delta of [-1, 1]) {
       const neighbor = byKey.get(`${seed.discNumber}:${seed.trackNumber + delta}`)
       if (!neighbor || matchedIds.has(neighbor.id)) continue
-      const related = sameRecordingStem(seed.name, neighbor.name) || matchingCatalogue(parsed, neighbor.name)
+      if (rejectedForThisWork(parsed, neighbor.name)) continue
+      const related =
+        sameRecordingStem(seed.name, neighbor.name) || matchingCatalogue(parsed, neighbor.name)
       if (!related) continue
       const score = scoreTrack(neighbor, parsed)
-      extra.push({ ...neighbor, score: score > 0 ? score : seed.score - 2 })
+      // Outward neighbors must identify as this work. A bare "III. Rondo"
+      // beside the concerto is the previous piece, not a missing movement.
+      if (score < 0) continue
+      extra.push({ ...neighbor, score })
       matchedIds.add(neighbor.id)
     }
   }
