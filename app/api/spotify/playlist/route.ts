@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server"
 import { createSpotifyPlaylist, getSpotifyUserSession } from "@/lib/spotify-auth"
+import { classicalPlaylistDescription, uniqueTrackUris } from "@/lib/spotify-playlist"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
-
-const TRACK_URI = /^spotify:track:[A-Za-z0-9]+$/
 
 export async function POST(request: Request) {
   const session = await getSpotifyUserSession()
@@ -20,20 +19,20 @@ export async function POST(request: Request) {
   }
 
   const name = typeof body.name === "string" ? body.name.trim() : ""
-  const uris = Array.isArray(body.uris)
-    ? body.uris.filter((uri): uri is string => typeof uri === "string" && TRACK_URI.test(uri))
-    : []
+  const uris = uniqueTrackUris(
+    Array.isArray(body.uris) ? body.uris.filter((uri): uri is string => typeof uri === "string") : []
+  )
 
   if (!name) {
     return NextResponse.json({ error: "Playlist name is required" }, { status: 400 })
   }
-  if (!uris.length) {
-    return NextResponse.json({ error: "At least one track is required" }, { status: 400 })
+  if (uris.length < 2) {
+    return NextResponse.json({ error: "At least two tracks are required" }, { status: 400 })
   }
 
   const result = await createSpotifyPlaylist({
     name,
-    description: `Only the matched movements/tracks for ${name}. Created by Classical Portal.`,
+    description: classicalPlaylistDescription(name),
     trackUris: uris,
   })
 
