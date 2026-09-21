@@ -5,9 +5,11 @@ import { FilterChips } from "@/components/filter-chips"
 import { WorkList } from "@/components/work-list"
 import { epochHref } from "@/lib/epochs"
 import {
+  compareWorksByPopularity,
+  dedupeWorks,
   getComposer,
   groupWorksByGenre,
-  isFlagged,
+  isPopular,
   listWorksByComposer,
   lifeSpan,
   WORK_GENRES,
@@ -15,7 +17,7 @@ import {
 
 export const revalidate = 3600
 
-type Filter = "all" | "popular" | "recommended" | string
+type Filter = "all" | "popular" | string
 
 export async function generateMetadata({
   params,
@@ -40,54 +42,47 @@ export default async function ComposerPage({
 
   if (!composer) notFound()
 
-  const works = worksResult.works
-  const popularCount = works.filter((work) => isFlagged(work.popular)).length
-  const recommendedCount = works.filter((work) => isFlagged(work.recommended)).length
+  const works = dedupeWorks(worksResult.works)
+  const popularCount = works.filter((work) => isPopular(work)).length
   const genreCounts = Object.fromEntries(
     WORK_GENRES.map((genre) => [genre, works.filter((work) => work.genre === genre).length])
   )
 
   const available: Filter[] = [
     "all",
-    ...(recommendedCount ? (["recommended"] as const) : []),
     ...(popularCount ? (["popular"] as const) : []),
     ...WORK_GENRES.filter((genre) => genreCounts[genre] > 0),
   ]
 
-  const requested = (rawFilter || "").trim()
+  const requestedRaw = (rawFilter || "").trim()
+  const requested = requestedRaw === "recommended" ? "popular" : requestedRaw
   const filter: Filter =
     requested && available.includes(requested)
       ? requested
-      : recommendedCount
-        ? "recommended"
-        : popularCount
-          ? "popular"
-          : "all"
+      : popularCount
+        ? "popular"
+        : "all"
 
   const filtered =
     filter === "all"
       ? works
       : filter === "popular"
-        ? works.filter((work) => isFlagged(work.popular))
-        : filter === "recommended"
-          ? works.filter((work) => isFlagged(work.recommended))
-          : works.filter((work) => work.genre === filter)
+        ? works.filter((work) => isPopular(work))
+        : works.filter((work) => work.genre === filter)
 
-  const grouped = filter === "all" || filter === "popular" || filter === "recommended"
-    ? groupWorksByGenre(filtered)
-    : [{ genre: filter, works: filtered }]
+  const grouped =
+    filter === "all" || filter === "popular"
+      ? groupWorksByGenre(filtered)
+      : [{ genre: filter, works: [...filtered].sort(compareWorksByPopularity) }]
 
   const years = lifeSpan(composer)
   const hrefFor = (value: Filter) =>
-    value === (recommendedCount ? "recommended" : popularCount ? "popular" : "all")
+    value === (popularCount ? "popular" : "all")
       ? `/composers/${composer.id}`
       : `/composers/${composer.id}?filter=${encodeURIComponent(value)}`
 
   const chips = [
     { href: hrefFor("all"), label: "All", active: filter === "all", count: works.length },
-    ...(recommendedCount
-      ? [{ href: hrefFor("recommended"), label: "Essential", active: filter === "recommended", count: recommendedCount }]
-      : []),
     ...(popularCount
       ? [{ href: hrefFor("popular"), label: "Popular", active: filter === "popular", count: popularCount }]
       : []),

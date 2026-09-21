@@ -1,7 +1,6 @@
 import Link from "next/link"
 import { Star } from "lucide-react"
-import { isFlagged, type GenreWork, type OpenOpusWork } from "@/lib/openopus"
-import { Badge } from "@/components/ui/badge"
+import { isPopular, type GenreWork, type OpenOpusWork } from "@/lib/openopus"
 
 type ListedWork = OpenOpusWork & Partial<Pick<GenreWork, "composer">> & { composerLabel?: string }
 
@@ -24,7 +23,7 @@ export function WorkList({
             href={`/works/${work.id}`}
             className="flex items-start gap-2 py-2.5 hover:bg-accent/70 -mx-2 px-2 rounded-md"
           >
-            {isFlagged(work.popular) ? (
+            {isPopular(work) ? (
               <Star className="mt-0.5 h-3.5 w-3.5 shrink-0 fill-current text-primary" />
             ) : (
               <span className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -42,11 +41,6 @@ export function WorkList({
                 </span>
               ) : null}
             </span>
-            {isFlagged(work.recommended) && (
-              <Badge variant="outline" className="mt-0.5 shrink-0 font-normal">
-                Essential
-              </Badge>
-            )}
           </Link>
         </li>
       ))}

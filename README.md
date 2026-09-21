@@ -37,7 +37,9 @@ That dump has no work ids, so `data/form-works.json` is built from each composer
 node --experimental-strip-types scripts/build-form-index.ts
 ```
 
-A work is listed under one form. The title wins over the subtitle. Suites taken from an opera stay suites. Stage works with an empty subtitle and no other form (Carmen, Il barbiere di Siviglia) are listed as operas; Open Opus usually labels ballets and film scores in the subtitle, and a few unlabeled ones are still filed with operas. On a genre page, works use the same popularity order as a composer’s catalog: popular and essential first, then popular, then essential, then title.
+A work is listed under one form. The title wins over the subtitle. Suites taken from an opera stay suites. Stage works with an empty subtitle and no other form (Carmen, Il barbiere di Siviglia) are listed as operas; Open Opus usually labels ballets and film scores in the subtitle, and a few unlabeled ones are still filed with operas.
+
+Open Opus stores two flags, `popular` and `recommended`. Classical Portal treats either flag as **Popular**. There is no separate Essential filter or badge. A work that carries both flags is listed once. Genre pages and composer lists put popular works first, then the rest by title.
 
 ## Local setup
 
@@ -80,7 +82,7 @@ Without `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` the work page still offers
 - `/periods/[epoch]` — composers in that period, popular first (`baroque`, `early-romantic`, …)
 - `/genres` — forms such as symphonies, sonatas, and operas
 - `/genres/[slug]` — works of that form, popular first
-- `/composers/[id]` — works, filterable by essential / popular / genre
+- `/composers/[id]` — works, filterable by popular / genre
 - `/works/[id]` — work detail and Spotify track matches
 - `/search?q=` — Open Opus omnisearch (the search box also typeaheads via `/api/search`)
 - `/api/spotify/login` — start Spotify login (playlist flow)

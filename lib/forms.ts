@@ -15,7 +15,8 @@
  * A few unlabeled ballets end up there for the same reason.
  *
  * Order is match priority (specific forms before broader ones), not display
- * order. The genres page sorts forms by how many works Open Opus marks popular.
+ * order. The genres page sorts forms by how many works are popular, counting
+ * either the Open Opus `popular` or `recommended` flag.
  */
 
 export type WorkForm = {

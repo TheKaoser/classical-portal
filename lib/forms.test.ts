@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 import { classifyWork } from "./forms.ts"
-import { compareWorksByPopularity } from "./openopus.ts"
+import { compareWorksByPopularity, dedupeWorks, isPopular } from "./openopus.ts"
 
 test("classifies common forms from the title", () => {
   assert.equal(classifyWork("Symphony no. 5 in C minor, op. 67"), "symphony")
@@ -41,14 +41,31 @@ test("a form named in the title wins over a conflicting subtitle", () => {
   assert.equal(classifyWork("Trio Sonata in C major"), "sonata")
 })
 
-test("popularity order matches essential, then popular, then title", () => {
+test("either Open Opus flag counts as popular, and duplicates collapse to one work", () => {
+  assert.equal(isPopular({ popular: "1", recommended: "0" }), true)
+  assert.equal(isPopular({ popular: "0", recommended: "1" }), true)
+  assert.equal(isPopular({ popular: "1", recommended: "1" }), true)
+  assert.equal(isPopular({ popular: "0", recommended: "0" }), false)
+
+  const works = [
+    { id: "1", title: "A", popular: "1", recommended: "1" },
+    { id: "1", title: "A duplicate", popular: "0", recommended: "1" },
+    { id: "2", title: "B", popular: "0", recommended: "0" },
+  ]
+  const unique = dedupeWorks(works)
+  assert.equal(unique.length, 2)
+  assert.equal(unique[0].id, "1")
+  assert.equal(isPopular(unique[0]), true)
+})
+
+test("popularity order is flagged first, then title", () => {
   const works = [
     { title: "B", popular: "0", recommended: "0" },
     { title: "C", popular: "1", recommended: "0" },
     { title: "A", popular: "1", recommended: "1" },
     { title: "D", popular: "0", recommended: "1" },
-    { title: "E", popular: "1", recommended: "1" },
+    { title: "E", popular: "0", recommended: "0" },
   ]
   const titles = [...works].sort(compareWorksByPopularity).map((work) => work.title)
-  assert.deepEqual(titles, ["A", "E", "C", "D", "B"])
+  assert.deepEqual(titles, ["A", "C", "D", "B", "E"])
 })

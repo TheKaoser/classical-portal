@@ -32,7 +32,7 @@ export default async function GenrePage({ params }: { params: Promise<{ slug: st
       <PageHeader
         title={form.name}
         subtitle={`${works.length.toLocaleString()} ${works.length === 1 ? "work" : "works"}`}
-        description={`${form.blurb} Popular and essential works are listed first.`}
+        description={`${form.blurb} Popular works are listed first.`}
         backHref="/genres"
         backLabel="Genres"
       />
