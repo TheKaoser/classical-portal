@@ -6,6 +6,7 @@ import { SpotifyRecordings } from "@/components/spotify-recordings"
 import { Badge } from "@/components/ui/badge"
 import { genreHref, getWork, workParts, workSearchTerms } from "@/lib/openopus"
 import { searchSpotifyForWork } from "@/lib/spotify"
+import { classicalPlaylistName } from "@/lib/spotify-playlist"
 
 export const revalidate = 600
 
@@ -43,7 +44,7 @@ export default async function WorkPage({
     parts,
   })
   const subtitle = [work.genre, composer.complete_name].filter(Boolean).join(" · ")
-  const playlistName = `${composer.name}: ${work.title}`.slice(0, 100)
+  const playlistName = classicalPlaylistName(composer.name, work.title)
 
   return (
     <div className="space-y-10">

@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "crypto"
 import { cookies } from "next/headers"
 import { NextResponse } from "next/server"
+import { spotifyPlaylistCreateBody } from "@/lib/spotify-playlist"
 
 const STATE_COOKIE = "cp_spotify_oauth_state"
 const VERIFIER_COOKIE = "cp_spotify_pkce"
@@ -10,6 +11,9 @@ const REFRESH_COOKIE = "cp_spotify_rt"
 const EXPIRY_COOKIE = "cp_spotify_exp"
 const USER_COOKIE = "cp_spotify_user"
 
+// Play all creates private playlists (`playlist-modify-private`).
+// `playlist-modify-public` stays so tokens granted before that still refresh.
+// Queue playback is not requested: it needs `user-modify-playback-state` and an active device.
 const SCOPES = ["playlist-modify-private", "playlist-modify-public"].join(" ")
 
 export type SpotifyUserSession = {
@@ -246,11 +250,12 @@ export async function createSpotifyPlaylist(input: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      name: input.name.slice(0, 100),
-      description: (input.description || "Created by Classical Portal").slice(0, 300),
-      public: false,
-    }),
+    body: JSON.stringify(
+      spotifyPlaylistCreateBody({
+        name: input.name,
+        description: input.description,
+      })
+    ),
     cache: "no-store",
   })
   if (!create.ok) {

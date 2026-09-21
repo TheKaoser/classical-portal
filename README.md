@@ -13,10 +13,10 @@ Browser
   │     ├─ Open Opus REST API (no auth) — periods, composers, works, search
   │     └─ Spotify Web API
   │           ├─ Client Credentials (server-only) — search tracks, expand albums
-  │           └─ Authorization Code + PKCE (optional) — create a playlist of matched tracks
+  │           └─ Authorization Code + PKCE (optional) — private playlist of a movement group
   │
   └─ Play
-        ├─ Spotify embed of a matched track (or of a playlist you just created)
+        ├─ Spotify embed of one track, or of a private playlist of the whole movement group
         ├─ 30s `preview_url` audio when Spotify returns one (no Premium)
         └─ “Open in Spotify” / search deep link (Free and Premium)
 ```
@@ -46,13 +46,15 @@ Set these in `.env.local` and in the Vercel project (Settings → Environment Va
 | `SPOTIFY_CLIENT_ID` | For matching recordings | Spotify app client ID |
 | `SPOTIFY_CLIENT_SECRET` | For matching recordings | Spotify app secret (server only) |
 | `SPOTIFY_MARKET` | No (default `US`) | ISO 3166-1 alpha-2 market for search |
-| `SPOTIFY_REDIRECT_URI` | For “Create playlist on Spotify” | Must match a Redirect URI registered in the Spotify Dashboard |
+| `SPOTIFY_REDIRECT_URI` | For “Play all” | Must match a Redirect URI registered in the Spotify Dashboard |
 
 Create an app at [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard).
 
 **Search / matching** uses Client Credentials and does not need a redirect URI.
 
-**Playlists** use Authorization Code + PKCE with scopes `playlist-modify-private` and `playlist-modify-public`. Register every environment’s callback exactly:
+**Play all** uses Authorization Code + PKCE. Scopes are `playlist-modify-private` and `playlist-modify-public`. No other scopes are requested. Playback does not use the queue API (`user-modify-playback-state`): that needs an active Premium device, while a playlist embed plays the movements in order without one.
+
+Playlists are created **private** (`public: false`). Spotify has no temporary-playlist API, so each group is a private playlist in the listener’s library, named like `Classical Portal · Brahms Piano Concerto no. 2`. The embed can play that private playlist when the browser is logged into the same Spotify account. The same track list is reused from this browser instead of creating a duplicate. Register every environment’s callback exactly:
 
 - Local: `http://127.0.0.1:3000/api/spotify/callback` (Spotify rejects `localhost`)
 - Production / preview: `https://<your-domain>/api/spotify/callback`
@@ -71,20 +73,20 @@ Without `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` the work page still offers
 - `/composers/[id]` — works, filterable by essential / popular / genre
 - `/works/[id]` — work detail and Spotify track matches
 - `/search?q=` — Open Opus omnisearch (the search box also typeaheads via `/api/search`)
-- `/api/spotify/login` — start Spotify login (playlist flow)
+- `/api/spotify/login` — start Spotify login (Play all)
 - `/api/spotify/callback` — OAuth redirect target
 - `/api/spotify/session` — whether the visitor is connected
-- `/api/spotify/playlist` — create a private playlist of matched tracks
+- `/api/spotify/playlist` — create a private playlist of two or more matched tracks, in order
 - `/api/spotify/logout` — clear Spotify cookies
 
 Supabase and YouTube are no longer used. Old `/admin`, `/blog`, and `/piece/:id` URLs redirect home.
 
 ## Playback notes
 
+- **Play all** — for a group of two or more movements. One click creates a private playlist of those tracks only, in album order, and the embed switches to that playlist so Spotify plays them back to back. If Spotify is not connected yet, the same click signs the listener in and then finishes the playlist when you return. The next visit embeds that playlist without creating another one. A single movement still uses the track embed. Choosing one row plays only that movement.
 - **Open in Spotify** — works for Free and Premium; each listed item is a single track.
-- **Create playlist on Spotify** — signs the visitor in (once), then saves only the matched movements. The embed switches to that playlist.
 - **Embed** — ~30s preview unless the visitor is logged into Spotify in that browser; full playback often needs Premium.
-- **Web Playback SDK** — not implemented. It needs Authorization Code plus the `streaming` scope, and **Premium is required**.
+- **Web Playback SDK** — not implemented. It needs Authorization Code plus the `streaming` scope, and **Premium is required**. Queueing via `/me/player/queue` is not implemented either.
 
 ## Matching quality checks
 
