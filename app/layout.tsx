@@ -35,11 +35,21 @@ export default function RootLayout({
         <main className="mx-auto max-w-3xl px-4 py-8">{children}</main>
         <footer className="mx-auto max-w-3xl px-4 pb-10 text-xs text-muted-foreground">
           Catalog from{" "}
-          <a className="underline-offset-2 hover:underline" href="https://openopus.org" target="_blank" rel="noopener noreferrer">
+          <a
+            className="text-primary underline-offset-2 hover:text-primary-hover hover:underline"
+            href="https://openopus.org"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             Open Opus
           </a>
           . Recordings via{" "}
-          <a className="underline-offset-2 hover:underline" href="https://spotify.com" target="_blank" rel="noopener noreferrer">
+          <a
+            className="text-primary underline-offset-2 hover:text-primary-hover hover:underline"
+            href="https://spotify.com"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
             Spotify
           </a>
           .

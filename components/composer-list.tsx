@@ -14,7 +14,7 @@ export function ComposerList({ composers }: { composers: OpenOpusComposer[] }) {
           <li key={composer.id}>
             <Link
               href={`/composers/${composer.id}`}
-              className="flex items-center gap-3 py-3 hover:bg-accent/40 -mx-2 px-2 rounded-md"
+              className="flex items-center gap-3 py-3 hover:bg-accent/70 -mx-2 px-2 rounded-md"
             >
               {composer.portrait ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -31,7 +31,7 @@ export function ComposerList({ composers }: { composers: OpenOpusComposer[] }) {
                 </div>
               )}
               <div className="min-w-0">
-                <div className="truncate font-medium text-foreground">{composer.complete_name}</div>
+                <div className="truncate font-medium text-navy">{composer.complete_name}</div>
                 <div className="truncate text-sm text-muted-foreground">
                   {[years, composer.epoch].filter(Boolean).join(" · ")}
                 </div>

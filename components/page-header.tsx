@@ -21,7 +21,7 @@ export function PageHeader({
       {backHref && (
         <Link
           href={backHref}
-          className="mb-4 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          className="mb-4 inline-flex items-center gap-1 text-sm text-primary hover:text-primary-hover"
         >
           <ArrowLeft className="h-4 w-4" />
           {backLabel || "Back"}
@@ -39,8 +39,8 @@ export function PageHeader({
           />
         )}
         <div className="min-w-0">
-          <h1 className="font-serif text-3xl leading-tight tracking-tight text-foreground">{title}</h1>
-          {subtitle && <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>}
+          <h1 className="font-serif text-3xl leading-tight tracking-tight text-navy">{title}</h1>
+          {subtitle && <p className="mt-1 text-sm font-medium text-primary">{subtitle}</p>}
           {description && <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">{description}</p>}
         </div>
       </div>

@@ -16,7 +16,7 @@ export function SearchForm({
   return (
     <form action="/search" method="get" className={cn("relative", className)} role="search">
       <Search
-        className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+        className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary/55"
         aria-hidden
       />
       <Input
@@ -27,7 +27,7 @@ export function SearchForm({
         placeholder="Search composers or works"
         aria-label="Search composers or works"
         className={cn(
-          "bg-background pl-9 shadow-none",
+          "border-input bg-card pl-9 shadow-none focus-visible:border-ring",
           size === "lg" && "h-11 text-base md:text-base"
         )}
       />

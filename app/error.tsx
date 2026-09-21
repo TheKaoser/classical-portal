@@ -13,7 +13,11 @@ export default function Error({
       <p className="text-sm text-muted-foreground">
         {error.message || "Open Opus or Spotify did not respond. Try again in a moment."}
       </p>
-      <button type="button" onClick={reset} className="text-sm hover:underline">
+      <button
+        type="button"
+        onClick={reset}
+        className="text-sm text-primary hover:text-primary-hover hover:underline"
+      >
         Retry
       </button>
     </div>
