@@ -1,4 +1,19 @@
 import { unstable_cache } from "next/cache"
+import {
+  compareWorksByPopularity,
+  dedupeWorks,
+  isFlagged,
+  isPopular,
+  popularityRank,
+} from "@/lib/popularity"
+
+export {
+  compareWorksByPopularity,
+  dedupeWorks,
+  isFlagged,
+  isPopular,
+  popularityRank,
+}
 
 const OPEN_OPUS_BASE = "https://api.openopus.org"
 
@@ -74,10 +89,6 @@ function encodePathSegment(value: string): string {
   return encodeURIComponent(value)
 }
 
-export function isFlagged(value: string | number | undefined): boolean {
-  return value === 1 || value === "1"
-}
-
 export function lifeSpan(composer: Pick<OpenOpusComposer, "birth" | "death">): string | null {
   const year = (value: string | null) => (value ? value.slice(0, 4) : null)
   const birth = year(composer.birth)
@@ -106,9 +117,9 @@ function composerSortName(composer: OpenOpusComposer): string {
 
 /**
  * Open Opus list payloads have no composer `popular` flag or numeric rank.
- * Fame is membership in `/composer/list/pop.json` (popular) and
- * `/composer/list/rec.json` (essential / recommended). Sort rule:
- * popular first, then essential, then everyone else; each tier alphabetical.
+ * Fame is membership in `/composer/list/pop.json` or `/composer/list/rec.json`.
+ * Either list counts as popular. Sort rule: popular first, then everyone else;
+ * each tier alphabetical.
  */
 export function sortComposersByPopularity(
   composers: OpenOpusComposer[],
@@ -116,9 +127,8 @@ export function sortComposersByPopularity(
   essentialIds: Set<string>
 ): OpenOpusComposer[] {
   const rank = (composer: OpenOpusComposer) => {
-    if (popularIds.has(composer.id)) return 0
-    if (essentialIds.has(composer.id)) return 1
-    return 2
+    if (popularIds.has(composer.id) || essentialIds.has(composer.id)) return 0
+    return 1
   }
 
   return [...composers].sort(
@@ -226,12 +236,7 @@ export function workParts(work: Pick<OpenOpusWorkDetail, "parts" | "movements">)
     .filter(Boolean)
 }
 
-export function workPopularityRank(work: Pick<OpenOpusWork, "popular" | "recommended">): number {
-  if (isFlagged(work.popular) && isFlagged(work.recommended)) return 0
-  if (isFlagged(work.popular)) return 1
-  if (isFlagged(work.recommended)) return 2
-  return 3
-}
+export const workPopularityRank = popularityRank
 
 export function groupWorksByGenre(works: OpenOpusWork[]): { genre: string; works: OpenOpusWork[] }[] {
   const groups = new Map<string, OpenOpusWork[]>()
@@ -247,7 +252,7 @@ export function groupWorksByGenre(works: OpenOpusWork[]): { genre: string; works
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([genre, list]) => ({
       genre,
-      works: list.sort((a, b) => workPopularityRank(a) - workPopularityRank(b) || a.title.localeCompare(b.title)),
+      works: list.sort(compareWorksByPopularity),
     }))
 }
 
