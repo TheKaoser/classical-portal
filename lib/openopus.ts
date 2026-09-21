@@ -396,7 +396,7 @@ export async function listGenresByPopularity(): Promise<GenreSummary[]> {
 }
 
 export type GenreWork = OpenOpusWork & {
-  composer: Pick<OpenOpusComposer, "id" | "name" | "complete_name" | "epoch">
+  composer: Pick<OpenOpusComposer, "id" | "name" | "complete_name" | "epoch" | "birth">
 }
 
 async function mapInBatches<T, R>(items: T[], batchSize: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -431,6 +431,7 @@ export async function listWorksByGenre(genre: WorkGenre): Promise<GenreWork[]> {
       name: list.composer.name,
       complete_name: list.composer.complete_name,
       epoch: list.composer.epoch,
+      birth: list.composer.birth,
     }
     for (const work of list.works) {
       if (work.genre !== genre) continue

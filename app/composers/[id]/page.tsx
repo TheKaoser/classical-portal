@@ -3,6 +3,8 @@ import { notFound } from "next/navigation"
 import { PageHeader } from "@/components/page-header"
 import { FilterChips } from "@/components/filter-chips"
 import { WorkList } from "@/components/work-list"
+import { sortWorksChronologically } from "@/lib/composition-date"
+import { attachCompositionYears } from "@/lib/composition-years"
 import { epochHref } from "@/lib/epochs"
 import {
   compareWorksByPopularity,
@@ -42,7 +44,12 @@ export default async function ComposerPage({
 
   if (!composer) notFound()
 
-  const works = dedupeWorks(worksResult.works)
+  const works = await attachCompositionYears(dedupeWorks(worksResult.works), {
+    id: composer.id,
+    name: composer.name,
+    complete_name: composer.complete_name,
+    birth: composer.birth ?? worksResult.composer?.birth ?? null,
+  })
   const popularCount = works.filter((work) => isPopular(work)).length
   const genreCounts = Object.fromEntries(
     WORK_GENRES.map((genre) => [genre, works.filter((work) => work.genre === genre).length])
@@ -106,16 +113,20 @@ export default async function ComposerPage({
 
       <FilterChips items={chips} />
 
-      <div className="space-y-8">
-        {grouped.map((group) => (
-          <section key={group.genre}>
-            {grouped.length > 1 && (
-              <h2 className="mb-2 font-serif text-lg tracking-tight text-navy">{group.genre}</h2>
-            )}
-            <WorkList works={group.works} />
-          </section>
-        ))}
-      </div>
+      {filter === "all" ? (
+        <WorkList works={sortWorksChronologically(filtered)} showGenre />
+      ) : (
+        <div className="space-y-8">
+          {grouped.map((group) => (
+            <section key={group.genre}>
+              {grouped.length > 1 && (
+                <h2 className="mb-2 font-serif text-lg tracking-tight text-navy">{group.genre}</h2>
+              )}
+              <WorkList works={group.works} />
+            </section>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

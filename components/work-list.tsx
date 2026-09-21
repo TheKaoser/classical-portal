@@ -2,14 +2,20 @@ import Link from "next/link"
 import { Star } from "lucide-react"
 import { isPopular, type GenreWork, type OpenOpusWork } from "@/lib/openopus"
 
-type ListedWork = OpenOpusWork & Partial<Pick<GenreWork, "composer">> & { composerLabel?: string }
+type ListedWork = OpenOpusWork &
+  Partial<Pick<GenreWork, "composer">> & {
+    composerLabel?: string
+    compositionYear?: number | null
+  }
 
 export function WorkList({
   works,
   showComposer = false,
+  showGenre = false,
 }: {
   works: ListedWork[]
   showComposer?: boolean
+  showGenre?: boolean
 }) {
   if (!works.length) {
     return <p className="text-sm text-muted-foreground">No works in this view.</p>
@@ -40,10 +46,34 @@ export function WorkList({
                   {work.composer.complete_name || work.composer.name}
                 </span>
               ) : null}
+              {showGenre && work.genre ? (
+                <span className="block text-xs text-muted-foreground">{work.genre}</span>
+              ) : null}
             </span>
+            <WorkYear year={work.compositionYear} />
           </Link>
         </li>
       ))}
     </ul>
+  )
+}
+
+function WorkYear({ year }: { year?: number | null }) {
+  if (year == null) {
+    return (
+      <span className="mt-0.5 w-12 shrink-0 text-right text-xs text-muted-foreground/50" aria-hidden>
+        —
+      </span>
+    )
+  }
+
+  return (
+    <time
+      dateTime={String(year)}
+      title="Composition year"
+      className="mt-0.5 w-12 shrink-0 text-right text-xs tabular-nums text-muted-foreground"
+    >
+      {year}
+    </time>
   )
 }

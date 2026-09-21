@@ -23,6 +23,8 @@ Browser
 
 Open Opus is unauthenticated. Spotify’s **client secret never leaves the server**. The Web Playback SDK is not used: it requires user OAuth and **Spotify Premium**. Embeds and deep links work without that.
 
+Open Opus work lists have no composition date. Classical Portal fills that in from [Wikidata](https://query.wikidata.org): English labels and aliases of works whose composer (P86) matches, using the inception date (P571) as the composition year. A year is shown only when the catalogue number (opus, BWV, K., Hoboken, and the same style of identifier on both sides), or otherwise a unique title, matches exactly one year. If Wikidata has no unambiguous year, the row shows an em dash — the app does not guess. The composer **All** list is chronological (undated titles A–Z at the end). Popular keeps popularity order. There is no Essential chip. Resolved indexes are stored in `data/composition-dates.json` (refresh with `node --experimental-strip-types scripts/refresh-composition-dates.ts`); composers missing from that file are looked up live and cached.
+
 Work pages search **tracks only**. Matching recordings are grouped into movement sets from the same album (consecutive tracks that belong to the selected work). Full albums are not listed, so a Beethoven 5 result does not start playing Beethoven 7 from the same disc.
 
 Open Opus work detail currently has **no movements/parts** field. If `parts` or `movements` is present, Classical Portal uses those titles when scoring Spotify tracks and lists them on the work page. Until then, catalogue numbers and common movement naming (`Symphony No. 5 … : I. Allegro con brio`) drive the grouping.
