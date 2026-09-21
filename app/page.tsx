@@ -1,13 +1,13 @@
 import Link from "next/link"
+import { GenreList } from "@/components/genre-list"
+import { PeriodList } from "@/components/period-list"
 import { SearchForm } from "@/components/search-form"
-import { ComposerList } from "@/components/composer-list"
-import { EPOCHS } from "@/lib/epochs"
-import { listPopularComposers } from "@/lib/openopus"
+import { listGenresByPopularity } from "@/lib/openopus"
 
 export const revalidate = 3600
 
 export default async function HomePage() {
-  const popular = await listPopularComposers()
+  const genres = await listGenresByPopularity()
 
   return (
     <div className="space-y-12">
@@ -34,24 +34,17 @@ export default async function HomePage() {
             All periods
           </Link>
         </div>
-        <ul className="divide-y divide-border">
-          {EPOCHS.map((epoch) => (
-            <li key={epoch.slug}>
-              <Link
-                href={`/periods/${epoch.slug}`}
-                className="flex items-baseline justify-between gap-4 py-2.5 hover:bg-accent/70 -mx-2 px-2 rounded-md"
-              >
-                <span className="font-medium text-navy">{epoch.name}</span>
-                <span className="text-sm text-muted-foreground">{epoch.years}</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+        <PeriodList />
       </section>
 
       <section>
-        <h2 className="mb-4 font-serif text-xl tracking-tight text-navy">Popular composers</h2>
-        <ComposerList composers={popular} />
+        <div className="mb-4 flex items-baseline justify-between">
+          <h2 className="font-serif text-xl tracking-tight text-navy">Genres</h2>
+          <Link href="/genres" className="text-sm text-primary hover:text-primary-hover">
+            All genres
+          </Link>
+        </div>
+        <GenreList genres={genres} />
       </section>
     </div>
   )

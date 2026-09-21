@@ -1,9 +1,10 @@
 import type { Metadata } from "next"
+import Link from "next/link"
 import { notFound } from "next/navigation"
 import { PageHeader } from "@/components/page-header"
 import { SpotifyRecordings } from "@/components/spotify-recordings"
 import { Badge } from "@/components/ui/badge"
-import { getWork, workParts, workSearchTerms } from "@/lib/openopus"
+import { genreHref, getWork, workParts, workSearchTerms } from "@/lib/openopus"
 import { searchSpotifyForWork } from "@/lib/spotify"
 
 export const revalidate = 600
@@ -55,7 +56,11 @@ export default async function WorkPage({
           backLabel={composer.name}
         />
         <div className="flex flex-wrap gap-2">
-          <Badge variant="outline">{work.genre}</Badge>
+          {work.genre ? (
+            <Badge variant="outline" asChild>
+              <Link href={genreHref(work.genre)}>{work.genre}</Link>
+            </Badge>
+          ) : null}
           {composer.epoch && <Badge variant="secondary">{composer.epoch}</Badge>}
         </div>
         {parts.length > 0 && (
