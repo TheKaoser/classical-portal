@@ -39,7 +39,9 @@ node --experimental-strip-types scripts/build-form-index.ts
 
 A work is listed under one form. The title wins over the subtitle. Suites taken from an opera stay suites. Stage works with an empty subtitle and no other form (Carmen, Il barbiere di Siviglia) are listed as operas; Open Opus usually labels ballets and film scores in the subtitle, and a few unlabeled ones are still filed with operas.
 
-Open Opus stores two flags, `popular` and `recommended`. Classical Portal treats either flag as **Popular**. There is no separate Essential filter or badge. A work that carries both flags is listed once. Genre pages and composer lists put popular works first, then the rest by title.
+Open Opus stores two flags, `popular` and `recommended`. Classical Portal treats either flag as **Popular**. There is no separate Essential filter or badge. A work that carries both flags is listed once. Genre pages and composer work lists put popular works first, then the rest by title.
+
+Composer lists on a period page are ranked separately, by Open Opus list membership: `/composer/list/pop.json`, then `/composer/list/rec.json`, then everyone else. Names stay alphabetical inside each tier.
 
 ## Local setup
 
@@ -79,7 +81,7 @@ Without `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` the work page still offers
 
 - `/` — title, and banners for periods and genres (search stays in the header)
 - `/periods` — Open Opus epochs
-- `/periods/[epoch]` — composers in that period, popular first (`baroque`, `early-romantic`, …)
+- `/periods/[epoch]` — composers in that period, popular list, then essential list, then the rest (`baroque`, `early-romantic`, …)
 - `/genres` — forms such as symphonies, sonatas, and operas
 - `/genres/[slug]` — works of that form, popular first
 - `/composers/[id]` — works, filterable by popular / genre
