@@ -41,6 +41,14 @@ function isSuccess(status?: Status): boolean {
   return status?.success === true || status?.success === "true"
 }
 
+function normalizeWork<T extends OpenOpusWork>(work: T): T {
+  return {
+    ...work,
+    title: (work.title ?? "").trim(),
+    subtitle: work.subtitle?.trim() ? work.subtitle.trim() : "",
+  }
+}
+
 async function openOpusGet<T>(path: string, revalidate = 3600): Promise<T> {
   const url = `${OPEN_OPUS_BASE}${path}`
   const res = await fetch(url, {
@@ -107,7 +115,7 @@ export async function listWorksByComposer(composerId: string): Promise<{
     return { composer: data.composer ?? null, works: [] }
   }
 
-  return { composer: data.composer ?? null, works: data.works ?? [] }
+  return { composer: data.composer ?? null, works: (data.works ?? []).map(normalizeWork) }
 }
 
 export async function getWork(id: string): Promise<{
@@ -124,7 +132,7 @@ export async function getWork(id: string): Promise<{
     return { composer: data.composer ?? null, work: null }
   }
 
-  return { composer: data.composer ?? null, work: data.work }
+  return { composer: data.composer ?? null, work: normalizeWork(data.work) }
 }
 
 export async function omniSearch(query: string, offset = 0): Promise<OmniSearchHit[]> {
@@ -136,7 +144,12 @@ export async function omniSearch(query: string, offset = 0): Promise<OmniSearchH
     120
   )
 
-  return isSuccess(data.status) ? data.results ?? [] : []
+  return isSuccess(data.status)
+    ? (data.results ?? []).map((hit) => ({
+        composer: hit.composer,
+        work: hit.work ? normalizeWork(hit.work) : null,
+      }))
+    : []
 }
 
 export function groupWorksByGenre(works: OpenOpusWork[]): { genre: string; works: OpenOpusWork[] }[] {

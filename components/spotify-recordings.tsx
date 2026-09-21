@@ -51,17 +51,31 @@ export function SpotifyRecordings({
       </div>
 
       {!configured && (
-        <p className="text-sm text-muted-foreground">
-          Matching recordings need <code className="text-xs">SPOTIFY_CLIENT_ID</code> and{" "}
-          <code className="text-xs">SPOTIFY_CLIENT_SECRET</code> on the server. You can still open
-          this work in Spotify with the link above.
-        </p>
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Matching recordings appear here once Spotify API credentials are set on the server.
+          </p>
+          <Button asChild>
+            <a href={searchUrl} target="_blank" rel="noopener noreferrer">
+              Open in Spotify
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          </Button>
+        </div>
       )}
 
       {configured && items.length === 0 && (
-        <p className="text-sm text-muted-foreground">
-          No close catalog matches. Use search on Spotify to look for recordings.
-        </p>
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            No close catalog matches. Search the work on Spotify instead.
+          </p>
+          <Button asChild>
+            <a href={searchUrl} target="_blank" rel="noopener noreferrer">
+              Open in Spotify
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          </Button>
+        </div>
       )}
 
       {selected && (
@@ -136,11 +150,13 @@ export function SpotifyRecordings({
         </ul>
       )}
 
-      <p className="text-xs leading-relaxed text-muted-foreground">
-        The embed plays a preview unless you are logged into Spotify in this browser. Full in-app
-        playback with the Web Playback SDK requires Spotify Premium and user login — not enabled
-        here. Opening a recording in Spotify works on Free and Premium.
-      </p>
+      {items.length > 0 && (
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          The embed plays a preview unless you are logged into Spotify in this browser. Full-track
+          in-browser playback (Web Playback SDK) needs Premium and is not enabled here. Opening a
+          recording in Spotify works on Free and Premium.
+        </p>
+      )}
     </section>
   )
 }
