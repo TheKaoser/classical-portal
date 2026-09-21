@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import {
   clusterTracks,
+  fillAlbumGaps,
   parseWork,
   scoreTrack,
   type TrackLike,
@@ -308,4 +309,68 @@ test("clusters consecutive movements on one album and splits unrelated works", (
   const groups = clusterTracks(scored)
   assert.equal(groups.length, 1)
   assert.equal(groups[0].tracks.length, 4)
+})
+
+test("Brahms piano concerto op. 83 keeps only that concerto on a mixed album", () => {
+  const parsed = parseWork(
+    work({
+      composerName: "Brahms",
+      composerCompleteName: "Johannes Brahms",
+      title: "Piano Concerto no. 2 in B flat major, op. 83",
+      catalogue: "op",
+      catalogueNumber: "83",
+      additionalNumber: "2",
+      searchterms: ["op 83 no. 2"],
+    })
+  )
+
+  const album = "Brahms: Piano Concertos, Piano Works & Chamber Music"
+  const artists = "Johannes Brahms, Frankfurt Radio Symphony Orchestra, Paavo Järvi, Nicholas Angelich"
+  const rows: Array<[string, string, number, string?]> = [
+    ["pc1-3", "Brahms: Piano Concerto No. 1 in D Minor, Op. 15: III. Rondo. Allegro non troppo", 3],
+    ["pc2-1", "Brahms: Piano Concerto No. 2 in B-Flat Major, Op. 83: I. Allegro non troppo", 4],
+    ["pc2-2", "II. Allegro appassionato", 5, "Nicholas Angelich, Frankfurt Radio Symphony Orchestra"],
+    ["pc2-3", "Brahms: Piano Concerto No. 2 in B-Flat Major, Op. 83: III. Andante", 6],
+    ["pc2-4", "Brahms: Piano Concerto No. 2 in B-Flat Major, Op. 83: IV. Allegretto grazioso", 7],
+    ["bal-1", "Brahms: 4 Ballades, Op. 10: No. 1 in D Minor", 8, "Johannes Brahms, Nicholas Angelich"],
+    ["pc1-plain", "Piano Concerto No. 1 Op. 15: III. Rondo", 9],
+  ]
+
+  const likes = rows.map(([id, name, trackNumber, trackArtists]) =>
+    track({
+      id,
+      name,
+      trackNumber,
+      artists: trackArtists ?? artists,
+      album,
+      albumId: "angelich",
+    })
+  )
+
+  assert.equal(scoreTrack(likes[0], parsed), -1)
+  assert.ok(scoreTrack(likes[1], parsed) > 0)
+  assert.equal(scoreTrack(likes[2], parsed), -1, "an unlabeled middle movement does not score on its own")
+  assert.ok(scoreTrack(likes[3], parsed) > 0)
+  assert.ok(scoreTrack(likes[4], parsed) > 0)
+  assert.equal(scoreTrack(likes[5], parsed), -1)
+  assert.equal(scoreTrack(likes[6], parsed), -1)
+
+  const scored = likes
+    .map((item) => ({ ...item, score: scoreTrack(item, parsed) }))
+    .filter((item) => item.score > 0)
+  const filled = fillAlbumGaps(likes, scored, parsed)
+  const names = filled.map((item) => item.name)
+
+  assert.ok(names.some((name) => name.startsWith("II. Allegro")))
+  assert.ok(names.every((name) => !/op\.?\s*15/i.test(name)))
+  assert.ok(names.every((name) => !/op\.?\s*10/i.test(name)))
+  assert.ok(names.every((name) => !/ballade/i.test(name)))
+  assert.ok(names.every((name) => !/rondo/i.test(name)))
+
+  const groups = clusterTracks(filled).filter((group) => group.albumId === "angelich")
+  assert.equal(groups.length, 1)
+  assert.deepEqual(
+    groups[0].tracks.map((item) => item.id),
+    ["pc2-1", "pc2-2", "pc2-3", "pc2-4"]
+  )
 })
