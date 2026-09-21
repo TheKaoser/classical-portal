@@ -45,3 +45,30 @@ export function compareWorksByPopularity<
 >(a: T, b: T): number {
   return popularityRank(a) - popularityRank(b) || a.title.localeCompare(b.title)
 }
+
+/**
+ * Composer lists (period pages) rank by Open Opus list membership, not work flags.
+ * 0 = `/composer/list/pop.json`, 1 = `/composer/list/rec.json` only, 2 = everyone else.
+ * Someone on both lists stays in the popular tier.
+ */
+export function composerImportanceRank(
+  id: string,
+  popularIds: Set<string>,
+  essentialIds: Set<string>
+): number {
+  if (popularIds.has(id)) return 0
+  if (essentialIds.has(id)) return 1
+  return 2
+}
+
+export function sortComposersByImportance<
+  T extends { id: string; name: string; complete_name?: string | null },
+>(composers: T[], popularIds: Set<string>, essentialIds: Set<string>): T[] {
+  const sortName = (composer: T) => composer.complete_name || composer.name
+  return [...composers].sort(
+    (a, b) =>
+      composerImportanceRank(a.id, popularIds, essentialIds) -
+        composerImportanceRank(b.id, popularIds, essentialIds) ||
+      sortName(a).localeCompare(sortName(b))
+  )
+}

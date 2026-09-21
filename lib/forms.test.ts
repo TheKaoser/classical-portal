@@ -1,7 +1,12 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 import { classifyWork } from "./forms.ts"
-import { compareWorksByPopularity, dedupeWorks, isPopular } from "./popularity.ts"
+import {
+  compareWorksByPopularity,
+  dedupeWorks,
+  isPopular,
+  sortComposersByImportance,
+} from "./popularity.ts"
 
 test("classifies common forms from the title", () => {
   assert.equal(classifyWork("Symphony no. 5 in C minor, op. 67"), "symphony")
@@ -56,6 +61,38 @@ test("either Open Opus flag counts as popular, and duplicates collapse to one wo
   assert.equal(unique.length, 2)
   assert.equal(unique[0].id, "1")
   assert.equal(isPopular(unique[0]), true)
+})
+
+test("period composers rank pop, then essential, then the rest by complete name", () => {
+  const composers = [
+    { id: "98", name: "Vivaldi", complete_name: "Antonio Vivaldi" },
+    { id: "97", name: "Scarlatti", complete_name: "Domenico Scarlatti" },
+    { id: "128", name: "Couperin", complete_name: "François Couperin" },
+    { id: "67", name: "Handel", complete_name: "George Frideric Handel" },
+    { id: "87", name: "Bach", complete_name: "Johann Sebastian Bach" },
+    { id: "139", name: "Corelli", complete_name: "Arcangelo Corelli" },
+    { id: "65", name: "Scarlatti, A.", complete_name: "Alessandro Scarlatti" },
+  ]
+  const popularIds = new Set(["87", "67", "98"])
+  const essentialIds = new Set(["87", "97", "128"])
+
+  const names = sortComposersByImportance(composers, popularIds, essentialIds).map(
+    (composer) => composer.complete_name
+  )
+
+  assert.deepEqual(names, [
+    "Antonio Vivaldi",
+    "George Frideric Handel",
+    "Johann Sebastian Bach",
+    "Domenico Scarlatti",
+    "François Couperin",
+    "Alessandro Scarlatti",
+    "Arcangelo Corelli",
+  ])
+  assert.deepEqual(
+    composers.map((composer) => composer.id),
+    ["98", "97", "128", "67", "87", "139", "65"]
+  )
 })
 
 test("popularity order is flagged first, then title", () => {

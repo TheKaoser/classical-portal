@@ -5,6 +5,7 @@ import {
   isFlagged,
   isPopular,
   popularityRank,
+  sortComposersByImportance,
 } from "@/lib/popularity"
 
 export {
@@ -117,23 +118,19 @@ function composerSortName(composer: OpenOpusComposer): string {
 
 /**
  * Open Opus list payloads have no composer `popular` flag or numeric rank.
- * Fame is membership in `/composer/list/pop.json` or `/composer/list/rec.json`.
- * Either list counts as popular. Sort rule: popular first, then everyone else;
- * each tier alphabetical.
+ * Period (and other) composer lists use three importance tiers:
+ * 1. `/composer/list/pop.json`
+ * 2. `/composer/list/rec.json` but not pop
+ * 3. everyone else
+ * Alphabetical by `complete_name` within each tier.
+ * Work lists stay on the unified Popular flag; this sorter is composers only.
  */
 export function sortComposersByPopularity(
   composers: OpenOpusComposer[],
   popularIds: Set<string>,
   essentialIds: Set<string>
 ): OpenOpusComposer[] {
-  const rank = (composer: OpenOpusComposer) => {
-    if (popularIds.has(composer.id) || essentialIds.has(composer.id)) return 0
-    return 1
-  }
-
-  return [...composers].sort(
-    (a, b) => rank(a) - rank(b) || composerSortName(a).localeCompare(composerSortName(b))
-  )
+  return sortComposersByImportance(composers, popularIds, essentialIds)
 }
 
 export async function listComposersByEpoch(epochName: string): Promise<OpenOpusComposer[]> {
