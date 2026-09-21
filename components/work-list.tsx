@@ -1,9 +1,17 @@
 import Link from "next/link"
 import { Star } from "lucide-react"
-import { isFlagged, type OpenOpusWork } from "@/lib/openopus"
+import { isFlagged, type GenreWork, type OpenOpusWork } from "@/lib/openopus"
 import { Badge } from "@/components/ui/badge"
 
-export function WorkList({ works }: { works: OpenOpusWork[] }) {
+type ListedWork = OpenOpusWork & Partial<Pick<GenreWork, "composer">>
+
+export function WorkList({
+  works,
+  showComposer = false,
+}: {
+  works: ListedWork[]
+  showComposer?: boolean
+}) {
   if (!works.length) {
     return <p className="text-sm text-muted-foreground">No works in this view.</p>
   }
@@ -25,6 +33,11 @@ export function WorkList({ works }: { works: OpenOpusWork[] }) {
               <span className="block text-sm text-navy">{work.title}</span>
               {work.subtitle ? (
                 <span className="block text-xs text-muted-foreground">{work.subtitle}</span>
+              ) : null}
+              {showComposer && work.composer ? (
+                <span className="block text-xs text-muted-foreground">
+                  {work.composer.complete_name || work.composer.name}
+                </span>
               ) : null}
             </span>
             {isFlagged(work.recommended) && (

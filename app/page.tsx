@@ -1,10 +1,14 @@
 import Link from "next/link"
+import { GenreList } from "@/components/genre-list"
 import { PeriodList } from "@/components/period-list"
 import { SearchForm } from "@/components/search-form"
+import { listGenresByPopularity } from "@/lib/openopus"
 
 export const revalidate = 3600
 
-export default function HomePage() {
+export default async function HomePage() {
+  const genres = await listGenresByPopularity()
+
   return (
     <div className="space-y-12">
       <section className="relative overflow-hidden rounded-2xl border border-primary/10 bg-card/70 px-5 py-8 shadow-sm sm:px-8">
@@ -31,6 +35,16 @@ export default function HomePage() {
           </Link>
         </div>
         <PeriodList />
+      </section>
+
+      <section>
+        <div className="mb-4 flex items-baseline justify-between">
+          <h2 className="font-serif text-xl tracking-tight text-navy">Genres</h2>
+          <Link href="/genres" className="text-sm text-primary hover:text-primary-hover">
+            All genres
+          </Link>
+        </div>
+        <GenreList genres={genres} />
       </section>
     </div>
   )

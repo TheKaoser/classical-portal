@@ -63,12 +63,14 @@ Without `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` the work page still offers
 
 ## Routes
 
-- `/` — search and periods
+- `/` — search, periods, and genres
 - `/periods` — Open Opus epochs
 - `/periods/[epoch]` — composers in that period, popular first (`baroque`, `early-romantic`, …)
+- `/genres` — Open Opus work types, popular first
+- `/genres/[genre]` — popular and essential works in that type (`orchestral`, `keyboard`, …)
 - `/composers/[id]` — works, filterable by essential / popular / genre
 - `/works/[id]` — work detail and Spotify track matches
-- `/search?q=` — Open Opus omnisearch
+- `/search?q=` — Open Opus omnisearch (the search box also typeaheads via `/api/search`)
 - `/api/spotify/login` — start Spotify login (playlist flow)
 - `/api/spotify/callback` — OAuth redirect target
 - `/api/spotify/session` — whether the visitor is connected
