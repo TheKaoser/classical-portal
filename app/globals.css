@@ -92,15 +92,43 @@
 
   body {
     background-color: var(--background);
-    background-image: linear-gradient(
-      to bottom right,
-      var(--shell-from),
-      var(--shell-via),
-      var(--shell-to)
-    );
+    /* Center stays pale; navy / blue / bright-blue wash the left and right edges. */
+    background-image:
+      linear-gradient(
+        to right,
+        color-mix(in srgb, var(--navy) 18%, white) 0%,
+        color-mix(in srgb, var(--blue) 12%, var(--shell-from)) 11%,
+        var(--shell-from) 22%,
+        var(--shell-via) 50%,
+        var(--shell-from) 78%,
+        color-mix(in srgb, var(--blue-bright) 14%, var(--shell-from)) 89%,
+        color-mix(in srgb, var(--blue) 16%, white) 100%
+      );
     background-attachment: fixed;
     color: var(--foreground);
     min-height: 100dvh;
+  }
+
+  body::before,
+  body::after {
+    content: "";
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    z-index: 40;
+    pointer-events: none;
+    opacity: 0.5;
+  }
+
+  body::before {
+    left: 0;
+    background: linear-gradient(180deg, var(--navy), var(--blue), var(--blue-bright));
+  }
+
+  body::after {
+    right: 0;
+    background: linear-gradient(180deg, var(--blue-bright), var(--blue), var(--navy));
   }
 
   ::selection {

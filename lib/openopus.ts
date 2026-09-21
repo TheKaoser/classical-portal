@@ -91,11 +91,53 @@ export async function listPopularComposers(): Promise<OpenOpusComposer[]> {
   return isSuccess(data.status) ? data.composers ?? [] : []
 }
 
-export async function listComposersByEpoch(epochName: string): Promise<OpenOpusComposer[]> {
+export async function listEssentialComposers(): Promise<OpenOpusComposer[]> {
   const data = await openOpusGet<{ status: Status; composers?: OpenOpusComposer[] }>(
-    `/composer/list/epoch/${encodePathSegment(epochName)}.json`
+    "/composer/list/rec.json"
   )
   return isSuccess(data.status) ? data.composers ?? [] : []
+}
+
+function composerSortName(composer: OpenOpusComposer): string {
+  return composer.complete_name || composer.name
+}
+
+/**
+ * Open Opus list payloads have no composer `popular` flag or numeric rank.
+ * Fame is membership in `/composer/list/pop.json` (popular) and
+ * `/composer/list/rec.json` (essential / recommended). Sort rule:
+ * popular first, then essential, then everyone else; each tier alphabetical.
+ */
+export function sortComposersByPopularity(
+  composers: OpenOpusComposer[],
+  popularIds: Set<string>,
+  essentialIds: Set<string>
+): OpenOpusComposer[] {
+  const rank = (composer: OpenOpusComposer) => {
+    if (popularIds.has(composer.id)) return 0
+    if (essentialIds.has(composer.id)) return 1
+    return 2
+  }
+
+  return [...composers].sort(
+    (a, b) => rank(a) - rank(b) || composerSortName(a).localeCompare(composerSortName(b))
+  )
+}
+
+export async function listComposersByEpoch(epochName: string): Promise<OpenOpusComposer[]> {
+  const [data, popular, essential] = await Promise.all([
+    openOpusGet<{ status: Status; composers?: OpenOpusComposer[] }>(
+      `/composer/list/epoch/${encodePathSegment(epochName)}.json`
+    ),
+    listPopularComposers(),
+    listEssentialComposers(),
+  ])
+  const composers = isSuccess(data.status) ? data.composers ?? [] : []
+  return sortComposersByPopularity(
+    composers,
+    new Set(popular.map((composer) => composer.id)),
+    new Set(essential.map((composer) => composer.id))
+  )
 }
 
 export async function getComposer(id: string): Promise<OpenOpusComposer | null> {

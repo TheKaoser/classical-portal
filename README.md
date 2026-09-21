@@ -63,9 +63,9 @@ Without `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` the work page still offers
 
 ## Routes
 
-- `/` — search, periods, popular composers
+- `/` — search and periods
 - `/periods` — Open Opus epochs
-- `/periods/[epoch]` — composers in that period (`baroque`, `early-romantic`, …)
+- `/periods/[epoch]` — composers in that period, popular first (`baroque`, `early-romantic`, …)
 - `/composers/[id]` — works, filterable by essential / popular / genre
 - `/works/[id]` — work detail and Spotify track matches
 - `/search?q=` — Open Opus omnisearch
