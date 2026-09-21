@@ -9,8 +9,12 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  experimental: {
-    viewTransition: true,
+  async redirects() {
+    return [
+      { source: "/admin", destination: "/", permanent: false },
+      { source: "/blog", destination: "/", permanent: false },
+      { source: "/piece/:id", destination: "/", permanent: false },
+    ]
   },
 }
 
