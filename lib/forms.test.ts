@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 import { classifyWork } from "./forms.ts"
-import { compareWorksByPopularity, dedupeWorks, isPopular } from "./openopus.ts"
+import { compareWorksByPopularity, dedupeWorks, isPopular } from "./popularity.ts"
 
 test("classifies common forms from the title", () => {
   assert.equal(classifyWork("Symphony no. 5 in C minor, op. 67"), "symphony")
