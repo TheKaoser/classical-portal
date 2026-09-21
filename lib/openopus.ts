@@ -1,3 +1,5 @@
+import { unstable_cache } from "next/cache"
+
 const OPEN_OPUS_BASE = "https://api.openopus.org"
 
 export type OpenOpusComposer = {
@@ -266,6 +268,14 @@ export function genreHref(name: string): string {
   return `/genres/${genreSlug(name)}`
 }
 
+export type GenreSummary = {
+  name: WorkGenre
+  slug: string
+  popularCount: number
+  recommendedCount: number
+  workCount: number
+}
+
 type DumpWork = {
   title: string
   subtitle?: string
@@ -280,40 +290,52 @@ type DumpComposer = {
   works?: DumpWork[]
 }
 
-async function getWorkDump(): Promise<DumpComposer[]> {
-  try {
-    const data = await openOpusGet<{ status: Status; composers?: DumpComposer[] }>("/work/dump.json")
-    return isSuccess(data.status) ? data.composers ?? [] : []
-  } catch {
-    return []
+async function fetchWorkDump(): Promise<DumpComposer[]> {
+  // Dump is ~4MB; Next's data cache rejects payloads over 2MB, so we
+  // fetch uncached and keep only a small summary in unstable_cache.
+  const res = await fetch(`${OPEN_OPUS_BASE}/work/dump.json`, {
+    headers: { Accept: "application/json" },
+    cache: "no-store",
+  })
+  if (!res.ok) {
+    throw new Error(`Open Opus request failed (${res.status}) for /work/dump.json`)
   }
-}
-
-export async function listAllComposers(): Promise<OpenOpusComposer[]> {
-  const data = await openOpusGet<{ status: Status; composers?: OpenOpusComposer[] }>(
-    "/composer/list/name/all.json"
-  )
+  const data = (await res.json()) as { status: Status; composers?: DumpComposer[] }
   return isSuccess(data.status) ? data.composers ?? [] : []
 }
 
-export type GenreSummary = {
-  name: WorkGenre
-  slug: string
-  popularCount: number
-  recommendedCount: number
-  workCount: number
+type DumpSummary = {
+  genres: GenreSummary[]
+  rankedComposerNames: Record<WorkGenre, string[]>
 }
 
-/**
- * Open Opus has no global genre list endpoint. `/work/dump.json` includes
- * composer.works[].popular as "0"|"1". Genres are ordered by that popular
- * count, then essential/recommended count, then name.
- */
-export async function listGenresByPopularity(): Promise<GenreSummary[]> {
-  const dump = await getWorkDump()
+async function buildDumpSummary(): Promise<DumpSummary> {
+  const emptyNames = Object.fromEntries(WORK_GENRES.map((name) => [name, [] as string[]])) as Record<
+    WorkGenre,
+    string[]
+  >
+  const emptyGenres: GenreSummary[] = WORK_GENRES.map((name) => ({
+    name,
+    slug: genreSlug(name),
+    popularCount: 0,
+    recommendedCount: 0,
+    workCount: 0,
+  }))
+
+  let dump: DumpComposer[] = []
+  try {
+    dump = await fetchWorkDump()
+  } catch {
+    return { genres: emptyGenres, rankedComposerNames: emptyNames }
+  }
+
   const stats = Object.fromEntries(
     WORK_GENRES.map((name) => [name, { popular: 0, recommended: 0, total: 0 }])
   ) as Record<WorkGenre, { popular: number; recommended: number; total: number }>
+  const rankedNames = Object.fromEntries(WORK_GENRES.map((name) => [name, new Set<string>()])) as Record<
+    WorkGenre,
+    Set<string>
+  >
 
   for (const composer of dump) {
     for (const work of composer.works ?? []) {
@@ -322,10 +344,13 @@ export async function listGenresByPopularity(): Promise<GenreSummary[]> {
       stats[genre].total += 1
       if (isFlagged(work.popular)) stats[genre].popular += 1
       if (isFlagged(work.recommended)) stats[genre].recommended += 1
+      if (isFlagged(work.popular) || isFlagged(work.recommended)) {
+        rankedNames[genre].add(composer.name)
+      }
     }
   }
 
-  return WORK_GENRES.map((name) => ({
+  const genres = WORK_GENRES.map((name) => ({
     name,
     slug: genreSlug(name),
     popularCount: stats[name].popular,
@@ -337,6 +362,35 @@ export async function listGenresByPopularity(): Promise<GenreSummary[]> {
       b.recommendedCount - a.recommendedCount ||
       a.name.localeCompare(b.name)
   )
+
+  return {
+    genres,
+    rankedComposerNames: Object.fromEntries(
+      WORK_GENRES.map((name) => [name, [...rankedNames[name]]])
+    ) as Record<WorkGenre, string[]>,
+  }
+}
+
+const getDumpSummary = unstable_cache(buildDumpSummary, ["openopus-dump-summary"], {
+  revalidate: 3600,
+  tags: ["openopus"],
+})
+
+export async function listAllComposers(): Promise<OpenOpusComposer[]> {
+  const data = await openOpusGet<{ status: Status; composers?: OpenOpusComposer[] }>(
+    "/composer/list/name/all.json"
+  )
+  return isSuccess(data.status) ? data.composers ?? [] : []
+}
+
+/**
+ * Open Opus has no global genre list endpoint. `/work/dump.json` includes
+ * composer.works[].popular as "0"|"1". Genres are ordered by that popular
+ * count, then essential/recommended count, then name.
+ */
+export async function listGenresByPopularity(): Promise<GenreSummary[]> {
+  const summary = await getDumpSummary()
+  return summary.genres
 }
 
 export type GenreWork = OpenOpusWork & {
@@ -359,22 +413,11 @@ async function mapInBatches<T, R>(items: T[], batchSize: number, fn: (item: T) =
  * omitted (thousands per genre, no rank).
  */
 export async function listWorksByGenre(genre: WorkGenre): Promise<GenreWork[]> {
-  const [dump, composers] = await Promise.all([getWorkDump(), listAllComposers()])
+  const [summary, composers] = await Promise.all([getDumpSummary(), listAllComposers()])
   const byName = new Map(composers.map((composer) => [composer.name, composer]))
-  const neededIds: string[] = []
-  const seen = new Set<string>()
-
-  for (const dumpComposer of dump) {
-    const hasRanked = (dumpComposer.works ?? []).some(
-      (work) =>
-        work.genre === genre && (isFlagged(work.popular) || isFlagged(work.recommended))
-    )
-    if (!hasRanked) continue
-    const composer = byName.get(dumpComposer.name)
-    if (!composer || seen.has(composer.id)) continue
-    seen.add(composer.id)
-    neededIds.push(composer.id)
-  }
+  const neededIds = summary.rankedComposerNames[genre]
+    .map((name) => byName.get(name)?.id)
+    .filter((id): id is string => Boolean(id))
 
   const lists = await mapInBatches(neededIds, 12, (id) => listWorksByComposerGenre(id, genre))
   const works: GenreWork[] = []
