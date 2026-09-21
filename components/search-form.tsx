@@ -126,7 +126,7 @@ export function SearchForm({
         aria-hidden
       />
       <Input
-        type="search"
+        type="text"
         name="q"
         value={query}
         autoFocus={autoFocus}
@@ -180,8 +180,10 @@ export function SearchForm({
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => go(item.href)}
                 className={cn(
-                  "flex w-full flex-col items-start px-3 py-2 text-left text-sm",
-                  index === activeIndex ? "bg-accent text-navy" : "text-navy hover:bg-accent/70"
+                  "flex w-full flex-col items-start border-l-2 px-3 py-2 text-left text-sm",
+                  index === activeIndex
+                    ? "border-l-blue-bright bg-blue-mid/10 text-navy"
+                    : "border-l-transparent text-navy hover:bg-accent/70"
                 )}
               >
                 <span className="truncate">{item.label}</span>
