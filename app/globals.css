@@ -11,6 +11,7 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-hover: var(--primary-hover);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -22,6 +23,12 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-navy: var(--navy);
+  --color-blue-mid: var(--blue);
+  --color-blue-bright: var(--blue-bright);
+  --color-shell-from: var(--shell-from);
+  --color-shell-via: var(--shell-via);
+  --color-shell-to: var(--shell-to);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -31,28 +38,50 @@
   .text-balance {
     text-wrap: balance;
   }
+
+  .text-brand-gradient {
+    background-image: linear-gradient(
+      to right,
+      var(--navy),
+      var(--blue),
+      var(--blue-bright)
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
 }
 
 :root {
-  --background: hsl(40 24% 97%);
-  --foreground: hsl(24 10% 12%);
-  --card: hsl(40 24% 97%);
-  --card-foreground: hsl(24 10% 12%);
-  --popover: hsl(40 30% 99%);
-  --popover-foreground: hsl(24 10% 12%);
-  --primary: hsl(24 10% 12%);
-  --primary-foreground: hsl(40 24% 97%);
-  --secondary: hsl(36 16% 93%);
-  --secondary-foreground: hsl(24 10% 12%);
-  --muted: hsl(36 12% 93%);
-  --muted-foreground: hsl(25 6% 42%);
-  --accent: hsl(36 16% 93%);
-  --accent-foreground: hsl(24 10% 12%);
+  /* Pre-pivot palette */
+  --navy: #29323e;
+  --blue: #336fbd;
+  --blue-bright: #1171f0;
+  --ink: #3a4657;
+  --shell-from: #f8fafc; /* slate-50 */
+  --shell-via: #eff6ff; /* blue-50 */
+  --shell-to: #f1f5f9; /* slate-100 */
+
+  --background: var(--shell-from);
+  --foreground: var(--navy);
+  --card: #ffffff;
+  --card-foreground: var(--navy);
+  --popover: #ffffff;
+  --popover-foreground: var(--navy);
+  --primary: var(--blue);
+  --primary-foreground: #ffffff;
+  --primary-hover: var(--blue-bright);
+  --secondary: #e4edf8;
+  --secondary-foreground: var(--navy);
+  --muted: #eef4fb;
+  --muted-foreground: var(--ink);
+  --accent: #e8f1fc;
+  --accent-foreground: var(--navy);
   --destructive: hsl(0 84.2% 60.2%);
   --destructive-foreground: hsl(0 0% 98%);
-  --border: hsl(30 10% 88%);
-  --input: hsl(30 10% 88%);
-  --ring: hsl(24 10% 12%);
+  --border: #d3deec;
+  --input: #d3deec;
+  --ring: var(--blue-bright);
   --radius: 0.5rem;
 }
 
@@ -63,6 +92,19 @@
 
   body {
     background-color: var(--background);
+    background-image: linear-gradient(
+      to bottom right,
+      var(--shell-from),
+      var(--shell-via),
+      var(--shell-to)
+    );
+    background-attachment: fixed;
     color: var(--foreground);
+    min-height: 100dvh;
+  }
+
+  ::selection {
+    background-color: color-mix(in srgb, var(--blue) 28%, transparent);
+    color: var(--navy);
   }
 }

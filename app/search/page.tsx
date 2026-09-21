@@ -40,15 +40,15 @@ export default async function SearchPage({
 
       {composers.length > 0 && (
         <section className="mb-8">
-          <h2 className="mb-3 font-serif text-lg tracking-tight">Composers</h2>
+          <h2 className="mb-3 font-serif text-lg tracking-tight text-navy">Composers</h2>
           <ul className="divide-y divide-border">
             {composers.map((hit) => (
               <li key={hit.composer.id}>
                 <Link
                   href={`/composers/${hit.composer.id}`}
-                  className="block py-2.5 hover:bg-accent/40 -mx-2 px-2 rounded-md"
+                  className="block py-2.5 hover:bg-accent/70 -mx-2 px-2 rounded-md"
                 >
-                  <div className="font-medium">{hit.composer.complete_name}</div>
+                  <div className="font-medium text-navy">{hit.composer.complete_name}</div>
                   <div className="text-sm text-muted-foreground">{hit.composer.epoch}</div>
                 </Link>
               </li>
@@ -59,15 +59,15 @@ export default async function SearchPage({
 
       {works.length > 0 && (
         <section>
-          <h2 className="mb-3 font-serif text-lg tracking-tight">Works</h2>
+          <h2 className="mb-3 font-serif text-lg tracking-tight text-navy">Works</h2>
           <ul className="divide-y divide-border">
             {works.map((hit) => (
               <li key={hit.work!.id}>
                 <Link
                   href={`/works/${hit.work!.id}`}
-                  className="block py-2.5 hover:bg-accent/40 -mx-2 px-2 rounded-md"
+                  className="block py-2.5 hover:bg-accent/70 -mx-2 px-2 rounded-md"
                 >
-                  <div className="text-sm text-foreground">{hit.work!.title}</div>
+                  <div className="text-sm text-navy">{hit.work!.title}</div>
                   <div className="text-sm text-muted-foreground">
                     {hit.composer.complete_name}
                     {hit.work!.genre ? ` · ${hit.work!.genre}` : ""}

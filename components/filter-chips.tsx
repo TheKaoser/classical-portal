@@ -15,8 +15,8 @@ export function FilterChips({
           className={cn(
             "rounded-full border px-3 py-1 text-xs transition-colors",
             item.active
-              ? "border-foreground bg-foreground text-background"
-              : "border-border text-muted-foreground hover:border-foreground/40 hover:text-foreground"
+              ? "border-primary bg-primary text-primary-foreground"
+              : "border-border text-muted-foreground hover:border-primary/40 hover:text-primary"
           )}
         >
           {item.label}

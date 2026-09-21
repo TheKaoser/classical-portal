@@ -16,10 +16,10 @@ export default function PeriodsPage() {
           <li key={epoch.slug}>
             <Link
               href={`/periods/${epoch.slug}`}
-              className="block py-4 hover:bg-accent/40 -mx-2 px-2 rounded-md"
+              className="block py-4 hover:bg-accent/70 -mx-2 px-2 rounded-md"
             >
               <div className="flex items-baseline justify-between gap-4">
-                <span className="font-serif text-xl tracking-tight">{epoch.name}</span>
+                <span className="font-serif text-xl tracking-tight text-navy">{epoch.name}</span>
                 <span className="text-sm text-muted-foreground">{epoch.years}</span>
               </div>
               <p className="mt-1 text-sm text-muted-foreground">{epoch.blurb}</p>

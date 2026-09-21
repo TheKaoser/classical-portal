@@ -38,12 +38,12 @@ export function SpotifyRecordings({
   return (
     <section className="space-y-4">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="font-serif text-xl tracking-tight">On Spotify</h2>
+        <h2 className="font-serif text-xl tracking-tight text-navy">On Spotify</h2>
         <a
           href={searchUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          className="inline-flex items-center gap-1 text-sm text-primary hover:text-primary-hover"
         >
           Search on Spotify
           <ExternalLink className="h-3.5 w-3.5" />
@@ -79,7 +79,7 @@ export function SpotifyRecordings({
       )}
 
       {selected && (
-        <div className="overflow-hidden rounded-md border bg-background">
+        <div className="overflow-hidden rounded-md border border-primary/15 bg-card shadow-sm">
           <iframe
             key={`${selected.kind}:${selected.item.id}`}
             title={selected.item.name}
@@ -103,13 +103,13 @@ export function SpotifyRecordings({
       )}
 
       {items.length > 0 && (
-        <ul className="divide-y divide-border rounded-md border">
+        <ul className="divide-y divide-border overflow-hidden rounded-md border border-primary/15 bg-card">
           {items.map((entry) => {
             const key = `${entry.kind}:${entry.item.id}`
             const active = selected ? `${selected.kind}:${selected.item.id}` === key : false
             return (
               <li key={key}>
-                <div className="flex items-center gap-3 p-3">
+                <div className={`flex items-center gap-3 p-3 ${active ? "bg-accent/80" : ""}`}>
                   <button
                     type="button"
                     onClick={() => setSelectedKey(key)}
@@ -128,7 +128,7 @@ export function SpotifyRecordings({
                       <div className="h-10 w-10 rounded bg-muted" />
                     )}
                     <span className="min-w-0">
-                      <span className={`block truncate text-sm ${active ? "font-medium" : ""}`}>
+                      <span className={`block truncate text-sm ${active ? "font-medium text-primary" : ""}`}>
                         {entry.item.name}
                       </span>
                       <span className="block truncate text-xs text-muted-foreground">
