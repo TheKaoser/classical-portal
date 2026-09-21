@@ -226,11 +226,23 @@ export function workParts(work: Pick<OpenOpusWorkDetail, "parts" | "movements">)
     .filter(Boolean)
 }
 
-export function workPopularityRank(work: Pick<OpenOpusWork, "popular" | "recommended">): number {
+/** Lower rank is more prominent. Popular + essential, then popular, then essential. */
+export function popularityRank(work: {
+  popular?: string | number
+  recommended?: string | number
+}): number {
   if (isFlagged(work.popular) && isFlagged(work.recommended)) return 0
   if (isFlagged(work.popular)) return 1
   if (isFlagged(work.recommended)) return 2
   return 3
+}
+
+export const workPopularityRank = popularityRank
+
+export function compareWorksByPopularity<
+  T extends { title: string; popular?: string | number; recommended?: string | number },
+>(a: T, b: T): number {
+  return popularityRank(a) - popularityRank(b) || a.title.localeCompare(b.title)
 }
 
 export function groupWorksByGenre(works: OpenOpusWork[]): { genre: string; works: OpenOpusWork[] }[] {
@@ -247,7 +259,7 @@ export function groupWorksByGenre(works: OpenOpusWork[]): { genre: string; works
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([genre, list]) => ({
       genre,
-      works: list.sort((a, b) => workPopularityRank(a) - workPopularityRank(b) || a.title.localeCompare(b.title)),
+      works: list.sort(compareWorksByPopularity),
     }))
 }
 

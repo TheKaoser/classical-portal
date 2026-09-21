@@ -2,7 +2,7 @@
 
 A minimal classical-music browser: composers and works from [Open Opus](https://openopus.org), recordings from [Spotify](https://developer.spotify.com/documentation/web-api).
 
-Live path: **home → period / search → composer → work → Spotify**.
+Live path: **home → period or genre / search → composer → work → Spotify**.
 
 ## How it works
 
@@ -26,6 +26,18 @@ Open Opus is unauthenticated. Spotify’s **client secret never leaves the serve
 Work pages search **tracks only**. Matching recordings are grouped into movement sets from the same album (consecutive tracks that belong to the selected work). Full albums are not listed, so a Beethoven 5 result does not start playing Beethoven 7 from the same disc.
 
 Open Opus work detail currently has **no movements/parts** field. If `parts` or `movements` is present, Classical Portal uses those titles when scoring Spotify tracks and lists them on the work page. Until then, catalogue numbers and common movement naming (`Symphony No. 5 … : I. Allegro con brio`) drive the grouping.
+
+## Genres
+
+Open Opus does not publish a form field. Each work’s `genre` is one of **Chamber, Keyboard, Orchestral, Stage, Vocal**. The Genres pages use a curated set of forms (symphony, sonata, opera, concerto, quartet, nocturne, mass, and others) derived from title text, falling back to the subtitle when the title names no form. Patterns live in `lib/forms.ts` and were checked against the public dump at `https://api.openopus.org/work/dump.json`.
+
+That dump has no work ids, so `data/form-works.json` is built from each composer’s work list (`/work/list/composer/{id}/genre/all.json`), which does. Rebuild it with:
+
+```bash
+node --experimental-strip-types scripts/build-form-index.ts
+```
+
+A work is listed under one form. The title wins over the subtitle. Suites taken from an opera stay suites. Stage works with an empty subtitle and no other form (Carmen, Il barbiere di Siviglia) are listed as operas; Open Opus usually labels ballets and film scores in the subtitle, and a few unlabeled ones are still filed with operas. On a genre page, works use the same popularity order as a composer’s catalog: popular and essential first, then popular, then essential, then title.
 
 ## Local setup
 
@@ -63,11 +75,11 @@ Without `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` the work page still offers
 
 ## Routes
 
-- `/` — search, periods, and genres
+- `/` — title, and banners for periods and genres (search stays in the header)
 - `/periods` — Open Opus epochs
 - `/periods/[epoch]` — composers in that period, popular first (`baroque`, `early-romantic`, …)
-- `/genres` — Open Opus work types, popular first
-- `/genres/[genre]` — popular and essential works in that type (`orchestral`, `keyboard`, …)
+- `/genres` — forms such as symphonies, sonatas, and operas
+- `/genres/[slug]` — works of that form, popular first
 - `/composers/[id]` — works, filterable by essential / popular / genre
 - `/works/[id]` — work detail and Spotify track matches
 - `/search?q=` — Open Opus omnisearch (the search box also typeaheads via `/api/search`)
