@@ -10,12 +10,12 @@ export function BrandMark({ className, decorative = false }: BrandMarkProps) {
   return (
     // eslint-disable-next-line @next/next/no-img-element -- static public mark; next/image unused in repo
     <img
-      src="/classical-portal-mark.png"
+      src="/logo-mark.png"
       alt={decorative ? "" : "Classical Portal"}
       aria-hidden={decorative || undefined}
       className={cn("h-auto w-auto object-contain", className)}
-      width={268}
-      height={472}
+      width={254}
+      height={471}
       decoding="async"
     />
   )
