@@ -24,7 +24,7 @@ Browser
 
 Open Opus is unauthenticated. Spotify’s **client secret never leaves the server**. Playback uses the Web Playback SDK, which requires user OAuth and **Spotify Premium**. Deep links and 30-second previews work without that login. The Spotify embed iframe is not the player.
 
-Open Opus work lists have no composition date. Classical Portal fills that in from [Wikidata](https://query.wikidata.org): English labels and aliases of works whose composer (P86) matches, using the inception date (P571) as the composition year. A year is shown only when the catalogue number (opus, BWV, K., Hoboken, and the same style of identifier on both sides), or otherwise a unique title, matches exactly one year. If Wikidata has no unambiguous year, the row shows an em dash — the app does not guess. The composer **All** list is chronological (undated titles A–Z at the end). Popular keeps popularity order. There is no Essential chip. Resolved indexes are stored in `data/composition-dates.json` (refresh with `node --experimental-strip-types scripts/refresh-composition-dates.ts`); composers missing from that file are looked up live and cached.
+Open Opus work lists have no composition date. Classical Portal fills that in from [Wikidata](https://query.wikidata.org): English labels and aliases of works whose composer (P86) matches, using the inception date (P571) as the composition year. A year is shown only when the catalogue number (opus, BWV, K., Hoboken, and the same style of identifier on both sides), or otherwise a unique title, matches exactly one year. If Wikidata has no unambiguous year, the row shows an em dash — the app does not guess. The composer **All** list is chronological (undated titles A–Z at the end). Popular and genre filters use Spotify popularity order. There is no Essential chip. Resolved indexes are stored in `data/composition-dates.json` (refresh with `node --experimental-strip-types scripts/refresh-composition-dates.ts`); composers missing from that file are looked up live and cached.
 
 Work pages search **tracks only**. Matching recordings are grouped into movement sets from the same album (consecutive tracks that belong to the selected work). Full albums are not listed, so a Beethoven 5 result does not start playing Beethoven 7 from the same disc.
 
@@ -42,9 +42,21 @@ node --experimental-strip-types scripts/build-form-index.ts
 
 A work is listed under one form. The title wins over the subtitle. Suites taken from an opera stay suites. Stage works with an empty subtitle and no other form (Carmen, Il barbiere di Siviglia) are listed as operas; Open Opus usually labels ballets and film scores in the subtitle, and a few unlabeled ones are still filed with operas.
 
-Open Opus stores two flags, `popular` and `recommended`. Classical Portal treats either flag as **Popular**. There is no separate Essential filter or badge. A work that carries both flags is listed once. Genre pages and composer work lists put popular works first, then the rest by title.
+Open Opus stores two flags, `popular` and `recommended`. Classical Portal treats either flag as **Popular**. There is no separate Essential filter or badge. A work that carries both flags is listed once. The star on a work row is that flag. List order is separate from the flag.
 
-Composer lists on a period page are ranked separately, by Open Opus list membership: `/composer/list/pop.json`, then `/composer/list/rec.json`, then everyone else. Names stay alphabetical inside each tier.
+Genre pages, and a composer's Popular and genre filters, are ordered by Spotify popularity (highest first, then name). The composer **All** filter stays chronological. The popular-composers page and each period page order composers the same way. Spotify's own 0–100 popularity is cached in `data/spotify-popularity.json`, so those pages do not call Spotify.
+
+A composer's score is the higher of the matched Spotify artist's popularity and the highest popularity among tracks matched to that composer's works. A work's score is the highest popularity among tracks the work-page matcher assigns to it (album popularity is included when Spotify sends it). Open Opus popular/recommended flags are not the rank. A row the cache has not matched is listed after every scored row; those unmatched rows keep the previous Open Opus order among themselves (pop list, then essential list, then the rest for composers; the Popular flag, then title, for works).
+
+Refresh the cache when the catalog changes or you want newer Spotify numbers. Put `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` in the environment or `.env.local` (the same client-credentials pair used to match recordings). From the repo root:
+
+```bash
+node --experimental-strip-types scripts/refresh-spotify-popularity.ts
+```
+
+The script skips composers already marked complete, so it is safe to interrupt and run again. Pass `--refresh` to recompute every score. `--composer=<open-opus-id>` refreshes one composer. `--limit=20` processes that many composers who are not yet complete. Commit the updated `data/spotify-popularity.json`.
+
+The committed `data/spotify-popularity.json` is filled from a Spotify client-credentials pass over the Open Opus catalog. Pages do not invent scores. A composer or work missing from the file is unmatched and sorts after every scored row.
 
 ## Local setup
 
@@ -88,10 +100,11 @@ Without `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` the work page still offers
 
 - `/` — title, and banners for periods and genres (search stays in the header)
 - `/periods` — Open Opus epochs
-- `/periods/[epoch]` — composers in that period, popular list, then essential list, then the rest (`baroque`, `early-romantic`, …)
+- `/periods/[epoch]` — composers in that period, by Spotify popularity (`baroque`, `early-romantic`, …)
 - `/genres` — forms such as symphonies, sonatas, and operas
-- `/genres/[slug]` — works of that form, popular first
-- `/composers/[id]` — works, filterable by popular / genre
+- `/genres/[slug]` — works of that form, by Spotify popularity
+- `/composers` — the Open Opus popular composers, by Spotify popularity
+- `/composers/[id]` — works; All is chronological, Popular and genre filters are by Spotify popularity
 - `/works/[id]` — work detail and Spotify track matches
 - `/search?q=` — Open Opus omnisearch (the search box also typeaheads via `/api/search`)
 - `/api/spotify/login` — start Spotify login (Play or Save playlist). `reconnect=1` shows the consent screen again

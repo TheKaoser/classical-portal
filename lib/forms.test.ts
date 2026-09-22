@@ -2,10 +2,12 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import { classifyWork } from "./forms.ts"
 import {
+  compareSpotifyThenFallback,
   compareWorksByPopularity,
   dedupeWorks,
   isPopular,
   sortComposersByImportance,
+  sortComposersBySpotify,
 } from "./popularity.ts"
 
 test("classifies common forms from the title", () => {
@@ -95,7 +97,7 @@ test("period composers rank pop, then essential, then the rest by complete name"
   )
 })
 
-test("popularity order is flagged first, then title", () => {
+test("works with no Spotify score stay flagged first, then title", () => {
   const works = [
     { title: "B", popular: "0", recommended: "0" },
     { title: "C", popular: "1", recommended: "0" },
@@ -105,4 +107,50 @@ test("popularity order is flagged first, then title", () => {
   ]
   const titles = [...works].sort(compareWorksByPopularity).map((work) => work.title)
   assert.deepEqual(titles, ["A", "C", "D", "B", "E"])
+})
+
+test("spotify score outranks the Open Opus flag, then name; unmatched rows follow", () => {
+  const works = [
+    { id: "low", title: "Zebra", popular: "1", score: 10 },
+    { id: "high", title: "Alpha", popular: "0", score: 90 },
+    { id: "tie", title: "Bravo", popular: "0", score: 90 },
+    { id: "none-flagged", title: "Delta", popular: "0" },
+    { id: "none-popular", title: "Charlie", popular: "1" },
+  ]
+  const titles = [...works]
+    .sort((a, b) =>
+      compareWorksByPopularity(a, b, (work) => (work.score == null ? null : work.score))
+    )
+    .map((work) => work.title)
+  assert.deepEqual(titles, ["Alpha", "Bravo", "Zebra", "Charlie", "Delta"])
+})
+
+test("composer lists use Spotify score before Open Opus tier, then complete name", () => {
+  const composers = [
+    { id: "98", name: "Vivaldi", complete_name: "Antonio Vivaldi", score: 40 },
+    { id: "67", name: "Handel", complete_name: "George Frideric Handel", score: 70 },
+    { id: "87", name: "Bach", complete_name: "Johann Sebastian Bach", score: 70 },
+    { id: "139", name: "Corelli", complete_name: "Arcangelo Corelli" },
+    { id: "128", name: "Couperin", complete_name: "François Couperin" },
+  ]
+  const popularIds = new Set(["87"])
+  const essentialIds = new Set(["128"])
+  const names = sortComposersBySpotify(
+    composers,
+    (composer) => composer.score ?? null,
+    popularIds,
+    essentialIds
+  ).map((composer) => composer.complete_name)
+
+  assert.deepEqual(names, [
+    "George Frideric Handel",
+    "Johann Sebastian Bach",
+    "Antonio Vivaldi",
+    "François Couperin",
+    "Arcangelo Corelli",
+  ])
+  assert.ok(compareSpotifyThenFallback(10, 10, "B", "A") > 0)
+  assert.ok(compareSpotifyThenFallback(90, 10, "Z", "A") < 0)
+  assert.equal(compareSpotifyThenFallback(null, 5, "A", "B"), 1)
+  assert.equal(compareSpotifyThenFallback(null, null, "B", "A", 0, 1), -1)
 })
