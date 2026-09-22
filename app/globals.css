@@ -108,6 +108,12 @@
     background-color: var(--background);
     color: var(--foreground);
     min-height: 100dvh;
+    margin: 0;
+  }
+
+  /* Keep page content clear of the fixed player dock when it is visible. */
+  body:has([data-player-dock="flush"]) {
+    padding-bottom: var(--player-bar-height, 9.5rem);
   }
 
   ::selection {
