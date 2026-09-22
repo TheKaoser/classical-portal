@@ -10,6 +10,7 @@ const PAIR = [
     text: "Browse composers by era, from medieval chant to music written today.",
     icon: Library,
     wash: "entry-card-periods",
+    tone: "text-primary",
   },
   {
     href: "/genres",
@@ -17,6 +18,7 @@ const PAIR = [
     text: "Browse works by form — symphonies, sonatas, operas, and more.",
     icon: Music,
     wash: "entry-card-genres",
+    tone: "text-brand-green",
   },
 ] as const
 
@@ -26,6 +28,7 @@ const COMPOSERS = {
   text: "Browse the most popular composers in the catalog.",
   icon: Users,
   wash: "entry-card-composers",
+  tone: "text-brand-amber",
 } as const
 
 function EntryCard({
@@ -34,6 +37,7 @@ function EntryCard({
   text,
   icon: Icon,
   wash,
+  tone,
   layout,
 }: {
   href: string
@@ -41,11 +45,12 @@ function EntryCard({
   text: string
   icon: LucideIcon
   wash: string
+  tone: string
   layout: "stack" | "row"
 }) {
   const arrow = (
     <ArrowRight
-      className="h-5 w-5 shrink-0 text-primary transition-transform group-hover:translate-x-0.5"
+      className={cn("h-5 w-5 shrink-0 transition-transform group-hover:translate-x-0.5", tone)}
       aria-hidden
     />
   )
@@ -54,11 +59,11 @@ function EntryCard({
     <Link
       href={href}
       className={cn(
-        "group relative overflow-hidden rounded-2xl border border-primary/20 shadow-sm transition-[border-color,box-shadow] hover:border-primary/45 hover:shadow-md",
+        "group relative overflow-hidden rounded-3xl shadow-card outline-none transition-shadow hover:shadow-raised focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         wash,
         layout === "row"
-          ? "flex items-center gap-5 px-6 py-8 sm:px-8 sm:py-10"
-          : "flex h-full min-h-56 flex-col justify-between gap-8 p-6 sm:min-h-64 sm:p-8"
+          ? "flex items-center gap-5 px-6 py-7 sm:px-8 sm:py-8"
+          : "flex h-full min-h-52 flex-col justify-between gap-8 p-6 sm:min-h-56 sm:p-7"
       )}
     >
       <span
@@ -67,13 +72,13 @@ function EntryCard({
           layout === "stack" && "w-full justify-between"
         )}
       >
-        <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/80 text-primary shadow-sm ring-1 ring-white/80">
+        <span className={cn("flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white shadow-card", tone)}>
           <Icon className="h-6 w-6" aria-hidden />
         </span>
         {layout === "stack" ? arrow : null}
       </span>
       <span className={cn("relative z-10 min-w-0", layout === "row" && "flex-1")}>
-        <h2 className="font-serif text-3xl tracking-tight text-navy sm:text-4xl">{title}</h2>
+        <h2 className="text-2xl font-medium tracking-tight text-foreground sm:text-3xl">{title}</h2>
         <span className="mt-1 block text-sm leading-relaxed text-muted-foreground sm:text-base">{text}</span>
       </span>
       {layout === "row" ? <span className="relative z-10">{arrow}</span> : null}
@@ -83,20 +88,14 @@ function EntryCard({
 
 export default function HomePage() {
   return (
-    <div className="space-y-8">
-      <section className="relative overflow-hidden rounded-2xl border border-primary/15 bg-card/80 px-6 py-10 shadow-sm sm:px-10 sm:py-12">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[var(--shell-from)] via-[var(--shell-via)] to-[var(--shell-to)]"
-        />
-        <div className="relative space-y-3">
-          <h1 className="font-serif text-4xl tracking-tight text-brand-gradient sm:text-5xl">
-            Classical Portal
-          </h1>
-          <p className="max-w-xl text-base text-muted-foreground sm:text-lg">
-            Explore classical music your way, listen on Spotify
-          </p>
-        </div>
+    <div className="space-y-10">
+      <section className="space-y-3 pt-2">
+        <h1 className="font-serif text-5xl tracking-tight text-foreground sm:text-6xl">
+          Classical <span className="text-primary">Portal</span>
+        </h1>
+        <p className="max-w-xl text-lg text-muted-foreground">
+          Explore classical music your way, listen on Spotify
+        </p>
       </section>
 
       <div className="space-y-4">

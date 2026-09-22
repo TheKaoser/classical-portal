@@ -1,7 +1,9 @@
 import type { Metadata } from "next"
-import Link from "next/link"
+import { ListLink } from "@/components/list-link"
 import { PageHeader } from "@/components/page-header"
+import { catalogAccent } from "@/lib/accents"
 import { formSummaries } from "@/lib/form-catalog"
+import { cn } from "@/lib/utils"
 
 export const metadata: Metadata = {
   title: "Genres",
@@ -19,23 +21,34 @@ export default function GenresPage() {
         backHref="/"
         backLabel="Home"
       />
-      <ul className="divide-y divide-border">
-        {forms.map((form) => (
-          <li key={form.slug}>
-            <Link
-              href={`/genres/${form.slug}`}
-              className="block py-4 hover:bg-accent/70 -mx-2 px-2 rounded-md"
-            >
-              <div className="flex items-baseline justify-between gap-4">
-                <span className="font-serif text-xl tracking-tight text-navy">{form.name}</span>
-                <span className="shrink-0 text-sm text-muted-foreground">
-                  {form.total.toLocaleString()} {form.total === 1 ? "work" : "works"}
+      <ul className="space-y-1">
+        {forms.map((form, index) => {
+          const accent = catalogAccent(index)
+          return (
+            <li key={form.slug}>
+              <ListLink href={`/genres/${form.slug}`}>
+                <span
+                  aria-hidden
+                  className={cn(
+                    "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-base font-medium",
+                    accent.tile
+                  )}
+                >
+                  {form.name.slice(0, 1)}
                 </span>
-              </div>
-              <p className="mt-1 text-sm text-muted-foreground">{form.blurb}</p>
-            </Link>
-          </li>
-        ))}
+                <span className="min-w-0 flex-1 pt-0.5">
+                  <span className="flex items-baseline justify-between gap-4">
+                    <span className="text-base font-medium text-foreground group-hover:text-primary">{form.name}</span>
+                    <span className="shrink-0 text-sm text-muted-foreground">
+                      {form.total.toLocaleString()} {form.total === 1 ? "work" : "works"}
+                    </span>
+                  </span>
+                  <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">{form.blurb}</p>
+                </span>
+              </ListLink>
+            </li>
+          )
+        })}
       </ul>
     </div>
   )

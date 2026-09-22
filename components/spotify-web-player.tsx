@@ -164,8 +164,8 @@ function PlaybackSeekBar({
       onPointerCancel={finishDrag}
       onKeyDown={onKeyDown}
     >
-      <div className="relative h-1 w-full overflow-hidden rounded-full bg-primary/20">
-        <div className="h-full bg-primary" style={{ width: `${percent}%` }} />
+      <div className="relative h-1 w-full overflow-hidden rounded-full bg-secondary">
+        <div className="h-full rounded-full bg-primary" style={{ width: `${percent}%` }} />
       </div>
       {!disabled && (
         <span
@@ -547,7 +547,7 @@ export function SpotifyWebPlayer({
   useEffect(() => {
     if (!visible) return
     const previous = document.body.style.paddingBottom
-    document.body.style.paddingBottom = "8.5rem"
+    document.body.style.paddingBottom = "9.5rem"
     return () => {
       document.body.style.paddingBottom = previous
     }
@@ -577,9 +577,9 @@ export function SpotifyWebPlayer({
     <div
       role="region"
       aria-label="In-page player"
-      className="fixed inset-x-0 bottom-0 z-50 border-t border-primary/30 bg-card/95 shadow-[0_-10px_30px_rgba(41,50,62,0.14)] backdrop-blur-sm"
+      className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-card shadow-float"
     >
-      <div className="mx-auto flex max-w-4xl items-center gap-2 px-2 py-2 sm:gap-3 sm:px-3">
+      <div className="mx-auto flex max-w-4xl items-center gap-2 px-3 py-3 sm:gap-3 sm:px-4">
         <Button
           type="button"
           size="icon"
@@ -596,7 +596,7 @@ export function SpotifyWebPlayer({
         </Button>
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
-            <p className="min-w-0 flex-1 truncate text-sm font-medium text-navy">{title}</p>
+            <p className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{title}</p>
             <p className="shrink-0 text-xs tabular-nums text-muted-foreground">
               {duration > 0 ? `${clock(position)} / ${clock(duration)}` : movement ? `${movement.index + 1}/${movement.total}` : ""}
             </p>
@@ -645,7 +645,7 @@ export function SpotifyWebPlayer({
           {savingTrack ? "Saving…" : trackSaved ? "Saved" : "Save track"}
         </Button>
       </div>
-      <p className="mx-auto max-w-4xl border-t border-primary/10 px-3 py-1.5 text-xs text-muted-foreground">
+      <p className="mx-auto max-w-4xl border-t border-border px-3 py-2 text-xs text-muted-foreground sm:px-4">
         {saveTrackError ? saveTrackError : `Playing in this page. ${PREMIUM_REQUIRED_MESSAGE}`}
       </p>
     </div>

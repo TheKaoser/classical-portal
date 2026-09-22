@@ -7,16 +7,16 @@ export function FilterChips({
   items: { href: string; label: string; active: boolean; count?: number }[]
 }) {
   return (
-    <nav className="mb-6 flex flex-wrap gap-1.5" aria-label="Filters">
+    <nav className="mb-6 flex flex-wrap gap-2" aria-label="Filters">
       {items.map((item) => (
         <Link
           key={item.href + item.label}
           href={item.href}
           className={cn(
-            "rounded-full border px-3 py-1 text-xs transition-colors",
+            "rounded-full px-3.5 py-1.5 text-sm transition-colors",
             item.active
-              ? "border-primary bg-primary text-primary-foreground"
-              : "border-border text-muted-foreground hover:border-primary/40 hover:text-primary"
+              ? "bg-primary font-medium text-primary-foreground"
+              : "bg-secondary text-foreground hover:bg-accent"
           )}
         >
           {item.label}

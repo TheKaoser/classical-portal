@@ -122,7 +122,7 @@ export function SearchForm({
       }}
     >
       <Search
-        className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-primary/55"
+        className="pointer-events-none absolute left-3.5 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-muted-foreground"
         aria-hidden
       />
       <Input
@@ -159,15 +159,15 @@ export function SearchForm({
           }
         }}
         className={cn(
-          "border-input bg-card pl-9 shadow-none focus-visible:border-ring",
-          size === "lg" && "h-11 text-base md:text-base"
+          "rounded-full border-transparent bg-secondary pl-10 shadow-none focus-visible:border-transparent focus-visible:bg-card focus-visible:shadow-search focus-visible:ring-0",
+          size === "lg" && "h-12 text-base md:text-base"
         )}
       />
       {showList ? (
         <ul
           id={listId}
           role="listbox"
-          className="absolute z-50 mt-1 max-h-80 w-full overflow-auto rounded-xl border border-primary/15 bg-card py-1 shadow-lg"
+          className="absolute z-50 mt-2 max-h-80 w-full overflow-auto rounded-2xl border border-border bg-card py-1 shadow-float"
         >
           {suggestions.length === 0 && searched ? (
             <li className="px-3 py-2 text-xs text-muted-foreground">No matches</li>
@@ -180,10 +180,8 @@ export function SearchForm({
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => go(item.href)}
                 className={cn(
-                  "flex w-full flex-col items-start border-l-2 px-3 py-2 text-left text-sm",
-                  index === activeIndex
-                    ? "border-l-blue-bright bg-blue-mid/10 text-navy"
-                    : "border-l-transparent text-navy hover:bg-accent/70"
+                  "flex w-full flex-col items-start px-3 py-2 text-left text-sm text-foreground",
+                  index === activeIndex ? "bg-accent" : "hover:bg-muted"
                 )}
               >
                 <span className="truncate">{item.label}</span>

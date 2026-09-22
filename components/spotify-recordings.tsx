@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { ExternalLink, LogOut, Play } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
 import { loadSpotifyPlaybackSdk, SpotifyWebPlayer, type PlaybackIssue } from "@/components/spotify-web-player"
 import { formatDuration, type SpotifyRecording, type SpotifyTrackMatch } from "@/lib/spotify"
 import {
@@ -524,7 +525,7 @@ export function SpotifyRecordings({
   return (
     <section className="space-y-4">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 className="font-serif text-xl tracking-tight text-navy">On Spotify</h2>
+        <h2 className="text-lg font-medium tracking-tight text-foreground">On Spotify</h2>
         <a
           href={searchUrl}
           target="_blank"
@@ -608,7 +609,7 @@ export function SpotifyRecordings({
             </p>
           )}
 
-          <ul className="divide-y divide-border overflow-hidden rounded-md border border-primary/15 bg-card">
+          <ul className="divide-y divide-border overflow-hidden rounded-3xl border border-border bg-card shadow-card">
             {recordings.map((recording) => {
               const selected = selectedRecording.id === recording.id
               const playingThis = playRequest?.recordingId === recording.id
@@ -622,9 +623,10 @@ export function SpotifyRecordings({
               return (
                 <li key={recording.id}>
                   <div
-                    className={`flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between ${
-                      albumActive ? "bg-accent/80" : ""
-                    }`}
+                    className={cn(
+                      "flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4",
+                      albumActive ? "bg-accent" : ""
+                    )}
                   >
                     <button
                       type="button"
@@ -641,13 +643,18 @@ export function SpotifyRecordings({
                           alt=""
                           width={40}
                           height={40}
-                          className="h-10 w-10 rounded object-cover"
+                          className="h-12 w-12 rounded-xl object-cover"
                         />
                       ) : (
-                        <div className="h-10 w-10 rounded bg-muted" />
+                        <div className="h-12 w-12 rounded-xl bg-secondary" />
                       )}
                       <span className="min-w-0">
-                        <span className={`block truncate text-sm ${selected || playingThis ? "font-medium text-primary" : ""}`}>
+                        <span
+                          className={cn(
+                            "block truncate text-sm text-foreground",
+                            (selected || playingThis) && "font-medium text-primary"
+                          )}
+                        >
                           {albumTitle}
                         </span>
                         <span className="block truncate text-xs text-muted-foreground">
@@ -703,14 +710,6 @@ export function SpotifyRecordings({
                           </Button>
                         )
                       )}
-                      {savedPlaylist?.url && (
-                        <Button variant="outline" asChild className="cursor-pointer">
-                          <a href={savedPlaylist.url} target="_blank" rel="noopener noreferrer">
-                            Open playlist
-                            <ExternalLink className="h-4 w-4" />
-                          </a>
-                        </Button>
-                      )}
                     </div>
                   </div>
                   {selected && recording.tracks.length > 0 && (
@@ -719,7 +718,12 @@ export function SpotifyRecordings({
                         const active = playingThis && activeUri === track.uri
                         return (
                           <li key={track.id}>
-                            <div className={`flex items-center gap-3 py-2 pr-3 pl-6 ${active ? "bg-accent/80" : ""}`}>
+                            <div
+                              className={cn(
+                                "flex items-center gap-3 py-2.5 pr-3 pl-6 sm:pr-4",
+                                active ? "bg-accent" : ""
+                              )}
+                            >
                               <button
                                 type="button"
                                 onClick={() => playMovement(recording, track)}
@@ -735,13 +739,18 @@ export function SpotifyRecordings({
                                     alt=""
                                     width={40}
                                     height={40}
-                                    className="h-10 w-10 rounded object-cover"
+                                    className="h-10 w-10 rounded-lg object-cover"
                                   />
                                 ) : (
-                                  <div className="h-10 w-10 rounded bg-muted" />
+                                  <div className="h-10 w-10 rounded-lg bg-secondary" />
                                 )}
                                 <span className="min-w-0">
-                                  <span className={`block truncate text-sm ${active ? "font-medium text-primary" : ""}`}>
+                                  <span
+                                    className={cn(
+                                      "block truncate text-sm text-foreground",
+                                      active && "font-medium text-primary"
+                                    )}
+                                  >
                                     {track.name}
                                   </span>
                                   <span className="block truncate text-xs text-muted-foreground">

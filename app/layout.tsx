@@ -31,17 +31,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${inter.variable} ${newsreader.variable} font-sans antialiased`}>
-        <div
-          aria-hidden
-          className="pointer-events-none fixed inset-y-0 left-0 z-10 w-24 bg-gradient-to-r from-navy/20 via-blue-mid/10 to-transparent sm:w-36 lg:w-48"
-        />
-        <div
-          aria-hidden
-          className="pointer-events-none fixed inset-y-0 right-0 z-10 w-24 bg-gradient-to-l from-blue-bright/15 via-blue-mid/10 to-transparent sm:w-36 lg:w-48"
-        />
         <SiteHeader />
-        <main className="relative mx-auto max-w-4xl px-4 py-8">{children}</main>
-        <footer className="relative mx-auto max-w-4xl px-4 pb-10 text-xs text-muted-foreground">
+        <main className="relative mx-auto max-w-4xl px-4 py-10 sm:px-6">{children}</main>
+        <footer className="relative mx-auto max-w-4xl px-4 pb-16 pt-4 text-sm text-muted-foreground sm:px-6">
           Catalog from{" "}
           <a
             className="text-primary underline-offset-2 hover:text-primary-hover hover:underline"

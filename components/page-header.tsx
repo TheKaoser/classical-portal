@@ -21,7 +21,7 @@ export function PageHeader({
       {backHref && (
         <Link
           href={backHref}
-          className="mb-4 inline-flex items-center gap-1 text-sm text-primary hover:text-primary-hover"
+          className="mb-5 inline-flex items-center gap-1 rounded-full px-2 py-1 text-sm font-medium text-primary hover:bg-accent"
         >
           <ArrowLeft className="h-4 w-4" />
           {backLabel || "Back"}
@@ -33,14 +33,14 @@ export function PageHeader({
           <img
             src={portrait}
             alt=""
-            width={72}
-            height={72}
-            className="h-[72px] w-[72px] shrink-0 rounded object-cover grayscale"
+            width={80}
+            height={80}
+            className="h-20 w-20 shrink-0 rounded-full object-cover shadow-card ring-1 ring-border"
           />
         )}
         <div className="min-w-0">
-          <h1 className="font-serif text-3xl leading-tight tracking-tight text-navy">{title}</h1>
-          {subtitle && <p className="mt-1 text-sm font-medium text-primary">{subtitle}</p>}
+          <h1 className="font-serif text-4xl leading-tight tracking-tight text-foreground">{title}</h1>
+          {subtitle && <p className="mt-1.5 text-sm font-medium text-primary">{subtitle}</p>}
           {description && <p className="mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">{description}</p>}
         </div>
       </div>

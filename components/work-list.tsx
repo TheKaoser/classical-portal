@@ -1,5 +1,5 @@
-import Link from "next/link"
 import { Star } from "lucide-react"
+import { ListLink } from "@/components/list-link"
 import { isPopular, type GenreWork, type OpenOpusWork } from "@/lib/openopus"
 
 type ListedWork = OpenOpusWork &
@@ -22,20 +22,17 @@ export function WorkList({
   }
 
   return (
-    <ul className="divide-y divide-border">
+    <ul className="space-y-0.5">
       {works.map((work) => (
         <li key={work.id}>
-          <Link
-            href={`/works/${work.id}`}
-            className="flex items-start gap-2 py-2.5 hover:bg-accent/70 -mx-2 px-2 rounded-md"
-          >
+          <ListLink href={`/works/${work.id}`}>
             {isPopular(work) ? (
-              <Star className="mt-0.5 h-3.5 w-3.5 shrink-0 fill-current text-primary" />
+              <Star className="mt-0.5 h-4 w-4 shrink-0 fill-brand-yellow text-brand-yellow" />
             ) : (
-              <span className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span className="mt-0.5 h-4 w-4 shrink-0" />
             )}
             <span className="min-w-0 flex-1">
-              <span className="block text-sm text-navy">{work.title}</span>
+              <span className="block text-sm text-foreground group-hover:text-primary">{work.title}</span>
               {work.composerLabel || work.subtitle ? (
                 <span className="block text-xs text-muted-foreground">
                   {[work.composerLabel, work.subtitle].filter(Boolean).join(" · ")}
@@ -51,7 +48,7 @@ export function WorkList({
               ) : null}
             </span>
             <WorkYear year={work.compositionYear} />
-          </Link>
+          </ListLink>
         </li>
       ))}
     </ul>

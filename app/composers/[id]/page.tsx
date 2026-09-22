@@ -120,7 +120,7 @@ export default async function ComposerPage({
           {grouped.map((group) => (
             <section key={group.genre}>
               {grouped.length > 1 && (
-                <h2 className="mb-2 font-serif text-lg tracking-tight text-navy">{group.genre}</h2>
+                <h2 className="mb-2 px-3 text-sm font-medium text-primary">{group.genre}</h2>
               )}
               <WorkList works={group.works} />
             </section>
