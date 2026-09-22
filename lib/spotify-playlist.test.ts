@@ -4,8 +4,6 @@ import {
   choosePlaybackEmbed,
   classicalPlaylistDescription,
   classicalPlaylistName,
-  SAVED_TRACKS_PLAYLIST_NAME,
-  savedTracksPlaylistDescription,
   saveTrackRequest,
   dedupePlaylistCreate,
   nextPlaybackAction,
@@ -15,42 +13,49 @@ import {
   rememberPlaylistCache,
   sanitizePlaylistCache,
   classifySpotifyPlaylistWriteError,
+  LIBRARY_RECONNECT_MESSAGE,
   PLAYLIST_RECONNECT_MESSAGE,
   spotifyAddPlaylistItemsUrl,
+  spotifyCheckLikedTracksUrl,
   spotifyCreatePlaylistUrl,
   spotifyPlaylistCreateBody,
+  spotifySaveLikedTracksUrl,
+  spotifyTrackIdFromUri,
+  tokenCanReadLikedTracks,
+  tokenCanSaveLikedTracks,
   tokenCanSavePrivatePlaylist,
   uniqueTrackUris,
 } from "./spotify-playlist.ts"
 
-test("playlist name identifies Classical Portal and the work", () => {
-  assert.equal(
-    classicalPlaylistName("Brahms", "Piano Concerto no. 2"),
-    "Classical Portal · Brahms Piano Concerto no. 2"
-  )
+test("playlist name uses the work without a Classical Portal prefix", () => {
+  assert.equal(classicalPlaylistName("Brahms", "Piano Concerto no. 2"), "Brahms Piano Concerto no. 2")
+  assert.equal(classicalPlaylistName("Brahms", "Piano Concerto no. 2").includes("Classical Portal"), false)
 })
 
 test("playlist name collapses space and stays within Spotify's 100 character limit", () => {
   const name = classicalPlaylistName("  Beethoven  ", "  Symphony no. 5   ")
-  assert.equal(name, "Classical Portal · Beethoven Symphony no. 5")
+  assert.equal(name, "Beethoven Symphony no. 5")
   const long = classicalPlaylistName("Mahler", "x".repeat(200))
   assert.equal(long.length, 100)
-  assert.equal(long.startsWith("Classical Portal · Mahler "), true)
+  assert.equal(long.startsWith("Mahler "), true)
+  assert.equal(classicalPlaylistName("", ""), "Playlist")
 })
 
-test("save track accepts one movement and an existing playlist id", () => {
-  assert.equal(SAVED_TRACKS_PLAYLIST_NAME, "Classical Portal · Saved tracks")
-  assert.match(savedTracksPlaylistDescription(), /Individual movements/)
+test("save track accepts one movement for Liked Songs", () => {
+  assert.equal(spotifySaveLikedTracksUrl(), "https://api.spotify.com/v1/me/tracks")
+  assert.equal(spotifyTrackIdFromUri("spotify:track:abc123"), "abc123")
+  assert.equal(spotifyTrackIdFromUri("spotify:album:abc123"), null)
   assert.deepEqual(saveTrackRequest({ uri: "spotify:track:abc123" }), {
     uri: "spotify:track:abc123",
-    playlistId: null,
-  })
-  assert.deepEqual(saveTrackRequest({ uri: "spotify:track:abc123", playlistId: "0123456789abcdef" }), {
-    uri: "spotify:track:abc123",
-    playlistId: "0123456789abcdef",
+    id: "abc123",
   })
   assert.equal(saveTrackRequest({ uri: "spotify:album:abc123" }), null)
-  assert.equal(saveTrackRequest({ uri: "spotify:track:abc123", playlistId: "bad id" }), null)
+  assert.equal(saveTrackRequest({ uri: "bad" }), null)
+  assert.equal(
+    spotifyCheckLikedTracksUrl(["abc123", "def456"]),
+    "https://api.spotify.com/v1/me/tracks/contains?ids=abc123%2Cdef456"
+  )
+  assert.equal(spotifyCheckLikedTracksUrl(["bad id"]), null)
 })
 
 test("playlist description says the playlist is private and fits Spotify's limit", () => {
@@ -71,17 +76,32 @@ test("playlist writes use the February 2026 endpoints, not the removed user and 
   assert.equal(spotifyAddPlaylistItemsUrl(""), null)
 })
 
-test("private playlist save needs playlist-modify-private, and a missing grant asks to reconnect", () => {
+test("private playlist and Liked Songs saves need their scopes, and a missing grant asks to reconnect", () => {
   assert.equal(tokenCanSavePrivatePlaylist("streaming playlist-modify-private user-read-email"), true)
   assert.equal(tokenCanSavePrivatePlaylist("streaming playlist-modify-public"), false)
   assert.equal(tokenCanSavePrivatePlaylist(null), false)
   assert.equal(tokenCanSavePrivatePlaylist(""), false)
+
+  assert.equal(tokenCanSaveLikedTracks("streaming user-library-modify user-library-read"), true)
+  assert.equal(tokenCanSaveLikedTracks("streaming playlist-modify-private"), false)
+  assert.equal(tokenCanReadLikedTracks("user-library-read"), true)
+  assert.equal(tokenCanReadLikedTracks("user-library-modify"), false)
 
   assert.deepEqual(
     classifySpotifyPlaylistWriteError(403, { error: { status: 403, message: "Insufficient client scope" } }, "Could not create playlist"),
     { code: "insufficient_scope", message: PLAYLIST_RECONNECT_MESSAGE, status: 403 }
   )
   assert.equal(PLAYLIST_RECONNECT_MESSAGE.includes("Reconnect Spotify"), true)
+  assert.deepEqual(
+    classifySpotifyPlaylistWriteError(
+      403,
+      { error: { status: 403, message: "Insufficient client scope" } },
+      "Could not save this track",
+      LIBRARY_RECONNECT_MESSAGE
+    ),
+    { code: "insufficient_scope", message: LIBRARY_RECONNECT_MESSAGE, status: 403 }
+  )
+  assert.equal(LIBRARY_RECONNECT_MESSAGE.includes("liked tracks"), true)
   assert.deepEqual(
     classifySpotifyPlaylistWriteError(401, { error: { message: "Invalid access token" } }, "Could not create playlist"),
     { code: "not_connected", message: "Spotify login expired. Sign in again.", status: 401 }
@@ -128,14 +148,14 @@ test("multi-track groups embed the playlist until a single movement is chosen", 
     choosePlaybackEmbed({
       trackCount: 3,
       playlistId: "pl",
-      playlistTitle: "Classical Portal · Brahms Piano Concerto no. 2",
+      playlistTitle: "Brahms Piano Concerto no. 2",
       selectedTrack: track,
       preferSingleTrack: false,
     }),
     {
       kind: "playlist",
       id: "pl",
-      title: "Classical Portal · Brahms Piano Concerto no. 2",
+      title: "Brahms Piano Concerto no. 2",
       height: 352,
     }
   )
@@ -215,12 +235,12 @@ test("playlist cache keys include the listener and keep the newest groups", () =
 
 test("pending playlist payload resumes only a real multi-track group", () => {
   const raw = JSON.stringify({
-    name: "Classical Portal · Brahms Piano Concerto no. 2",
+    name: "Brahms Piano Concerto no. 2",
     recordingId: "album:track",
     uris: ["spotify:track:i", "nope", "spotify:track:i", "spotify:track:ii"],
   })
   assert.deepEqual(parsePendingPlaylist(raw), {
-    name: "Classical Portal · Brahms Piano Concerto no. 2",
+    name: "Brahms Piano Concerto no. 2",
     recordingId: "album:track",
     uris: ["spotify:track:i", "spotify:track:ii"],
   })

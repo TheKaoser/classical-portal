@@ -23,7 +23,7 @@ import {
   uniqueTrackUris,
 } from "./spotify-playback.ts"
 
-test("oauth scopes include the Web Playback SDK set and private playlist save", () => {
+test("oauth scopes include the Web Playback SDK set, private playlist save, and Liked Songs", () => {
   assert.deepEqual(SPOTIFY_OAUTH_SCOPES, [
     "streaming",
     "user-modify-playback-state",
@@ -35,6 +35,8 @@ test("oauth scopes include the Web Playback SDK set and private playlist save", 
   assert.match(scope, /user-modify-playback-state/)
   assert.match(scope, /playlist-modify-private/)
   assert.match(scope, /playlist-modify-public/)
+  assert.match(scope, /user-library-modify/)
+  assert.match(scope, /user-library-read/)
 })
 
 test("track URIs stay in movement order and drop invalid duplicates", () => {

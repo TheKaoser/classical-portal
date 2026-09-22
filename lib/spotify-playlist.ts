@@ -1,10 +1,8 @@
-export const PLAYLIST_NAME_PREFIX = "Classical Portal"
-
-/** Private playlist of individually saved movements. Separate from a work’s Save playlist. */
-export const SAVED_TRACKS_PLAYLIST_NAME = "Classical Portal · Saved tracks"
-
 /** Shown when the Spotify token was granted before playlist-modify scopes. */
 export const PLAYLIST_RECONNECT_MESSAGE = "Reconnect Spotify to allow saving playlists."
+
+/** Shown when the Spotify token was granted before user-library scopes. */
+export const LIBRARY_RECONNECT_MESSAGE = "Reconnect Spotify to allow saving liked tracks."
 
 export type PlaylistWriteCode = "insufficient_scope" | "not_connected" | "save_failed"
 
@@ -49,14 +47,14 @@ export function uniqueTrackUris(uris: string[]): string[] {
   return unique
 }
 
-/** Private playlist title, e.g. "Classical Portal · Brahms Piano Concerto no. 2". */
+/** Private playlist title from the work, e.g. "Brahms Piano Concerto no. 2". */
 export function classicalPlaylistName(composerName: string, workTitle: string): string {
   const body = [composerName, workTitle]
     .map((part) => part.trim())
     .filter(Boolean)
     .join(" ")
     .replace(/\s+/g, " ")
-  const name = body ? `${PLAYLIST_NAME_PREFIX} · ${body}` : PLAYLIST_NAME_PREFIX
+  const name = body || "Playlist"
   return name.slice(0, 100)
 }
 
@@ -65,19 +63,42 @@ export function classicalPlaylistDescription(playlistName: string): string {
   return text.replace(/\s+/g, " ").trim().slice(0, 300)
 }
 
-export function savedTracksPlaylistDescription(): string {
-  return "Individual movements saved from the Classical Portal player."
+/** Spotify track id from `spotify:track:…`, or null when the URI is invalid. */
+export function spotifyTrackIdFromUri(uri: string): string | null {
+  if (!isSpotifyTrackUri(uri)) return null
+  return uri.slice("spotify:track:".length)
 }
 
-/** One current movement, plus an optional existing saved-tracks playlist. */
-export function saveTrackRequest(input: {
-  uri?: unknown
-  playlistId?: unknown
-}): { uri: string; playlistId: string | null } | null {
+/** One current movement to save into Liked Songs. */
+export function saveTrackRequest(input: { uri?: unknown }): { uri: string; id: string } | null {
   if (typeof input.uri !== "string" || !isSpotifyTrackUri(input.uri)) return null
-  if (input.playlistId == null || input.playlistId === "") return { uri: input.uri, playlistId: null }
-  if (typeof input.playlistId !== "string" || !PLAYLIST_ID.test(input.playlistId)) return null
-  return { uri: input.uri, playlistId: input.playlistId }
+  const id = spotifyTrackIdFromUri(input.uri)
+  if (!id) return null
+  return { uri: input.uri, id }
+}
+
+/** Save Tracks for Current User — Liked Songs, not a private playlist. */
+export function spotifySaveLikedTracksUrl(): string {
+  return "https://api.spotify.com/v1/me/tracks"
+}
+
+/** Check User's Saved Tracks. */
+export function spotifyCheckLikedTracksUrl(ids: string[]): string | null {
+  const clean = ids.filter((id) => /^[A-Za-z0-9]+$/.test(id)).slice(0, 50)
+  if (clean.length === 0) return null
+  return `https://api.spotify.com/v1/me/tracks/contains?ids=${encodeURIComponent(clean.join(","))}`
+}
+
+/** Liked Songs need `user-library-modify`. Older grants without it must reconnect. */
+export function tokenCanSaveLikedTracks(scope: string | null | undefined): boolean {
+  if (!scope) return false
+  return scope.split(/\s+/).includes("user-library-modify")
+}
+
+/** Reading Liked Songs state needs `user-library-read`. */
+export function tokenCanReadLikedTracks(scope: string | null | undefined): boolean {
+  if (!scope) return false
+  return scope.split(/\s+/).includes("user-library-read")
 }
 
 export function spotifyPlaylistCreateBody(input: { name: string; description?: string }): {
@@ -132,20 +153,21 @@ function spotifyErrorMessage(payload: unknown): string {
 }
 
 /**
- * Map a Spotify playlist write failure to a body the UI can show.
+ * Map a Spotify playlist or library write failure to a body the UI can show.
  * Insufficient scope asks the listener to reconnect; other failures keep Spotify's message.
  */
 export function classifySpotifyPlaylistWriteError(
   status: number,
   payload: unknown,
-  fallback: string
+  fallback: string,
+  reconnectMessage: string = PLAYLIST_RECONNECT_MESSAGE
 ): { code: PlaylistWriteCode; message: string; status: number } {
   const spotifyMessage = spotifyErrorMessage(payload).replace(/\s+/g, " ").slice(0, 180)
   if (status === 401 || /invalid access token|token expired/i.test(spotifyMessage)) {
     return { code: "not_connected", message: "Spotify login expired. Sign in again.", status: 401 }
   }
   if (/scope/i.test(spotifyMessage) || /insufficient client/i.test(spotifyMessage)) {
-    return { code: "insufficient_scope", message: PLAYLIST_RECONNECT_MESSAGE, status: 403 }
+    return { code: "insufficient_scope", message: reconnectMessage, status: 403 }
   }
   const http = status >= 400 && status < 600 ? status : 502
   const message = spotifyMessage ? `${fallback}. Spotify said: ${spotifyMessage}.` : fallback
