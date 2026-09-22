@@ -44,7 +44,7 @@ export function BackLink({
 
   return (
     <Link href={href} onClick={onClick} className={className}>
-      <ArrowLeft className="h-4 w-4" />
+      <ArrowLeft className="pointer-events-none h-4 w-4" aria-hidden="true" />
       {label || "Back"}
     </Link>
   )
