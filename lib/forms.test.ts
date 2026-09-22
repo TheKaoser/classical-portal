@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { classifyWork } from "./forms.ts"
+import { classifyWork, genreHrefForLabel } from "./forms.ts"
 import {
   compareSpotifyThenFallback,
   compareWorksByPopularity,
@@ -37,6 +37,22 @@ test("blank stage works are operas unless the title says otherwise", () => {
     classifyWork("Cantus Arcticus, for orchestra and taped bird songs, op. 61"),
     null
   )
+})
+
+test("instrument and ensemble tags are not genre links", () => {
+  for (const label of ["Keyboard", "keyboard", "Chamber", "Orchestral", "Stage", "Vocal"]) {
+    assert.equal(genreHrefForLabel(label), null)
+  }
+  assert.equal(genreHrefForLabel(""), null)
+  assert.equal(genreHrefForLabel("   "), null)
+  assert.equal(genreHrefForLabel("son"), null)
+})
+
+test("real genre labels keep their genre route", () => {
+  assert.equal(genreHrefForLabel("symphony"), "/genres/symphony")
+  assert.equal(genreHrefForLabel("Opera"), "/genres/opera")
+  assert.equal(genreHrefForLabel("Symphonies"), "/genres/symphony")
+  assert.equal(genreHrefForLabel("Études"), "/genres/etude")
 })
 
 test("a form named in the title wins over a conflicting subtitle", () => {

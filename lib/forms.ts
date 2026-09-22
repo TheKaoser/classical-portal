@@ -240,6 +240,16 @@ export function foldFormText(value: string): string {
     .toLowerCase()
 }
 
+const byFoldedName = new Map(WORK_FORMS.map((form) => [foldFormText(form.name), form]))
+
+/** Link target for a work tag, or null when it is not a real genre route. */
+export function genreHrefForLabel(label: string): string | null {
+  const folded = foldFormText(label.trim())
+  if (!folded) return null
+  const form = bySlug.get(folded) ?? byFoldedName.get(folded)
+  return form ? `/genres/${form.slug}` : null
+}
+
 function matchForm(text: string): string | null {
   const folded = foldFormText(text)
   if (!folded) return null
