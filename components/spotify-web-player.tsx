@@ -1,10 +1,17 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react"
 import { Pause, Play, SkipBack, SkipForward } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Progress } from "@/components/ui/progress"
-import { PREMIUM_REQUIRED_MESSAGE, SPOTIFY_PLAYER_NAME } from "@/lib/spotify-playback"
+import {
+  PLAYBACK_SEEK_SYNC_MS,
+  PREMIUM_REQUIRED_MESSAGE,
+  SPOTIFY_PLAYER_NAME,
+  seekByKeyboard,
+  seekPositionMs,
+  seekRatioFromPointer,
+  shouldApplyPlaybackPosition,
+} from "@/lib/spotify-playback"
 
 export type PlaybackIssue = {
   code: "premium_required" | "insufficient_scope" | "not_connected" | "browser" | "playback_failed"
@@ -61,6 +68,112 @@ function clock(ms: number): string {
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60
   return `${minutes}:${seconds.toString().padStart(2, "0")}`
+}
+
+const SEEK_DRAG_INTERVAL_MS = 150
+
+function PlaybackSeekBar({
+  position,
+  duration,
+  disabled,
+  onScrubStart,
+  onScrub,
+  onScrubEnd,
+}: {
+  position: number
+  duration: number
+  disabled: boolean
+  onScrubStart: (positionMs: number) => void
+  onScrub: (positionMs: number) => void
+  onScrubEnd: (positionMs: number) => void
+}) {
+  const barRef = useRef<HTMLDivElement>(null)
+  const draggingRef = useRef(false)
+  const latestRef = useRef(position)
+  const percent = duration > 0 ? Math.min(100, Math.max(0, (position / duration) * 100)) : 0
+
+  function positionFromClientX(clientX: number): number | null {
+    const bar = barRef.current
+    if (!bar || disabled) return null
+    const rect = bar.getBoundingClientRect()
+    return seekPositionMs(seekRatioFromPointer(clientX, { left: rect.left, width: rect.width }), duration)
+  }
+
+  function onPointerDown(event: PointerEvent<HTMLDivElement>) {
+    const next = positionFromClientX(event.clientX)
+    if (next == null) return
+    event.preventDefault()
+    draggingRef.current = true
+    latestRef.current = next
+    event.currentTarget.setPointerCapture(event.pointerId)
+    event.currentTarget.focus()
+    onScrubStart(next)
+  }
+
+  function onPointerMove(event: PointerEvent<HTMLDivElement>) {
+    if (!draggingRef.current) return
+    const next = positionFromClientX(event.clientX)
+    if (next == null) return
+    latestRef.current = next
+    onScrub(next)
+  }
+
+  function finishDrag(event: PointerEvent<HTMLDivElement>) {
+    if (!draggingRef.current) return
+    draggingRef.current = false
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    const next = positionFromClientX(event.clientX) ?? latestRef.current
+    onScrubEnd(next)
+  }
+
+  function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+    if (disabled) return
+    const next = seekByKeyboard({
+      key: event.key,
+      positionMs: position,
+      durationMs: duration,
+      shiftKey: event.shiftKey,
+    })
+    if (next == null) return
+    event.preventDefault()
+    onScrubEnd(next)
+  }
+
+  return (
+    <div
+      ref={barRef}
+      role="slider"
+      tabIndex={disabled ? -1 : 0}
+      aria-label="Seek"
+      aria-orientation="horizontal"
+      aria-valuemin={0}
+      aria-valuemax={Math.max(0, Math.round(duration))}
+      aria-valuenow={Math.max(0, Math.round(Math.min(position, duration)))}
+      aria-valuetext={duration > 0 ? `${clock(position)} of ${clock(duration)}` : "Not playing"}
+      aria-disabled={disabled}
+      className={`relative mt-1.5 flex h-6 w-full touch-none items-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+        disabled ? "cursor-default" : "cursor-pointer"
+      }`}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={finishDrag}
+      onPointerCancel={finishDrag}
+      onKeyDown={onKeyDown}
+    >
+      <div className="relative h-1 w-full overflow-hidden rounded-full bg-primary/20">
+        <div className="h-full bg-primary" style={{ width: `${percent}%` }} />
+      </div>
+      {!disabled && (
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-primary bg-background shadow-sm"
+          style={{ left: `${percent}%` }}
+        />
+      )}
+    </div>
+  )
 }
 
 function unlockBrowserAudio(player: SpotifyPlayer | null) {
@@ -130,6 +243,10 @@ export function SpotifyWebPlayer({
   const mountedRef = useRef(true)
   const urisRef = useRef(uris)
   urisRef.current = uris
+  const scrubbingRef = useRef(false)
+  const pendingSeekRef = useRef<{ positionMs: number; untilMs: number } | null>(null)
+  const lastSeekAtRef = useRef(0)
+  const acceptPositionRef = useRef<(reportedMs: number) => void>(() => {})
 
   const [phase, setPhase] = useState<Phase>("connecting")
   const [trackName, setTrackName] = useState("")
@@ -137,6 +254,34 @@ export function SpotifyWebPlayer({
   const [position, setPosition] = useState(0)
   const [duration, setDuration] = useState(0)
   const [movement, setMovement] = useState<{ index: number; total: number } | null>(null)
+
+  function acceptReportedPosition(reportedMs: number) {
+    const pending = pendingSeekRef.current
+    const apply = shouldApplyPlaybackPosition({
+      reportedMs,
+      scrubbing: scrubbingRef.current,
+      pendingSeekMs: pending?.positionMs ?? null,
+      nowMs: Date.now(),
+      pendingUntilMs: pending?.untilMs ?? 0,
+    })
+    if (!apply) return
+    pendingSeekRef.current = null
+    setPosition(reportedMs)
+  }
+  acceptPositionRef.current = acceptReportedPosition
+
+  function requestSeek(positionMs: number, immediate: boolean) {
+    setPosition(positionMs)
+    pendingSeekRef.current = { positionMs, untilMs: Date.now() + PLAYBACK_SEEK_SYNC_MS }
+    const now = Date.now()
+    if (!immediate && now - lastSeekAtRef.current < SEEK_DRAG_INTERVAL_MS) return
+    lastSeekAtRef.current = now
+    const player = playerRef.current
+    if (!player) return
+    void player.seek(positionMs).catch(() => {
+      // The bar stays on the requested position until the next SDK state event.
+    })
+  }
 
   function setPlaybackPhase(next: Phase) {
     setPhase(next)
@@ -224,7 +369,7 @@ export function SpotifyWebPlayer({
         const index = urisRef.current.indexOf(track.uri)
         setTrackName(track.name)
         setArtists(track.artists.map((artist) => artist.name).join(", "))
-        setPosition(state.position)
+        acceptPositionRef.current(state.position)
         setDuration(state.duration || track.duration_ms)
         setMovement(index >= 0 ? { index, total: urisRef.current.length } : null)
         setPlaybackPhase(state.paused ? "paused" : "playing")
@@ -291,6 +436,8 @@ export function SpotifyWebPlayer({
   useEffect(() => {
     if (!active || uris.length === 0) return
     let cancelled = false
+    scrubbingRef.current = false
+    pendingSeekRef.current = null
     setPlaybackPhase("connecting")
     setTrackName("")
     setArtists("")
@@ -351,7 +498,7 @@ export function SpotifyWebPlayer({
     const id = window.setInterval(() => {
       void playerRef.current?.getCurrentState().then((state) => {
         if (!state || !mountedRef.current) return
-        setPosition(state.position)
+        acceptPositionRef.current(state.position)
         setDuration(state.duration || state.track_window.current_track.duration_ms)
         setPlaybackPhase(state.paused ? "paused" : "playing")
       })
@@ -361,7 +508,6 @@ export function SpotifyWebPlayer({
 
   if (!visible) return null
 
-  const percent = duration > 0 ? Math.min(100, (position / duration) * 100) : 0
   const paused = phase !== "playing"
   const title = trackName || (phase === "connecting" ? "Connecting the player…" : "Classical Portal")
   const movementLabel = movement ? `Movement ${movement.index + 1} of ${movement.total}` : "In this page"
@@ -397,7 +543,22 @@ export function SpotifyWebPlayer({
             {movementLabel}
             {artists ? ` · ${artists}` : phase === "connecting" ? "" : ` · ${SPOTIFY_PLAYER_NAME}`}
           </p>
-          <Progress value={percent} aria-label="Playback position" className="mt-1.5 h-1" />
+          <PlaybackSeekBar
+            position={position}
+            duration={duration}
+            disabled={phase === "connecting" || duration <= 0}
+            onScrubStart={(positionMs) => {
+              scrubbingRef.current = true
+              requestSeek(positionMs, true)
+            }}
+            onScrub={(positionMs) => {
+              requestSeek(positionMs, false)
+            }}
+            onScrubEnd={(positionMs) => {
+              requestSeek(positionMs, true)
+              scrubbingRef.current = false
+            }}
+          />
         </div>
         <Button
           type="button"
