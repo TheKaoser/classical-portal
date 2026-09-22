@@ -112,8 +112,8 @@ export function parsePendingPlaylist(raw: string): PendingPlaylist | null {
 }
 
 /**
- * Multi-track groups play from the playlist embed once it exists, unless the
- * listener picked a single movement. Single-track groups stay on the track embed.
+ * Legacy embed choice. The work page plays in the Web Playback SDK instead of
+ * these iframes. The helper stays so playlist-vs-track selection stays specified.
  */
 export function choosePlaybackEmbed(input: {
   trackCount: number
