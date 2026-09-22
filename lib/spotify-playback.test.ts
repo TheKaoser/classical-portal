@@ -3,12 +3,17 @@ import { test } from "node:test"
 import {
   PREMIUM_REQUIRED_MESSAGE,
   SPOTIFY_OAUTH_SCOPES,
+  PLAYBACK_SEEK_SYNC_TOLERANCE_MS,
   chooseTrackEmbed,
   classifySpotifyPlayError,
   inPagePlayerPlayUrl,
   isSpotifyDeviceId,
   orderedTrackUris,
   parsePendingPlayback,
+  seekByKeyboard,
+  seekPositionMs,
+  seekRatioFromPointer,
+  shouldApplyPlaybackPosition,
   spotifyOAuthScopeString,
   spotifyPlayRequest,
   spotifyPremiumState,
@@ -113,6 +118,95 @@ test("pending playback resumes only a real multi-track group", () => {
   })
   assert.equal(parsePendingPlayback("{"), null)
   assert.equal(parsePendingPlayback(JSON.stringify({ recordingId: "r", uris: ["spotify:track:only"] })), null)
+})
+
+test("a click on the seek bar maps to a position in the current track", () => {
+  assert.equal(seekRatioFromPointer(0, { left: 0, width: 200 }), 0)
+  assert.equal(seekRatioFromPointer(100, { left: 0, width: 200 }), 0.5)
+  assert.equal(seekRatioFromPointer(200, { left: 0, width: 200 }), 1)
+  assert.equal(seekRatioFromPointer(40, { left: 20, width: 100 }), 0.2)
+  assert.equal(seekRatioFromPointer(-20, { left: 0, width: 200 }), 0)
+  assert.equal(seekRatioFromPointer(500, { left: 0, width: 200 }), 1)
+  assert.equal(seekRatioFromPointer(50, { left: 10, width: 0 }), 0)
+
+  assert.equal(seekPositionMs(0, 180_000), 0)
+  assert.equal(seekPositionMs(0.5, 180_000), 90_000)
+  assert.equal(seekPositionMs(1, 180_000), 180_000)
+  assert.equal(seekPositionMs(1.4, 180_000), 180_000)
+  assert.equal(seekPositionMs(-0.2, 180_000), 0)
+  assert.equal(seekPositionMs(0.333, 10_000), 3_330)
+  assert.equal(seekPositionMs(0.5, 0), null)
+  assert.equal(seekPositionMs(Number.NaN, 180_000), null)
+})
+
+test("keyboard seek stays inside the current track", () => {
+  assert.equal(seekByKeyboard({ key: "ArrowRight", positionMs: 10_000, durationMs: 180_000 }), 15_000)
+  assert.equal(seekByKeyboard({ key: "ArrowUp", positionMs: 10_000, durationMs: 180_000 }), 15_000)
+  assert.equal(seekByKeyboard({ key: "ArrowLeft", positionMs: 10_000, durationMs: 180_000 }), 5_000)
+  assert.equal(seekByKeyboard({ key: "ArrowDown", positionMs: 10_000, durationMs: 180_000 }), 5_000)
+  assert.equal(seekByKeyboard({ key: "ArrowLeft", positionMs: 1_000, durationMs: 180_000 }), 0)
+  assert.equal(
+    seekByKeyboard({ key: "ArrowRight", positionMs: 178_000, durationMs: 180_000, shiftKey: true }),
+    180_000
+  )
+  assert.equal(seekByKeyboard({ key: "Home", positionMs: 40_000, durationMs: 180_000 }), 0)
+  assert.equal(seekByKeyboard({ key: "End", positionMs: 40_000, durationMs: 180_000 }), 180_000)
+  assert.equal(seekByKeyboard({ key: " ", positionMs: 40_000, durationMs: 180_000 }), null)
+  assert.equal(seekByKeyboard({ key: "ArrowRight", positionMs: 0, durationMs: 0 }), null)
+})
+
+test("the seek bar keeps a scrub target until the SDK reports it", () => {
+  const pendingUntilMs = 5_000
+  assert.equal(
+    shouldApplyPlaybackPosition({
+      reportedMs: 10_000,
+      scrubbing: true,
+      pendingSeekMs: 90_000,
+      nowMs: 100,
+      pendingUntilMs,
+    }),
+    false
+  )
+  assert.equal(
+    shouldApplyPlaybackPosition({
+      reportedMs: 12_000,
+      scrubbing: false,
+      pendingSeekMs: 90_000,
+      nowMs: 100,
+      pendingUntilMs,
+    }),
+    false
+  )
+  assert.equal(
+    shouldApplyPlaybackPosition({
+      reportedMs: 90_000 - PLAYBACK_SEEK_SYNC_TOLERANCE_MS,
+      scrubbing: false,
+      pendingSeekMs: 90_000,
+      nowMs: 100,
+      pendingUntilMs,
+    }),
+    true
+  )
+  assert.equal(
+    shouldApplyPlaybackPosition({
+      reportedMs: 12_000,
+      scrubbing: false,
+      pendingSeekMs: 90_000,
+      nowMs: pendingUntilMs,
+      pendingUntilMs,
+    }),
+    true
+  )
+  assert.equal(
+    shouldApplyPlaybackPosition({
+      reportedMs: 12_000,
+      scrubbing: false,
+      pendingSeekMs: null,
+      nowMs: 0,
+      pendingUntilMs: 0,
+    }),
+    true
+  )
 })
 
 test("browsing uses the track embed and Play all suppresses it", () => {

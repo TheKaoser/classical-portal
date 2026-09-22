@@ -34,6 +34,8 @@ declare global {
     pause(): Promise<void>
     nextTrack(): Promise<void>
     previousTrack(): Promise<void>
+    /** Jump to a position in the current track, in milliseconds. */
+    seek(positionMs: number): Promise<void>
     getCurrentState(): Promise<SpotifyPlaybackState | null>
     setVolume(volume: number): Promise<void>
   }
