@@ -614,7 +614,7 @@ export function SpotifyRecordings({
                     </div>
                   </div>
                   {selected && recording.tracks.length > 0 && (
-                    <ul className="divide-y divide-border border-t border-border">
+                    <ul className="border-t border-border">
                       {recording.tracks.map((track) => {
                         const active = playingThis && activeUri === track.uri
                         return (

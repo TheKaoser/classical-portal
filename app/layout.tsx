@@ -40,11 +40,15 @@ export default function RootLayout({
 
   return (
     <html lang="en">
-      <body className={`${inter.variable} ${newsreader.variable} font-sans antialiased`}>
+      <body
+        className={`${inter.variable} ${newsreader.variable} flex min-h-dvh flex-col font-sans antialiased`}
+      >
         <SpotifyPlayerProvider oauthConfigured={oauthConfigured}>
           <SiteHeader />
-          <main className="relative mx-auto max-w-4xl px-4 py-10 sm:px-6">{children}</main>
-          <footer className="relative mx-auto max-w-4xl px-4 pb-16 pt-4 text-sm text-muted-foreground sm:px-6">
+          <main className="relative mx-auto w-full max-w-4xl flex-1 px-4 py-10 sm:px-6">
+            {children}
+          </main>
+          <footer className="relative mx-auto mt-auto w-full max-w-4xl px-4 pb-8 pt-4 text-sm text-muted-foreground sm:px-6">
             Catalog from{" "}
             <a
               className="text-primary underline-offset-2 hover:text-primary-hover hover:underline"
