@@ -11,7 +11,7 @@ export default function HomePage() {
   return (
     <div className="pt-24 text-center sm:pt-32 md:pt-40">
       <section className="space-y-8 sm:space-y-12 md:space-y-16">
-        <h1 className="font-serif text-[clamp(2rem,(100vw-2.5rem)/7.35,3rem)] leading-none tracking-tight sm:text-6xl">
+        <h1 className="font-serif text-[clamp(2rem,(100vw-2.5rem)/6.35,4rem)] leading-none tracking-tight sm:text-7xl">
           <span className="sr-only">Classical Portal</span>
           <span
             className="inline-flex items-baseline justify-center whitespace-nowrap"
