@@ -11,16 +11,16 @@ export default function HomePage() {
   return (
     <div className="pt-24 text-center sm:pt-32 md:pt-40">
       <section className="space-y-12 sm:space-y-16 md:space-y-24">
-        <h1 className="font-serif text-5xl tracking-tight sm:text-6xl">
+        <h1 className="font-serif text-[clamp(2rem,(100vw-2.5rem)/7.35,3rem)] leading-none tracking-tight sm:text-6xl">
           <span className="sr-only">Classical Portal</span>
           <span
-            className="inline-flex items-center justify-center"
+            className="inline-flex items-baseline justify-center whitespace-nowrap"
             aria-hidden="true"
           >
-            {/* Approved mock #2: mark replaces leading C; height ≈ slightly taller than caps. */}
+            {/* Lower curl is the open C. 3.05em matches Newsreader cap height; baseline puts it on the line. */}
             <BrandMark
               decorative
-              className="mr-[0.06em] h-[1.05em] w-auto shrink-0"
+              className="mr-[0.06em] h-[3.05em] w-auto shrink-0"
             />
             <span className="title-gradient">lassical Portal</span>
           </span>
