@@ -89,11 +89,11 @@ function EntryCard({
 export default function HomePage() {
   return (
     <div className="space-y-10">
-      <section className="space-y-3 pt-2">
+      <section className="space-y-3 py-20 text-center sm:py-28">
         <h1 className="font-serif text-5xl tracking-tight text-foreground sm:text-6xl">
           Classical <span className="text-primary">Portal</span>
         </h1>
-        <p className="max-w-xl text-lg text-muted-foreground">
+        <p className="mx-auto max-w-xl text-lg text-muted-foreground">
           Explore classical music your way, listen on Spotify
         </p>
       </section>
