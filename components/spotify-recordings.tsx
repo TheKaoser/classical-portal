@@ -683,22 +683,31 @@ export function SpotifyRecordings({
                             <Play className="h-4 w-4" />
                             {connecting ? "Connecting…" : "Play"}
                           </Button>
-                          {canSave && (
-                            <Button
-                              type="button"
-                              variant="outline"
-                              onClick={() => handleSavePlaylist(recording)}
-                              disabled={playlistBusy || Boolean(savedPlaylist)}
-                              className="cursor-pointer"
-                              title={
-                                savedPlaylist
-                                  ? "Saved as a private Spotify playlist. Playback stays in this page."
-                                  : `Saves a private playlist of these ${movementCount} tracks. It does not start playback.`
-                              }
-                            >
-                              {savingThis ? "Saving playlist…" : savedPlaylist ? "Playlist saved" : "Save playlist"}
-                            </Button>
-                          )}
+                          {canSave &&
+                            (savedPlaylist?.url ? (
+                              <Button variant="outline" asChild className="cursor-pointer">
+                                <a
+                                  href={savedPlaylist.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  title="Opens the private Spotify playlist created for this recording."
+                                >
+                                  Open playlist
+                                  <ExternalLink className="h-4 w-4" />
+                                </a>
+                              </Button>
+                            ) : (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => handleSavePlaylist(recording)}
+                                disabled={playlistBusy}
+                                className="cursor-pointer"
+                                title={`Saves a private playlist of these ${movementCount} tracks. It does not start playback.`}
+                              >
+                                {savingThis ? "Saving playlist…" : "Save playlist"}
+                              </Button>
+                            ))}
                         </>
                       ) : (
                         recording.tracks[0]?.url && (
@@ -718,58 +727,44 @@ export function SpotifyRecordings({
                         const active = playingThis && activeUri === track.uri
                         return (
                           <li key={track.id}>
-                            <div
+                            <button
+                              type="button"
+                              onClick={() => playMovement(recording, track)}
+                              aria-pressed={active}
+                              title="Play this movement"
                               className={cn(
-                                "flex items-center gap-3 py-2.5 pr-3 pl-6 sm:pr-4",
-                                active ? "bg-accent" : ""
+                                "flex w-full cursor-pointer items-center gap-3 py-2.5 pr-3 pl-6 text-left sm:pr-4",
+                                active && "bg-accent"
                               )}
+                              style={{ cursor: "pointer" }}
                             >
-                              <button
-                                type="button"
-                                onClick={() => playMovement(recording, track)}
-                                aria-pressed={active}
-                                title="Play this movement"
-                                className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
-                                style={{ cursor: "pointer" }}
-                              >
-                                {track.image ? (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img
-                                    src={track.image}
-                                    alt=""
-                                    width={40}
-                                    height={40}
-                                    className="h-10 w-10 rounded-lg object-cover"
-                                  />
-                                ) : (
-                                  <div className="h-10 w-10 rounded-lg bg-secondary" />
-                                )}
-                                <span className="min-w-0">
-                                  <span
-                                    className={cn(
-                                      "block truncate text-sm text-foreground",
-                                      active && "font-medium text-primary"
-                                    )}
-                                  >
-                                    {track.name}
-                                  </span>
-                                  <span className="block truncate text-xs text-muted-foreground">
-                                    {track.artists}
-                                    {track.durationMs ? ` · ${formatDuration(track.durationMs)}` : ""}
-                                  </span>
-                                </span>
-                              </button>
-                              <Button variant="outline" size="sm" asChild className="shrink-0 cursor-pointer">
-                                <a
-                                  href={track.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  style={{ cursor: "pointer" }}
+                              {track.image ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={track.image}
+                                  alt=""
+                                  width={40}
+                                  height={40}
+                                  className="h-10 w-10 rounded-lg object-cover"
+                                />
+                              ) : (
+                                <div className="h-10 w-10 rounded-lg bg-secondary" />
+                              )}
+                              <span className="min-w-0">
+                                <span
+                                  className={cn(
+                                    "block truncate text-sm text-foreground",
+                                    active && "font-medium text-primary"
+                                  )}
                                 >
-                                  Open
-                                </a>
-                              </Button>
-                            </div>
+                                  {track.name}
+                                </span>
+                                <span className="block truncate text-xs text-muted-foreground">
+                                  {track.artists}
+                                  {track.durationMs ? ` · ${formatDuration(track.durationMs)}` : ""}
+                                </span>
+                              </span>
+                            </button>
                           </li>
                         )
                       })}
@@ -802,9 +797,9 @@ export function SpotifyRecordings({
         <p className="text-xs leading-relaxed text-muted-foreground">
           Results are movement groups from one album, not the rest of the disc. Play on an album streams that
           recording in order in the bar at the bottom of this page. The movements of the selected album are listed
-          under it; choosing one starts there. Save playlist stores the whole group as a private Spotify playlist.
-          Save track, in the player bar, adds only the current movement to a separate private playlist. Neither save
-          starts playback. {PREMIUM_REQUIRED_MESSAGE}
+          under it; choosing one starts there. Save playlist stores the whole group as a private Spotify playlist;
+          after a successful save, that same control becomes Open playlist. Save track, in the player bar, adds only
+          the current movement to a separate private playlist. Neither save starts playback. {PREMIUM_REQUIRED_MESSAGE}
         </p>
       )}
     </section>
