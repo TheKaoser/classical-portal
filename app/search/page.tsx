@@ -1,5 +1,5 @@
 import type { Metadata } from "next"
-import Link from "next/link"
+import { ListLink } from "@/components/list-link"
 import { PageHeader } from "@/components/page-header"
 import { SearchForm } from "@/components/search-form"
 import { omniSearch } from "@/lib/openopus"
@@ -40,17 +40,14 @@ export default async function SearchPage({
 
       {composers.length > 0 && (
         <section className="mb-8">
-          <h2 className="mb-3 font-serif text-lg tracking-tight text-navy">Composers</h2>
-          <ul className="divide-y divide-border">
+          <h2 className="mb-2 px-3 text-sm font-medium text-primary">Composers</h2>
+          <ul className="space-y-0.5">
             {composers.map((hit) => (
               <li key={hit.composer.id}>
-                <Link
-                  href={`/composers/${hit.composer.id}`}
-                  className="block py-2.5 hover:bg-accent/70 -mx-2 px-2 rounded-md"
-                >
-                  <div className="font-medium text-navy">{hit.composer.complete_name}</div>
+                <ListLink href={`/composers/${hit.composer.id}`} className="block">
+                  <div className="font-medium text-foreground group-hover:text-primary">{hit.composer.complete_name}</div>
                   <div className="text-sm text-muted-foreground">{hit.composer.epoch}</div>
-                </Link>
+                </ListLink>
               </li>
             ))}
           </ul>
@@ -59,20 +56,17 @@ export default async function SearchPage({
 
       {works.length > 0 && (
         <section>
-          <h2 className="mb-3 font-serif text-lg tracking-tight text-navy">Works</h2>
-          <ul className="divide-y divide-border">
+          <h2 className="mb-2 px-3 text-sm font-medium text-primary">Works</h2>
+          <ul className="space-y-0.5">
             {works.map((hit) => (
               <li key={hit.work!.id}>
-                <Link
-                  href={`/works/${hit.work!.id}`}
-                  className="block py-2.5 hover:bg-accent/70 -mx-2 px-2 rounded-md"
-                >
-                  <div className="text-sm text-navy">{hit.work!.title}</div>
+                <ListLink href={`/works/${hit.work!.id}`} className="block">
+                  <div className="text-sm text-foreground group-hover:text-primary">{hit.work!.title}</div>
                   <div className="text-sm text-muted-foreground">
                     {hit.composer.complete_name}
                     {hit.work!.genre ? ` · ${hit.work!.genre}` : ""}
                   </div>
-                </Link>
+                </ListLink>
               </li>
             ))}
           </ul>

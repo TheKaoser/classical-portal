@@ -26,9 +26,18 @@
   --color-navy: var(--navy);
   --color-blue-mid: var(--blue);
   --color-blue-bright: var(--blue-bright);
-  --color-shell-from: var(--shell-from);
-  --color-shell-via: var(--shell-via);
-  --color-shell-to: var(--shell-to);
+  --color-brand-red: var(--brand-red);
+  --color-brand-yellow: var(--brand-yellow);
+  --color-brand-amber: var(--brand-amber);
+  --color-brand-green: var(--brand-green);
+  --color-surface-blue: var(--surface-blue);
+  --color-surface-red: var(--surface-red);
+  --color-surface-yellow: var(--surface-yellow);
+  --color-surface-green: var(--surface-green);
+  --shadow-card: 0 1px 2px rgb(60 64 67 / 0.08), 0 1px 3px rgb(60 64 67 / 0.06);
+  --shadow-raised: 0 1px 3px rgb(60 64 67 / 0.12), 0 4px 14px rgb(60 64 67 / 0.1);
+  --shadow-float: 0 8px 28px rgb(60 64 67 / 0.16);
+  --shadow-search: 0 1px 6px rgb(32 33 36 / 0.28);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -39,54 +48,35 @@
     text-wrap: balance;
   }
 
-  .text-brand-gradient {
-    background-image: linear-gradient(
-      to right,
-      var(--navy),
-      var(--blue),
-      var(--blue-bright)
-    );
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-  }
-
   .entry-card-periods {
-    background-color: #c5daf4;
-    background-image:
-      radial-gradient(ellipse 75% 80% at 0% 0%, color-mix(in srgb, var(--navy) 22%, white), transparent 58%),
-      radial-gradient(ellipse 70% 75% at 100% 100%, color-mix(in srgb, var(--blue) 42%, white), transparent 62%),
-      linear-gradient(148deg, #f4f8fd 0%, #d3e4f8 46%, #b7d2f2 100%);
+    background-color: var(--surface-blue);
   }
 
   .entry-card-genres {
-    background-color: #c9defe;
-    background-image:
-      radial-gradient(ellipse 72% 68% at 100% 0%, color-mix(in srgb, var(--blue-bright) 38%, white), transparent 58%),
-      radial-gradient(ellipse 80% 70% at 0% 100%, color-mix(in srgb, var(--blue) 34%, white), transparent 60%),
-      linear-gradient(162deg, #f5f9ff 0%, #d4e6ff 48%, #bdd6fb 100%);
+    background-color: var(--surface-green);
   }
 
   .entry-card-composers {
-    background-color: #c7d9f3;
-    background-image:
-      radial-gradient(ellipse 42% 140% at 0% 50%, color-mix(in srgb, var(--navy) 18%, white), transparent 70%),
-      radial-gradient(ellipse 48% 140% at 100% 50%, color-mix(in srgb, var(--blue-bright) 32%, white), transparent 72%),
-      linear-gradient(100deg, #e7f0fa 0%, #d5e5f7 42%, #c5daf6 100%);
+    background-color: var(--surface-yellow);
   }
 }
 
 :root {
-  /* Pre-pivot palette */
-  --navy: #29323e;
-  --blue: #336fbd;
-  --blue-bright: #1171f0;
-  --ink: #3a4657;
-  --shell-from: #f8fafc; /* slate-50 */
-  --shell-via: #eff6ff; /* blue-50 */
-  --shell-to: #f1f5f9; /* slate-100 */
+  /* Google-like ink and brand accents. Names stay stable for existing utilities. */
+  --navy: #202124;
+  --blue: #1a73e8;
+  --blue-bright: #1a73e8;
+  --ink: #5f6368;
+  --brand-red: #ea4335;
+  --brand-yellow: #f9ab00;
+  --brand-amber: #e37400;
+  --brand-green: #1e8e3e;
+  --surface-blue: #e8f0fe;
+  --surface-red: #fce8e6;
+  --surface-yellow: #fef7e0;
+  --surface-green: #e6f4ea;
 
-  --background: var(--shell-from);
+  --background: #ffffff;
   --foreground: var(--navy);
   --card: #ffffff;
   --card-foreground: var(--navy);
@@ -94,19 +84,19 @@
   --popover-foreground: var(--navy);
   --primary: var(--blue);
   --primary-foreground: #ffffff;
-  --primary-hover: var(--blue-bright);
-  --secondary: #e4edf8;
+  --primary-hover: #174ea6;
+  --secondary: #f1f3f4;
   --secondary-foreground: var(--navy);
-  --muted: #eef4fb;
+  --muted: #f8f9fa;
   --muted-foreground: var(--ink);
-  --accent: #e8f1fc;
-  --accent-foreground: var(--navy);
-  --destructive: hsl(0 84.2% 60.2%);
-  --destructive-foreground: hsl(0 0% 98%);
-  --border: #d3deec;
-  --input: #d3deec;
-  --ring: var(--blue-bright);
-  --radius: 0.5rem;
+  --accent: var(--surface-blue);
+  --accent-foreground: #174ea6;
+  --destructive: #d93025;
+  --destructive-foreground: #ffffff;
+  --border: #dadce0;
+  --input: #dadce0;
+  --ring: var(--blue);
+  --radius: 1rem;
 }
 
 @layer base {
@@ -116,47 +106,12 @@
 
   body {
     background-color: var(--background);
-    /* Center stays pale; navy / blue / bright-blue wash the left and right edges. */
-    background-image:
-      linear-gradient(
-        to right,
-        color-mix(in srgb, var(--navy) 18%, white) 0%,
-        color-mix(in srgb, var(--blue) 12%, var(--shell-from)) 11%,
-        var(--shell-from) 22%,
-        var(--shell-via) 50%,
-        var(--shell-from) 78%,
-        color-mix(in srgb, var(--blue-bright) 14%, var(--shell-from)) 89%,
-        color-mix(in srgb, var(--blue) 16%, white) 100%
-      );
-    background-attachment: fixed;
     color: var(--foreground);
     min-height: 100dvh;
   }
 
-  body::before,
-  body::after {
-    content: "";
-    position: fixed;
-    top: 0;
-    bottom: 0;
-    width: 4px;
-    z-index: 40;
-    pointer-events: none;
-    opacity: 0.5;
-  }
-
-  body::before {
-    left: 0;
-    background: linear-gradient(180deg, var(--navy), var(--blue), var(--blue-bright));
-  }
-
-  body::after {
-    right: 0;
-    background: linear-gradient(180deg, var(--blue-bright), var(--blue), var(--navy));
-  }
-
   ::selection {
-    background-color: color-mix(in srgb, var(--blue) 28%, transparent);
+    background-color: color-mix(in srgb, var(--blue) 22%, white);
     color: var(--navy);
   }
 }

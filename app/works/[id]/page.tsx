@@ -58,16 +58,23 @@ export default async function WorkPage({
         />
         <div className="flex flex-wrap gap-2">
           {work.genre ? (
-            <Badge variant="outline" asChild>
+            <Badge variant="outline" className="border-transparent bg-surface-blue text-primary" asChild>
               <Link href={genreHref(work.genre)}>{work.genre}</Link>
             </Badge>
           ) : null}
-          {composer.epoch && <Badge variant="secondary">{composer.epoch}</Badge>}
+          {composer.epoch && (
+            <Badge variant="secondary" className="bg-surface-green text-brand-green">
+              {composer.epoch}
+            </Badge>
+          )}
         </div>
         {parts.length > 0 && (
-          <ol className="mt-4 list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
-            {parts.map((part) => (
-              <li key={part}>{part}</li>
+          <ol className="mt-6 space-y-1 text-sm text-muted-foreground">
+            {parts.map((part, index) => (
+              <li key={part} className="flex gap-3">
+                <span className="w-5 shrink-0 text-right tabular-nums text-primary">{index + 1}</span>
+                <span>{part}</span>
+              </li>
             ))}
           </ol>
         )}
