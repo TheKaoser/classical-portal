@@ -17,10 +17,10 @@ export default function HomePage() {
             className="inline-flex items-baseline justify-center whitespace-nowrap"
             aria-hidden="true"
           >
-            {/* Lower curl is the open C. Half of the 3.05em cap-height match; a small translate drops the bowl just under the wordmark baseline. */}
+            {/* Lower curl is the open C. Half of the 3.05em cap-height match; a deeper translate sits the bowl under the wordmark baseline, with a hairline gap before “lassical”. */}
             <BrandMark
               decorative
-              className="mr-[0.06em] h-[1.525em] w-auto shrink-0 translate-y-[0.06em]"
+              className="mr-[0.02em] h-[1.525em] w-auto shrink-0 translate-y-[0.11em]"
             />
             <span className="title-gradient">lassical Portal</span>
           </span>
