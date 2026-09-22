@@ -571,7 +571,7 @@ export function SpotifyWebPlayer({
   const paused = phase !== "playing"
   const trackSaved = Boolean(trackUri && savedTrackUris.includes(trackUri))
   const title = trackName || (phase === "connecting" ? "Connecting the player…" : "Classical Portal")
-  const movementLabel = movement ? `Movement ${movement.index + 1} of ${movement.total}` : "In this page"
+  const movementLabel = movement ? `Movement ${movement.index + 1} of ${movement.total}` : "Now playing"
 
   return (
     <div
@@ -646,7 +646,7 @@ export function SpotifyWebPlayer({
         </Button>
       </div>
       <p className="mx-auto max-w-4xl border-t border-border px-3 py-2 text-xs text-muted-foreground sm:px-4">
-        {saveTrackError ? saveTrackError : `Playing in this page. ${PREMIUM_REQUIRED_MESSAGE}`}
+        {saveTrackError ? saveTrackError : `Playing across pages. ${PREMIUM_REQUIRED_MESSAGE}`}
       </p>
     </div>
   )
