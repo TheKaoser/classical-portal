@@ -13,15 +13,16 @@ Browser
   │     ├─ Open Opus REST API (no auth) — periods, composers, works, search
   │     └─ Spotify Web API
   │           ├─ Client Credentials (server-only) — search tracks, expand albums
-  │           └─ Authorization Code + PKCE (optional) — private playlist of a movement group
+  │           └─ Authorization Code + PKCE (optional) — Web Playback SDK for Play all
   │
   └─ Play
-        ├─ Spotify embed of one track, or of a private playlist of the whole movement group
+        ├─ Web Playback SDK — Play all streams the movement group in order (Premium)
+        ├─ Spotify embed of one track, for browsing without in-app playback
         ├─ 30s `preview_url` audio when Spotify returns one (no Premium)
         └─ “Open in Spotify” / search deep link (Free and Premium)
 ```
 
-Open Opus is unauthenticated. Spotify’s **client secret never leaves the server**. The Web Playback SDK is not used: it requires user OAuth and **Spotify Premium**. Embeds and deep links work without that.
+Open Opus is unauthenticated. Spotify’s **client secret never leaves the server**. Play all uses the Web Playback SDK, which requires user OAuth and **Spotify Premium**. Embeds and deep links still work without that login.
 
 Open Opus work lists have no composition date. Classical Portal fills that in from [Wikidata](https://query.wikidata.org): English labels and aliases of works whose composer (P86) matches, using the inception date (P571) as the composition year. A year is shown only when the catalogue number (opus, BWV, K., Hoboken, and the same style of identifier on both sides), or otherwise a unique title, matches exactly one year. If Wikidata has no unambiguous year, the row shows an em dash — the app does not guess. The composer **All** list is chronological (undated titles A–Z at the end). Popular keeps popularity order. There is no Essential chip. Resolved indexes are stored in `data/composition-dates.json` (refresh with `node --experimental-strip-types scripts/refresh-composition-dates.ts`); composers missing from that file are looked up live and cached.
 
@@ -70,14 +71,16 @@ Create an app at [developer.spotify.com/dashboard](https://developer.spotify.com
 
 **Search / matching** uses Client Credentials and does not need a redirect URI.
 
-**Play all** uses Authorization Code + PKCE. Scopes are `playlist-modify-private` and `playlist-modify-public`. No other scopes are requested. Playback does not use the queue API (`user-modify-playback-state`): that needs an active Premium device, while a playlist embed plays the movements in order without one.
+**Play all** uses Authorization Code + PKCE and the [Web Playback SDK](https://developer.spotify.com/documentation/web-playback-sdk). Scopes are `streaming`, `user-modify-playback-state`, `user-read-private`, and `user-read-email`. Playlist-modify scopes are not requested. The browser loads the SDK, connects a player named Classical Portal, and starts the matched tracks with `PUT /v1/me/player/play?device_id=…` and `{ uris, offset: { position: 0 } }`. No temporary playlist is created.
 
-Playlists are created **private** (`public: false`). Spotify has no temporary-playlist API, so each group is a private playlist in the listener’s library, named like `Classical Portal · Brahms Piano Concerto no. 2`. The embed can play that private playlist when the browser is logged into the same Spotify account. The same track list is reused from this browser instead of creating a duplicate. Register every environment’s callback exactly:
+**Spotify Premium** is required for that in-app player. Free (`free` / `open`) accounts get a clear message and can still use the track embed, the 30-second preview, and “Open in Spotify”.
 
+In the Spotify Dashboard, Redirect URIs must include exactly:
+
+- Production: `https://classical-portal.vercel.app/api/spotify/callback`
 - Local: `http://127.0.0.1:3000/api/spotify/callback` (Spotify rejects `localhost`)
-- Production / preview: `https://<your-domain>/api/spotify/callback`
 
-Set `SPOTIFY_REDIRECT_URI` to the URI for that environment. If it is unset, the app falls back to `{origin}/api/spotify/callback`, which still has to be allow-listed in the Dashboard.
+Set `SPOTIFY_REDIRECT_URI` to the URI for that environment. If it is unset, the app falls back to `{origin}/api/spotify/callback`, which still has to be allow-listed in the Dashboard. Listeners who signed in before these scopes were requested need to reconnect once.
 
 Without `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` the work page still offers **Search on Spotify**, which opens Spotify’s own search for the composer + work.
 
@@ -91,20 +94,21 @@ Without `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` the work page still offers
 - `/composers/[id]` — works, filterable by popular / genre
 - `/works/[id]` — work detail and Spotify track matches
 - `/search?q=` — Open Opus omnisearch (the search box also typeaheads via `/api/search`)
-- `/api/spotify/login` — start Spotify login (Play all)
+- `/api/spotify/login` — start Spotify login (Play all). `reconnect=1` shows the consent screen again
 - `/api/spotify/callback` — OAuth redirect target
-- `/api/spotify/session` — whether the visitor is connected
-- `/api/spotify/playlist` — create a private playlist of two or more matched tracks, in order
+- `/api/spotify/session` — whether the visitor is connected, and whether the account is Premium
+- `/api/spotify/token` — access token for the Web Playback SDK (`getOAuthToken`)
+- `/api/spotify/play` — `PUT /v1/me/player/play` for the SDK device, with the movement track URIs
 - `/api/spotify/logout` — clear Spotify cookies
 
 Supabase and YouTube are no longer used. Old `/admin`, `/blog`, and `/piece/:id` URLs redirect home.
 
 ## Playback notes
 
-- **Play all** — for a group of two or more movements. One click creates a private playlist of those tracks only, in album order, and the embed switches to that playlist so Spotify plays them back to back. If Spotify is not connected yet, the same click signs the listener in and then finishes the playlist when you return. The next visit embeds that playlist without creating another one. A single movement still uses the track embed. Choosing one row plays only that movement.
+- **Play all** — for a group of two or more movements. One click connects the Web Playback SDK and plays those track URIs in order on that device. If Spotify is not connected yet, the same click signs the listener in and starts playback when they return. Choosing one row stops the in-app player and shows that track’s embed. A single matched track stays on the embed.
 - **Open in Spotify** — works for Free and Premium; each listed item is a single track.
-- **Embed** — ~30s preview unless the visitor is logged into Spotify in that browser; full playback often needs Premium.
-- **Web Playback SDK** — not implemented. It needs Authorization Code plus the `streaming` scope, and **Premium is required**. Queueing via `/me/player/queue` is not implemented either.
+- **Embed** — fallback for browsing one movement. ~30s preview unless the visitor is logged into Spotify in that browser; full playback in the embed often needs Premium.
+- **Web Playback SDK** — used for Play all. It needs the `streaming` scope and **Spotify Premium**. Free accounts see that Premium is required and are not offered a temporary playlist.
 
 ## Matching quality checks
 
