@@ -17,10 +17,10 @@ export default function HomePage() {
             className="inline-flex items-baseline justify-center whitespace-nowrap"
             aria-hidden="true"
           >
-            {/* Lower curl is the open C. 3.05em matches Newsreader cap height; baseline puts it on the line. */}
+            {/* Lower curl is the open C. Half of the 3.05em cap-height match; baseline keeps the bowl on the line. */}
             <BrandMark
               decorative
-              className="mr-[0.06em] h-[3.05em] w-auto shrink-0"
+              className="mr-[0.06em] h-[1.525em] w-auto shrink-0"
             />
             <span className="title-gradient">lassical Portal</span>
           </span>
