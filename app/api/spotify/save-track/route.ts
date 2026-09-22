@@ -11,7 +11,7 @@ export const runtime = "nodejs"
 
 /**
  * Save the current movement on a private "Saved tracks" playlist.
- * Uses playlist-modify-private, which Play all / Save playlist already request.
+ * Uses the same playlist write path as Save playlist (`POST /me/playlists` and `POST /playlists/{id}/items`).
  */
 export async function POST(request: Request) {
   const session = await getSpotifyUserSession()
@@ -41,8 +41,7 @@ export async function POST(request: Request) {
       })
     }
     if (added.status !== 404) {
-      const code = added.status === 403 ? "insufficient_scope" : "save_failed"
-      return NextResponse.json({ error: added.error, code }, { status: added.status })
+      return NextResponse.json({ error: added.error, code: added.code }, { status: added.status })
     }
   }
 
@@ -52,8 +51,7 @@ export async function POST(request: Request) {
     trackUris: [parsed.uri],
   })
   if ("error" in created) {
-    const code = created.status === 403 ? "insufficient_scope" : created.status === 401 ? "not_connected" : "save_failed"
-    return NextResponse.json({ error: created.error, code }, { status: created.status })
+    return NextResponse.json({ error: created.error, code: created.code }, { status: created.status })
   }
   return NextResponse.json({ ...created, created: true })
 }

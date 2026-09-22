@@ -15,12 +15,14 @@ import {
   dedupePlaylistCreate,
   nextPlaybackAction,
   parsePendingPlaylist,
+  PLAYLIST_RECONNECT_MESSAGE,
   playlistCacheKey,
   rememberPlaylistCache,
   sanitizePlaylistCache,
   type CachedPlaylist,
   type PendingPlaylist,
   type PlaylistCreateResult,
+  type PlaylistWriteCode,
 } from "@/lib/spotify-playlist"
 
 const PENDING_PLAYLIST_KEY = "cp_pending_playlist"
@@ -98,14 +100,32 @@ async function postPlaylist(pending: PendingPlaylist): Promise<PlaylistCreateRes
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: pending.name, uris: pending.uris }),
     })
-    const data = (await res.json().catch(() => ({}))) as { id?: string; url?: string; error?: string }
-    if (res.status === 401) {
+    const data = (await res.json().catch(() => ({}))) as {
+      id?: string
+      url?: string
+      error?: string
+      code?: PlaylistWriteCode
+    }
+    if (res.status === 401 || data.code === "not_connected") {
       sessionStorage.setItem(PENDING_PLAYLIST_KEY, JSON.stringify(pending))
       window.location.href = loginHref(false)
-      return { ok: false, error: "Not connected to Spotify", status: 401 }
+      return { ok: false, error: data.error || "Not connected to Spotify", status: 401, code: "not_connected" }
+    }
+    if (data.code === "insufficient_scope") {
+      return {
+        ok: false,
+        error: data.error || PLAYLIST_RECONNECT_MESSAGE,
+        status: 403,
+        code: "insufficient_scope",
+      }
     }
     if (!res.ok || !data.id) {
-      return { ok: false, error: data.error || "Could not create the playlist.", status: res.status }
+      return {
+        ok: false,
+        error: data.error || "Could not create the playlist.",
+        status: res.status,
+        code: "save_failed",
+      }
     }
     return {
       ok: true,
@@ -237,11 +257,27 @@ export function SpotifyRecordings({
       if (!mountedRef.current) return
       setPlaylistBusy(false)
       if (result.ok) {
+        try {
+          sessionStorage.removeItem(PENDING_PLAYLIST_KEY)
+        } catch {
+          // Resume storage is optional.
+        }
         storePlaylist(pending.recordingId, userId, pending.uris, result.playlist)
         return
       }
       setFailedKey(key)
       if (result.status === 401) return
+      if (result.code === "insufficient_scope") {
+        try {
+          sessionStorage.setItem(PENDING_PLAYLIST_KEY, JSON.stringify(pending))
+        } catch {
+          // The reconnect button still explains what to do if resume storage is blocked.
+        }
+        setPlaylistError(null)
+        setNotice(result.error || PLAYLIST_RECONNECT_MESSAGE)
+        setNoticeAction("reconnect")
+        return
+      }
       setPlaylistError(result.error)
     })
   }
@@ -449,8 +485,8 @@ export function SpotifyRecordings({
         setNoticeAction("login")
         return { ok: false, message }
       }
-      if (res.status === 403 || data.code === "insufficient_scope") {
-        const message = "Reconnect Spotify to allow saving tracks."
+      if (data.code === "insufficient_scope") {
+        const message = data.error || PLAYLIST_RECONNECT_MESSAGE
         setNotice(message)
         setNoticeAction("reconnect")
         return { ok: false, message }

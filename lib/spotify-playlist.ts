@@ -3,6 +3,11 @@ export const PLAYLIST_NAME_PREFIX = "Classical Portal"
 /** Private playlist of individually saved movements. Separate from a work’s Save playlist. */
 export const SAVED_TRACKS_PLAYLIST_NAME = "Classical Portal · Saved tracks"
 
+/** Shown when the Spotify token was granted before playlist-modify scopes. */
+export const PLAYLIST_RECONNECT_MESSAGE = "Reconnect Spotify to allow saving playlists."
+
+export type PlaylistWriteCode = "insufficient_scope" | "not_connected" | "save_failed"
+
 const TRACK_URI = /^spotify:track:[A-Za-z0-9]+$/
 const PLAYLIST_ID = /^[A-Za-z0-9]{10,40}$/
 
@@ -19,7 +24,7 @@ export type PendingPlaylist = {
 
 export type PlaylistCreateResult =
   | { ok: true; playlist: CachedPlaylist }
-  | { ok: false; error: string; status: number }
+  | { ok: false; error: string; status: number; code?: PlaylistWriteCode }
 
 export type PlaybackEmbed =
   | { kind: "playlist"; id: string; title: string; height: number }
@@ -85,6 +90,66 @@ export function spotifyPlaylistCreateBody(input: { name: string; description?: s
     description: (input.description || "Created by Classical Portal").trim().slice(0, 300),
     public: false,
   }
+}
+
+/**
+ * Create Playlist for the current user.
+ * `POST /users/{id}/playlists` returns 403 for Development Mode apps after the
+ * February 2026 Web API migration, even when the token has playlist scopes.
+ */
+export function spotifyCreatePlaylistUrl(): string {
+  return "https://api.spotify.com/v1/me/playlists"
+}
+
+/**
+ * Add Items to Playlist. `POST /playlists/{id}/tracks` is the removed name of
+ * this endpoint and also returns 403 in Development Mode.
+ */
+export function spotifyAddPlaylistItemsUrl(playlistId: string): string | null {
+  if (!PLAYLIST_ID.test(playlistId)) return null
+  return `https://api.spotify.com/v1/playlists/${playlistId}/items`
+}
+
+/** Private playlists require `playlist-modify-private`. Public-only grants cannot set `public: false`. */
+export function tokenCanSavePrivatePlaylist(scope: string | null | undefined): boolean {
+  if (!scope) return false
+  return scope.split(/\s+/).includes("playlist-modify-private")
+}
+
+function spotifyErrorMessage(payload: unknown): string {
+  if (typeof payload === "string") return payload.trim()
+  if (!payload || typeof payload !== "object") return ""
+  const error = "error" in payload ? (payload as { error?: unknown }).error : undefined
+  if (typeof error === "string") return error.trim()
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message
+    if (typeof message === "string") return message.trim()
+  }
+  if ("message" in payload && typeof (payload as { message?: unknown }).message === "string") {
+    return (payload as { message: string }).message.trim()
+  }
+  return ""
+}
+
+/**
+ * Map a Spotify playlist write failure to a body the UI can show.
+ * Insufficient scope asks the listener to reconnect; other failures keep Spotify's message.
+ */
+export function classifySpotifyPlaylistWriteError(
+  status: number,
+  payload: unknown,
+  fallback: string
+): { code: PlaylistWriteCode; message: string; status: number } {
+  const spotifyMessage = spotifyErrorMessage(payload).replace(/\s+/g, " ").slice(0, 180)
+  if (status === 401 || /invalid access token|token expired/i.test(spotifyMessage)) {
+    return { code: "not_connected", message: "Spotify login expired. Sign in again.", status: 401 }
+  }
+  if (/scope/i.test(spotifyMessage) || /insufficient client/i.test(spotifyMessage)) {
+    return { code: "insufficient_scope", message: PLAYLIST_RECONNECT_MESSAGE, status: 403 }
+  }
+  const http = status >= 400 && status < 600 ? status : 502
+  const message = spotifyMessage ? `${fallback}. Spotify said: ${spotifyMessage}.` : fallback
+  return { code: "save_failed", message, status: http }
 }
 
 export function playlistCacheKey(userId: string, uris: string[]): string {
