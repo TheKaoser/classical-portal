@@ -22,8 +22,9 @@ export async function GET(request: Request) {
   const redirectUri = spotifyRedirectUri(request.url)
   const state = createOAuthState()
   const { verifier, challenge } = createPkce()
+  const showDialog = url.searchParams.get("reconnect") === "1"
 
-  const response = NextResponse.redirect(authorizeUrl({ redirectUri, state, challenge }))
+  const response = NextResponse.redirect(authorizeUrl({ redirectUri, state, challenge, showDialog }))
   applyAuthCookies(response, { state, verifier, returnTo })
   return response
 }

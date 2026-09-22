@@ -1,71 +1,47 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ExternalLink, LogOut, Play } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { loadSpotifyPlaybackSdk, SpotifyWebPlayer, type PlaybackIssue } from "@/components/spotify-web-player"
 import { formatDuration, type SpotifyRecording, type SpotifyTrackMatch } from "@/lib/spotify"
 import {
-  choosePlaybackEmbed,
-  dedupePlaylistCreate,
-  nextPlaybackAction,
+  chooseTrackEmbed,
   orderedTrackUris,
-  parsePendingPlaylist,
-  playlistCacheKey,
-  rememberPlaylistCache,
-  sanitizePlaylistCache,
-  type CachedPlaylist,
-  type PendingPlaylist,
-  type PlaylistCreateResult,
-} from "@/lib/spotify-playlist"
+  parsePendingPlayback,
+  PREMIUM_REQUIRED_MESSAGE,
+  type PendingPlayback,
+} from "@/lib/spotify-playback"
 
-const PENDING_KEY = "cp_pending_playlist"
-const CACHE_KEY = "cp_playlist_cache"
+const PENDING_KEY = "cp_pending_playback"
 
 type Session = {
   connected: boolean
   displayName: string | null
   userId: string | null
+  product: string | null
+  premium: boolean | null
 }
 
-function readPlaylistCache(): Record<string, CachedPlaylist> {
-  try {
-    return sanitizePlaylistCache(JSON.parse(localStorage.getItem(CACHE_KEY) || "{}"))
-  } catch {
-    return {}
-  }
+type PlayRequest = {
+  recordingId: string
+  uris: string[]
+  generation: number
 }
 
-function writePlaylistCache(cache: Record<string, CachedPlaylist>) {
-  localStorage.setItem(CACHE_KEY, JSON.stringify(cache))
+const EMPTY_SESSION: Session = {
+  connected: false,
+  displayName: null,
+  userId: null,
+  product: null,
+  premium: null,
 }
 
-async function postPlaylist(pending: PendingPlaylist): Promise<PlaylistCreateResult> {
-  try {
-    const res = await fetch("/api/spotify/playlist", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: pending.name, uris: pending.uris }),
-    })
-    const data = (await res.json().catch(() => ({}))) as { id?: string; url?: string; error?: string }
-    if (res.status === 401) {
-      sessionStorage.setItem(PENDING_KEY, JSON.stringify(pending))
-      const returnTo = `${window.location.pathname}${window.location.search}`
-      window.location.href = `/api/spotify/login?returnTo=${encodeURIComponent(returnTo)}`
-      return { ok: false, error: "Not connected to Spotify", status: 401 }
-    }
-    if (!res.ok || !data.id) {
-      return { ok: false, error: data.error || "Could not create the playlist.", status: res.status }
-    }
-    return {
-      ok: true,
-      playlist: {
-        id: data.id,
-        url: data.url ?? `https://open.spotify.com/playlist/${data.id}`,
-      },
-    }
-  } catch {
-    return { ok: false, error: "Could not create the playlist.", status: 0 }
-  }
+function loginHref(reconnect: boolean) {
+  const returnTo = `${window.location.pathname}${window.location.search}`
+  const params = new URLSearchParams({ returnTo })
+  if (reconnect) params.set("reconnect", "1")
+  return `/api/spotify/login?${params.toString()}`
 }
 
 export function SpotifyRecordings({
@@ -73,13 +49,11 @@ export function SpotifyRecordings({
   oauthConfigured,
   searchUrl,
   recordings,
-  playlistName,
 }: {
   configured: boolean
   oauthConfigured: boolean
   searchUrl: string
   recordings: SpotifyRecording[]
-  playlistName: string
 }) {
   const [selectedRecordingId, setSelectedRecordingId] = useState(recordings[0]?.id ?? "")
   const selectedRecording =
@@ -92,23 +66,41 @@ export function SpotifyRecordings({
     null
 
   const [preferSingleTrack, setPreferSingleTrack] = useState(false)
-  const [playlists, setPlaylists] = useState<Record<string, CachedPlaylist>>({})
-  const [playlistError, setPlaylistError] = useState<string | null>(null)
-  const [playlistBusy, setPlaylistBusy] = useState(false)
-  const [failedKey, setFailedKey] = useState<string | null>(null)
-  const [session, setSession] = useState<Session>({ connected: false, displayName: null, userId: null })
-  const mountedRef = useRef(true)
+  const [session, setSession] = useState<Session>(EMPTY_SESSION)
+  const [playRequest, setPlayRequest] = useState<PlayRequest | null>(null)
+  const [playerPhase, setPlayerPhase] = useState<"connecting" | "playing" | "paused" | "idle">("idle")
+  const [activeUri, setActiveUri] = useState<string | null>(null)
+  const [premiumBlocked, setPremiumBlocked] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [noticeAction, setNoticeAction] = useState<null | "login" | "reconnect">(null)
+  const resumedRef = useRef(false)
+  const generationRef = useRef(0)
+  const armPlaybackRef = useRef<(() => void) | null>(null)
+  const registerArm = useCallback((arm: () => void) => {
+    armPlaybackRef.current = arm
+  }, [])
 
   const movementCount = selectedRecording?.tracks.length ?? 0
-  const playlistForSelection = selectedRecording ? playlists[selectedRecording.id] ?? null : null
-  const playingAll = movementCount > 1 && Boolean(playlistForSelection) && !preferSingleTrack
+  const playingThisGroup =
+    Boolean(playRequest) &&
+    playRequest?.recordingId === selectedRecording?.id &&
+    !preferSingleTrack
 
   useEffect(() => {
-    mountedRef.current = true
-    return () => {
-      mountedRef.current = false
+    try {
+      localStorage.removeItem("cp_playlist_cache")
+      sessionStorage.removeItem("cp_pending_playlist")
+    } catch {
+      // Private mode can block storage. Playback does not depend on it.
     }
   }, [])
+
+  useEffect(() => {
+    if (!oauthConfigured) return
+    void loadSpotifyPlaybackSdk().catch(() => {
+      // Play all explains this if the browser cannot load the SDK.
+    })
+  }, [oauthConfigured])
 
   useEffect(() => {
     if (!oauthConfigured) return
@@ -121,10 +113,12 @@ export function SpotifyRecordings({
           connected: Boolean(data.connected),
           displayName: data.displayName ?? null,
           userId: data.userId ?? null,
+          product: data.product ?? null,
+          premium: typeof data.premium === "boolean" ? data.premium : null,
         })
       })
       .catch(() => {
-        if (!cancelled) setSession({ connected: false, displayName: null, userId: null })
+        if (!cancelled) setSession(EMPTY_SESSION)
       })
     return () => {
       cancelled = true
@@ -138,143 +132,118 @@ export function SpotifyRecordings({
     }
   }, [selectedRecording, selectedTrackId])
 
-  function storePlaylist(recordingId: string, userId: string | null, uris: string[], playlist: CachedPlaylist) {
-    setPlaylists((current) => {
-      if (current[recordingId]?.id === playlist.id) return current
-      return { ...current, [recordingId]: playlist }
-    })
-    if (!userId) return
-    const key = playlistCacheKey(userId, uris)
-    writePlaylistCache(rememberPlaylistCache(readPlaylistCache(), key, playlist))
-  }
-
-  function startPlaylist(pending: PendingPlaylist, userId: string | null) {
-    const key = playlistCacheKey(userId || "session", pending.uris)
-    setPlaylistBusy(true)
-    setPlaylistError(null)
-    setFailedKey((current) => (current === key ? null : current))
-    return dedupePlaylistCreate(key, () => postPlaylist(pending)).then((result) => {
-      if (!mountedRef.current) return
-      setPlaylistBusy(false)
-      if (result.ok) {
-        storePlaylist(pending.recordingId, userId, pending.uris, result.playlist)
-        return
-      }
-      setFailedKey(key)
-      if (result.status === 401) return
-      setPlaylistError(result.error)
-    })
-  }
-
   useEffect(() => {
-    if (!oauthConfigured || !selectedRecording) return
-    const uris = orderedTrackUris(selectedRecording.tracks)
-    if (uris.length < 2) return
-
-    const recordingId = selectedRecording.id
-    const userId = session.userId
-    const connected = Boolean(session.connected && userId)
-    const cached = userId ? readPlaylistCache()[playlistCacheKey(userId, uris)] ?? null : null
-    const hasPlaylist = Boolean(playlists[recordingId]?.id)
-
-    const rawPending = sessionStorage.getItem(PENDING_KEY)
-    if (rawPending && connected && userId) {
-      const pending = parsePendingPlaylist(rawPending)
-      if (!pending) {
-        sessionStorage.removeItem(PENDING_KEY)
-      } else if (
-        recordings.some((recording) => recording.id === pending.recordingId) &&
-        pending.recordingId !== recordingId
-      ) {
-        setPreferSingleTrack(false)
-        setSelectedRecordingId(pending.recordingId)
-        return
-      } else if (pending.recordingId === recordingId) {
-        const pendingKey = playlistCacheKey(userId, pending.uris)
-        if (!hasPlaylist && !cached && (playlistBusy || failedKey === pendingKey)) return
-        sessionStorage.removeItem(PENDING_KEY)
-        if (!hasPlaylist && !cached) {
-          setPreferSingleTrack(false)
-          void startPlaylist(pending, userId)
-          return
-        }
-      } else {
-        sessionStorage.removeItem(PENDING_KEY)
-      }
+    if (!oauthConfigured || !session.connected || resumedRef.current) return
+    let pending: PendingPlayback | null = null
+    try {
+      const raw = sessionStorage.getItem(PENDING_KEY)
+      if (!raw) return
+      pending = parsePendingPlayback(raw)
+      sessionStorage.removeItem(PENDING_KEY)
+    } catch {
+      return
     }
-
-    const action = nextPlaybackAction({
-      trackCount: uris.length,
-      hasPlaylist,
-      cached,
-    })
-
-    if (action.type === "embed-cached") {
-      setPlaylists((current) => {
-        if (current[recordingId]?.id === action.id) return current
-        return { ...current, [recordingId]: { id: action.id, url: action.url } }
-      })
+    if (!pending || !recordings.some((recording) => recording.id === pending?.recordingId)) return
+    resumedRef.current = true
+    setPreferSingleTrack(false)
+    setSelectedRecordingId(pending.recordingId)
+    if (session.premium === false) {
+      setPremiumBlocked(true)
+      return
     }
-    // startPlaylist is recreated each render and closes over stable setters.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    oauthConfigured,
-    selectedRecording,
-    session.connected,
-    session.userId,
-    preferSingleTrack,
-    playlists,
-    playlistBusy,
-    failedKey,
-    recordings,
-  ])
+    generationRef.current += 1
+    setPlayRequest({ recordingId: pending.recordingId, uris: pending.uris, generation: generationRef.current })
+  }, [oauthConfigured, recordings, session.connected, session.premium])
+
+  function beginPlayback(recordingId: string, uris: string[]) {
+    setPremiumBlocked(false)
+    setNotice(null)
+    setNoticeAction(null)
+    setPreferSingleTrack(false)
+    generationRef.current += 1
+    setPlayerPhase("connecting")
+    setPlayRequest({ recordingId, uris, generation: generationRef.current })
+  }
 
   function handlePlayAll() {
     if (!selectedRecording) return
     const uris = orderedTrackUris(selectedRecording.tracks)
     if (uris.length < 2) return
     setPreferSingleTrack(false)
-    if (playlists[selectedRecording.id]?.id) return
-    if (session.userId) {
-      const cached = readPlaylistCache()[playlistCacheKey(session.userId, uris)]
-      if (cached) {
-        storePlaylist(selectedRecording.id, session.userId, uris, cached)
-        setPlaylistError(null)
+    if (!session.connected) {
+      const pending: PendingPlayback = { recordingId: selectedRecording.id, uris }
+      try {
+        sessionStorage.setItem(PENDING_KEY, JSON.stringify(pending))
+      } catch {
+        setNotice("Spotify login needs browser storage, which is blocked.")
         return
       }
+      window.location.href = loginHref(false)
+      return
     }
-    void startPlaylist(
-      { name: playlistName, uris, recordingId: selectedRecording.id },
-      session.userId
-    )
+    if (session.premium === false || premiumBlocked) {
+      setPlayRequest(null)
+      setPremiumBlocked(true)
+      return
+    }
+    armPlaybackRef.current?.()
+    beginPlayback(selectedRecording.id, uris)
+  }
+
+  function handleIssue(issue: PlaybackIssue) {
+    setPlayRequest(null)
+    setPlayerPhase("idle")
+    setActiveUri(null)
+    if (issue.code === "premium_required") {
+      setPremiumBlocked(true)
+      setNotice(null)
+      setNoticeAction(null)
+      return
+    }
+    setPremiumBlocked(false)
+    if (issue.code === "insufficient_scope") {
+      setNotice(issue.message || "Reconnect Spotify to allow in-app playback.")
+      setNoticeAction("reconnect")
+      return
+    }
+    if (issue.code === "not_connected") {
+      setNotice(issue.message || "Spotify login expired. Sign in again.")
+      setNoticeAction("login")
+      return
+    }
+    setNoticeAction(null)
+    setNotice(issue.message || "Spotify could not start playback.")
   }
 
   async function handleLogout() {
     await fetch("/api/spotify/logout", { method: "POST" })
-    setSession({ connected: false, displayName: null, userId: null })
+    setSession(EMPTY_SESSION)
+    setPlayRequest(null)
+    setPlayerPhase("idle")
+    setActiveUri(null)
+    setPremiumBlocked(false)
   }
 
   const embed = useMemo(
     () =>
-      choosePlaybackEmbed({
-        trackCount: movementCount,
-        playlistId: playlistForSelection?.id ?? null,
-        playlistTitle: playlistName,
+      chooseTrackEmbed({
         selectedTrack: selectedTrack ? { id: selectedTrack.id, name: selectedTrack.name } : null,
-        preferSingleTrack,
+        suppress: Boolean(playingThisGroup),
       }),
-    [movementCount, playlistForSelection, playlistName, selectedTrack, preferSingleTrack]
+    [playingThisGroup, selectedTrack]
   )
 
   const playAllDetail = !oauthConfigured
     ? "Sequential playback needs Spotify login, which is not configured on this server."
-    : playingAll
-      ? `These ${movementCount} movements are in a private playlist. Press play in the player and Spotify continues in order.`
-      : playlistBusy
-        ? "Creating a private Spotify playlist of these movements…"
-        : session.connected
-          ? `Saves a private playlist of these ${movementCount} tracks so Spotify plays them back to back.`
-          : `Signs you in to Spotify once, then saves a private playlist of these ${movementCount} tracks and plays them in order.`
+    : premiumBlocked
+      ? "This Spotify account is not Premium, so these movements cannot play in this page. Open a movement below, or listen in the embed."
+      : playingThisGroup && playerPhase === "connecting"
+        ? "Starting the player in this page…"
+        : playingThisGroup
+          ? `These ${movementCount} movements play in order in the bar below.`
+          : session.connected
+            ? `Plays these ${movementCount} movements in order in this page. Audio stays in the browser.`
+            : `Signs you in to Spotify, then plays these ${movementCount} movements in order in this page.`
 
   return (
     <section className="space-y-4">
@@ -326,6 +295,7 @@ export function SpotifyRecordings({
             <p id="play-all-detail" className="text-sm text-muted-foreground">
               {playAllDetail}
             </p>
+            <p className="text-xs text-muted-foreground">{PREMIUM_REQUIRED_MESSAGE}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {oauthConfigured ? (
@@ -333,12 +303,12 @@ export function SpotifyRecordings({
                 type="button"
                 size="lg"
                 onClick={handlePlayAll}
-                disabled={playlistBusy}
-                aria-pressed={playingAll}
+                disabled={playingThisGroup && playerPhase === "connecting"}
+                aria-pressed={Boolean(playingThisGroup && playerPhase === "playing")}
                 aria-describedby="play-all-detail"
               >
                 <Play className="h-4 w-4" />
-                {playlistBusy ? "Preparing playlist…" : "Play all"}
+                {playingThisGroup && playerPhase === "connecting" ? "Connecting…" : "Play all"}
               </Button>
             ) : (
               <Button variant="outline" size="lg" asChild>
@@ -348,16 +318,21 @@ export function SpotifyRecordings({
                 </a>
               </Button>
             )}
-            {playlistForSelection?.url && (
-              <Button variant="outline" size="lg" asChild>
-                <a href={playlistForSelection.url} target="_blank" rel="noopener noreferrer">
-                  Open playlist
-                  <ExternalLink className="h-4 w-4" />
-                </a>
-              </Button>
-            )}
           </div>
         </div>
+      )}
+
+      {oauthConfigured && session.connected && movementCount > 1 && (
+        <SpotifyWebPlayer
+          uris={playRequest?.uris ?? []}
+          generation={playRequest?.generation ?? 0}
+          active={Boolean(playingThisGroup && playRequest)}
+          visible={Boolean(playingThisGroup && playRequest)}
+          onArm={registerArm}
+          onPhase={setPlayerPhase}
+          onTrackUri={setActiveUri}
+          onIssue={handleIssue}
+        />
       )}
 
       {embed && (
@@ -375,7 +350,7 @@ export function SpotifyRecordings({
         </div>
       )}
 
-      {selectedTrack?.previewUrl && !playingAll && (
+      {selectedTrack?.previewUrl && !playingThisGroup && (
         <div className="space-y-1">
           <p className="text-xs text-muted-foreground">30-second preview (no Premium required)</p>
           <audio controls preload="none" src={selectedTrack.previewUrl} className="w-full">
@@ -386,7 +361,18 @@ export function SpotifyRecordings({
 
       {selectedRecording && (
         <div className="space-y-3">
-          {playlistError && <p className="text-sm text-destructive">{playlistError}</p>}
+          {notice && (
+            <div className="space-y-2">
+              <p className="text-sm text-destructive">{notice}</p>
+              {oauthConfigured && noticeAction && (
+                <Button variant="outline" size="sm" asChild>
+                  <a href={loginHref(noticeAction === "reconnect")}>
+                    {noticeAction === "reconnect" ? "Reconnect Spotify" : "Sign in to Spotify"}
+                  </a>
+                </Button>
+              )}
+            </div>
+          )}
           {oauthConfigured && session.connected && (
             <p className="flex items-center gap-2 text-xs text-muted-foreground">
               Signed in as {session.displayName || "Spotify"}
@@ -403,7 +389,7 @@ export function SpotifyRecordings({
 
           <p className="text-sm text-muted-foreground">
             {movementCount > 1
-              ? playingAll
+              ? playingThisGroup
                 ? "This group is lined up in order. Choose a movement to hear only that track."
                 : "Choose a movement to play it on its own, or use Play all for the whole group."
               : "Matched track for this work."}
@@ -411,7 +397,9 @@ export function SpotifyRecordings({
 
           <ul className="divide-y divide-border overflow-hidden rounded-md border border-primary/15 bg-card">
             {selectedRecording.tracks.map((track) => {
-              const active = preferSingleTrack && selectedTrack?.id === track.id
+              const active = playingThisGroup
+                ? activeUri === track.uri
+                : preferSingleTrack && selectedTrack?.id === track.id
               return (
                 <li key={track.id}>
                   <div className={`flex items-center gap-3 p-3 ${active ? "bg-accent/80" : ""}`}>
@@ -419,6 +407,9 @@ export function SpotifyRecordings({
                       type="button"
                       onClick={() => {
                         setPreferSingleTrack(true)
+                        setPlayRequest(null)
+                        setPlayerPhase("idle")
+                        setActiveUri(null)
                         setSelectedTrackId(track.id)
                       }}
                       aria-pressed={active}
@@ -472,7 +463,11 @@ export function SpotifyRecordings({
                     type="button"
                     onClick={() => {
                       setPreferSingleTrack(false)
-                      setPlaylistError(null)
+                      setPlayRequest(null)
+                      setPlayerPhase("idle")
+                      setActiveUri(null)
+                      setNotice(null)
+                      setPremiumBlocked(false)
                       setSelectedRecordingId(recording.id)
                       setSelectedTrackId(recording.tracks[0]?.id ?? "")
                     }}
@@ -510,10 +505,10 @@ export function SpotifyRecordings({
 
       {recordings.length > 0 && (
         <p className="text-xs leading-relaxed text-muted-foreground">
-          Results are individual tracks (and movement groups) for this work, not full albums. Play all saves a
-          private playlist of just these movements, in order, and the embed plays that playlist straight through.
-          Choosing one movement plays only that track. The embed plays a preview unless you are logged into Spotify
-          in this browser.
+          Results are individual tracks (and movement groups) for this work, not full albums. Play all uses the player
+          bar in this page and keeps the audio in the browser. It does not open the Spotify app or create a playlist.
+          Choosing one movement uses the embed for that track only. The embed plays a preview unless you are logged
+          into Spotify in this browser. Spotify Premium is required for in-app continuous play.
         </p>
       )}
     </section>

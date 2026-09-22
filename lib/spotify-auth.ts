@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "crypto"
 import { cookies } from "next/headers"
 import { NextResponse } from "next/server"
-import { spotifyPlaylistCreateBody } from "@/lib/spotify-playlist"
+import { spotifyOAuthScopeString, spotifyPremiumState } from "@/lib/spotify-playback"
 
 const STATE_COOKIE = "cp_spotify_oauth_state"
 const VERIFIER_COOKIE = "cp_spotify_pkce"
@@ -11,15 +11,22 @@ const REFRESH_COOKIE = "cp_spotify_rt"
 const EXPIRY_COOKIE = "cp_spotify_exp"
 const USER_COOKIE = "cp_spotify_user"
 
-// Play all creates private playlists (`playlist-modify-private`).
-// `playlist-modify-public` stays so tokens granted before that still refresh.
-// Queue playback is not requested: it needs `user-modify-playback-state` and an active device.
-const SCOPES = ["playlist-modify-private", "playlist-modify-public"].join(" ")
+// Web Playback SDK (Concertmaster-style). Playlist-modify scopes are not requested.
+const SCOPES = spotifyOAuthScopeString()
 
 export type SpotifyUserSession = {
   connected: boolean
   displayName: string | null
   userId: string | null
+  product: string | null
+  /** `null` when the product is unknown (older token or missing user-read-private). */
+  premium: boolean | null
+}
+
+type StoredSpotifyUser = {
+  displayName?: string
+  userId?: string
+  product?: string | null
 }
 
 function cookieBase() {
@@ -85,6 +92,16 @@ export function clearAuthCookies(response: NextResponse) {
   return response
 }
 
+function userCookieValue(user: StoredSpotifyUser): string {
+  return encodeURIComponent(
+    JSON.stringify({
+      displayName: user.displayName ?? null,
+      userId: user.userId ?? null,
+      product: user.product ?? null,
+    })
+  )
+}
+
 function applySessionCookies(
   response: NextResponse,
   session: {
@@ -93,6 +110,7 @@ function applySessionCookies(
     expiresIn: number
     displayName: string
     userId: string
+    product: string | null
   }
 ) {
   const base = cookieBase()
@@ -106,7 +124,11 @@ function applySessionCookies(
   })
   response.cookies.set(
     USER_COOKIE,
-    encodeURIComponent(JSON.stringify({ displayName: session.displayName, userId: session.userId })),
+    userCookieValue({
+      displayName: session.displayName,
+      userId: session.userId,
+      product: session.product,
+    }),
     {
       ...base,
       maxAge: 60 * 60 * 24 * 30,
@@ -143,13 +165,15 @@ async function spotifyToken(body: URLSearchParams): Promise<{
   return (await res.json()) as { access_token: string; refresh_token?: string; expires_in: number }
 }
 
-async function fetchSpotifyMe(accessToken: string): Promise<{ id: string; display_name?: string } | null> {
+async function fetchSpotifyMe(
+  accessToken: string
+): Promise<{ id: string; display_name?: string; product?: string } | null> {
   const res = await fetch("https://api.spotify.com/v1/me", {
     headers: { Authorization: `Bearer ${accessToken}` },
     cache: "no-store",
   })
   if (!res.ok) return null
-  return (await res.json()) as { id: string; display_name?: string }
+  return (await res.json()) as { id: string; display_name?: string; product?: string }
 }
 
 export async function exchangeCodeForSession(input: {
@@ -175,6 +199,7 @@ export async function exchangeCodeForSession(input: {
     expiresIn: tokens.expires_in,
     displayName: me.display_name || me.id,
     userId: me.id,
+    product: me.product ?? null,
   })
   return true
 }
@@ -218,73 +243,78 @@ export async function getUserAccessToken(): Promise<string | null> {
   return tokens.access_token
 }
 
+const DISCONNECTED: SpotifyUserSession = {
+  connected: false,
+  displayName: null,
+  userId: null,
+  product: null,
+  premium: null,
+}
+
+function sessionFromStored(stored: StoredSpotifyUser): SpotifyUserSession {
+  const product = typeof stored.product === "string" && stored.product ? stored.product : null
+  return {
+    connected: true,
+    displayName: stored.displayName ?? null,
+    userId: stored.userId ?? null,
+    product,
+    premium: spotifyPremiumState(product),
+  }
+}
+
+/**
+ * Access token plus the stored profile, with one token read.
+ * The Web Playback SDK calls this often, so it does not hit /me.
+ */
+export async function readSdkAccess(): Promise<{ accessToken: string; session: SpotifyUserSession } | null> {
+  const accessToken = await getUserAccessToken()
+  if (!accessToken) return null
+  const raw = (await cookies()).get(USER_COOKIE)?.value
+  if (!raw) return null
+  try {
+    const session = sessionFromStored(JSON.parse(decodeURIComponent(raw)) as StoredSpotifyUser)
+    if (!session.connected) return null
+    return { accessToken, session }
+  } catch {
+    return null
+  }
+}
+
 export async function getSpotifyUserSession(): Promise<SpotifyUserSession> {
   const store = await cookies()
   const raw = store.get(USER_COOKIE)?.value
   const token = await getUserAccessToken()
-  if (!token || !raw) return { connected: false, displayName: null, userId: null }
+  if (!token || !raw) return DISCONNECTED
+  let stored: StoredSpotifyUser
   try {
-    const parsed = JSON.parse(decodeURIComponent(raw)) as { displayName?: string; userId?: string }
-    return {
-      connected: true,
-      displayName: parsed.displayName ?? null,
-      userId: parsed.userId ?? null,
-    }
+    stored = JSON.parse(decodeURIComponent(raw)) as StoredSpotifyUser
   } catch {
-    return { connected: false, displayName: null, userId: null }
+    return DISCONNECTED
   }
-}
 
-export async function createSpotifyPlaylist(input: {
-  name: string
-  description?: string
-  trackUris: string[]
-}): Promise<{ id: string; url: string } | { error: string; status: number }> {
-  const token = await getUserAccessToken()
-  const session = await getSpotifyUserSession()
-  if (!token || !session.userId) return { error: "Not connected to Spotify", status: 401 }
-
-  const create = await fetch(`https://api.spotify.com/v1/users/${session.userId}/playlists`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(
-      spotifyPlaylistCreateBody({
-        name: input.name,
-        description: input.description,
-      })
-    ),
-    cache: "no-store",
-  })
-  if (!create.ok) {
-    return { error: "Could not create playlist", status: create.status }
-  }
-  const playlist = (await create.json()) as { id: string; external_urls?: { spotify?: string } }
-
-  if (input.trackUris.length) {
-    const add = await fetch(`https://api.spotify.com/v1/playlists/${playlist.id}/tracks`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ uris: input.trackUris.slice(0, 100) }),
-      cache: "no-store",
-    })
-    if (!add.ok) {
-      return { error: "Playlist created but tracks could not be added", status: add.status }
+  const me = await fetchSpotifyMe(token)
+  if (me) {
+    const product = me.product ?? stored.product ?? null
+    const next: StoredSpotifyUser = {
+      displayName: me.display_name || stored.displayName || me.id,
+      userId: me.id || stored.userId,
+      product,
     }
+    if (next.displayName !== stored.displayName || next.userId !== stored.userId || next.product !== stored.product) {
+      store.set(USER_COOKIE, userCookieValue(next), { ...cookieBase(), maxAge: 60 * 60 * 24 * 30 })
+    }
+    return sessionFromStored(next)
   }
 
-  return {
-    id: playlist.id,
-    url: playlist.external_urls?.spotify ?? `https://open.spotify.com/playlist/${playlist.id}`,
-  }
+  return sessionFromStored(stored)
 }
 
-export function authorizeUrl(input: { redirectUri: string; state: string; challenge: string }): string {
+export function authorizeUrl(input: {
+  redirectUri: string
+  state: string
+  challenge: string
+  showDialog?: boolean
+}): string {
   const params = new URLSearchParams({
     client_id: process.env.SPOTIFY_CLIENT_ID || "",
     response_type: "code",
@@ -293,7 +323,7 @@ export function authorizeUrl(input: { redirectUri: string; state: string; challe
     state: input.state,
     code_challenge_method: "S256",
     code_challenge: input.challenge,
-    show_dialog: "false",
+    show_dialog: input.showDialog ? "true" : "false",
   })
   return `https://accounts.spotify.com/authorize?${params.toString()}`
 }
