@@ -19,14 +19,14 @@ export default function HomePage() {
       </section>
 
       <nav
-        className="flex flex-wrap items-center justify-center gap-x-12 gap-y-4 sm:gap-x-16 md:gap-x-20"
+        className="flex flex-nowrap items-center justify-center gap-8 sm:gap-14 md:gap-20"
         aria-label="Browse catalog"
       >
         {ENTRIES.map(({ href, title }) => (
           <Link
             key={href}
             href={href}
-            className="text-2xl font-medium tracking-tight text-primary outline-none transition-colors hover:text-primary-hover focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:text-3xl"
+            className="shrink-0 text-xl font-medium tracking-tight text-primary outline-none transition-colors hover:text-primary-hover focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:text-2xl md:text-3xl"
           >
             {title}
           </Link>
