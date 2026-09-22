@@ -56,29 +56,25 @@ export const EPOCHS: Epoch[] = [
     ],
   },
   {
-    slug: "20th-century",
-    name: "20th Century",
-    years: "c. 1900–1975",
-    blurb: "Modernism, neoclassicism, and new harmonic languages.",
-  },
-  {
-    slug: "post-war",
-    name: "Post-War",
-    years: "c. 1945–2000",
-    blurb: "Serialism, spectral music, minimalism, and the avant-garde.",
-  },
-  {
-    slug: "21st-century",
-    name: "21st Century",
-    years: "2000–",
-    blurb: "Living composers writing for the concert hall today.",
+    slug: "modern",
+    name: "Modern",
+    years: "c. 1900–",
+    blurb: "From modernism and new harmonic languages through the avant-garde to living composers.",
+    sources: [
+      { slug: "20th", label: "20th", name: "20th Century" },
+      { slug: "post-war", label: "Post-War", name: "Post-War" },
+      { slug: "21st", label: "21st", name: "21st Century" },
+    ],
   },
 ]
 
-/** Old top-level period slugs that now select a Romantic chip. */
+/** Old top-level period slugs that now select a chip on a unified period. */
 const LEGACY_EPOCH_FILTERS: Record<string, string> = {
   "early-romantic": "early",
   "late-romantic": "late",
+  "20th-century": "20th",
+  "post-war": "post-war",
+  "21st-century": "21st",
 }
 
 const bySlug = new Map(EPOCHS.map((epoch) => [epoch.slug, epoch]))
@@ -99,24 +95,29 @@ export function openOpusEpochNamesFor(epoch: Epoch): string[] {
   return epoch.sources?.map((source) => source.name) ?? [epoch.name]
 }
 
-/** Every Open Opus epoch the catalog still fetches, including folded Romantic eras. */
+/** Every Open Opus epoch the catalog still fetches, including folded Romantic and Modern eras. */
 export function openOpusEpochNames(): string[] {
   return EPOCHS.flatMap((epoch) => openOpusEpochNamesFor(epoch))
 }
 
-export function legacyEpochName(slug: string): string | undefined {
+function legacyEpochTarget(slug: string): { period: Epoch; filter: string } | undefined {
   const filter = LEGACY_EPOCH_FILTERS[slug]
   if (!filter) return undefined
-  return epochFromSlug("romantic")?.sources?.find((source) => source.slug === filter)?.name
+  const period = EPOCHS.find((epoch) => epoch.sources?.some((source) => source.slug === filter))
+  if (!period) return undefined
+  return { period, filter }
 }
 
-/** Old Early/Late Romantic URLs open the unified period with that chip selected. */
+export function legacyEpochName(slug: string): string | undefined {
+  const target = legacyEpochTarget(slug)
+  return target?.period.sources?.find((source) => source.slug === target.filter)?.name
+}
+
+/** Old period URLs open the unified period with that chip selected. */
 export function relocatedEpochHref(slug: string): string | null {
-  const filter = LEGACY_EPOCH_FILTERS[slug]
-  if (!filter) return null
-  const romantic = epochFromSlug("romantic")
-  if (!romantic?.sources?.some((source) => source.slug === filter)) return null
-  return `/periods/${romantic.slug}?filter=${filter}`
+  const target = legacyEpochTarget(slug)
+  if (!target) return null
+  return `/periods/${target.period.slug}?filter=${target.filter}`
 }
 
 export function epochHref(name: string): string {

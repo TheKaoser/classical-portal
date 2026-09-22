@@ -152,25 +152,10 @@ export const PERIOD_ICONS: Record<string, IconMark[]> = {
     { kind: "path", d: "M12 13.4V20.7" },
     { kind: "path", d: "M12 16.8C9.7 16 8.3 17.2 8.8 18.6" },
   ],
-  "20th-century": [
+  modern: [
     { kind: "rect", x: 3.2, y: 3.2, width: 9.4, height: 9.4 },
     { kind: "circle", cx: 15.8, cy: 7.8, r: 4.35 },
     { kind: "path", d: "M7.6 20.8 13.2 12.2 20.6 20.8Z" },
-  ],
-  "post-war": [
-    { kind: "rect", x: 3.4, y: 3.4, width: 7.4, height: 7.2 },
-    { kind: "rect", x: 13.2, y: 3.4, width: 7.4, height: 4.2 },
-    { kind: "rect", x: 16.2, y: 9.4, width: 4.4, height: 4.6 },
-    { kind: "rect", x: 3.4, y: 13.2, width: 4.6, height: 7.4 },
-    { kind: "rect", x: 10.2, y: 16, width: 10.4, height: 4.6 },
-  ],
-  "21st-century": [
-    { kind: "path", d: "M4 10.5v3" },
-    { kind: "path", d: "M7.2 7.2v9.6" },
-    { kind: "path", d: "M10.4 11v2" },
-    { kind: "path", d: "M13.6 4.6v14.8" },
-    { kind: "path", d: "M16.8 8v8" },
-    { kind: "path", d: "M20 6.4v11.2" },
   ],
 }
 
