@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import { iconKey, GENRE_ICONS, PERIOD_ICONS, genreIcon, periodIcon } from "./catalog-icons.ts"
 import { EPOCHS } from "./epochs.ts"
-import { WORK_FORMS } from "./forms.ts"
+import { FORM_GROUPS, WORK_FORMS } from "./forms.ts"
 
 test("every period has a unique icon", () => {
   const seen = new Set<string>()
@@ -24,11 +24,23 @@ test("every genre form has a unique icon", () => {
   }
 })
 
-test("chamber and choral keep their own icons for an upcoming merge", () => {
-  assert.ok(GENRE_ICONS.chamber)
-  assert.ok(GENRE_ICONS.choral)
-  assert.notEqual(iconKey(GENRE_ICONS.chamber), iconKey(GENRE_ICONS.quartet))
-  assert.notEqual(iconKey(GENRE_ICONS.choral), iconKey(GENRE_ICONS.song))
+test("grouped genres keep their own icons, and folded romantic eras are not tiles", () => {
+  const seen = new Set<string>()
+  for (const group of FORM_GROUPS) {
+    assert.ok(GENRE_ICONS[group.slug], `missing group icon: ${group.slug}`)
+    const key = iconKey(genreIcon(group.slug))
+    assert.equal(seen.has(key), false, `duplicate group icon: ${group.slug}`)
+    seen.add(key)
+    assert.equal(
+      WORK_FORMS.some((form) => iconKey(genreIcon(form.slug)) === key),
+      false,
+      `group icon matches a form: ${group.slug}`
+    )
+  }
+  assert.ok(PERIOD_ICONS.romantic)
+  assert.equal(PERIOD_ICONS["early-romantic"], undefined)
+  assert.equal(PERIOD_ICONS["late-romantic"], undefined)
+  assert.equal(iconKey(periodIcon("romantic")), iconKey(PERIOD_ICONS.romantic))
 })
 
 test("period icons and genre icons do not share a drawing", () => {

@@ -15,7 +15,7 @@
 import { readFileSync, renameSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
 import { fileURLToPath } from "node:url"
-import { EPOCHS } from "../lib/epochs.ts"
+import { openOpusEpochNames } from "../lib/epochs.ts"
 import {
   collectWorkPopularities,
   pickComposerArtist,
@@ -241,7 +241,7 @@ function writeCache(cache: Cache) {
 async function listComposers(): Promise<Composer[]> {
   const byId = new Map<string, Composer>()
   const paths = [
-    ...EPOCHS.map((epoch) => `/composer/list/epoch/${encodeURIComponent(epoch.name)}.json`),
+    ...openOpusEpochNames().map((name) => `/composer/list/epoch/${encodeURIComponent(name)}.json`),
     "/composer/list/pop.json",
   ]
   for (const path of paths) {

@@ -57,34 +57,81 @@ test("instrument and ensemble tags are not genre links", () => {
 })
 
 test("real genre labels keep their genre route", () => {
-  assert.equal(genreHrefForLabel("symphony"), "/genres/symphony")
-  assert.equal(genreHrefForLabel("Opera"), "/genres/opera")
-  assert.equal(genreHrefForLabel("Symphonies"), "/genres/symphony")
-  assert.equal(genreHrefForLabel("Études"), "/genres/etude")
+  assert.equal(genreHrefForLabel("symphony"), "/genres/orchestral?filter=symphony")
+  assert.equal(genreHrefForLabel("Opera"), "/genres/stage?filter=opera")
+  assert.equal(genreHrefForLabel("Symphonies"), "/genres/orchestral?filter=symphony")
+  assert.equal(genreHrefForLabel("Études"), "/genres/keyboard?filter=etude")
+  assert.equal(genreHrefForLabel("Sonatas"), "/genres/sonata")
+  assert.equal(genreHrefForLabel("Songs"), "/genres/song")
 })
 
-test("chamber and choral fold the finer forms into one genre", () => {
+test("folded forms become chips on one genre page", () => {
   assert.deepEqual(formsForBrowseSlug("chamber"), ["trio", "quartet", "quintet", "sextet"])
   assert.deepEqual(formsForBrowseSlug("choral"), ["requiem", "mass", "oratorio", "motet", "cantata"])
-  assert.deepEqual(formsForBrowseSlug("symphony"), ["symphony"])
+  assert.deepEqual(formsForBrowseSlug("keyboard"), [
+    "nocturne",
+    "etude",
+    "mazurka",
+    "waltz",
+    "polonaise",
+    "impromptu",
+    "ballade",
+    "rhapsody",
+    "scherzo",
+  ])
+  assert.deepEqual(formsForBrowseSlug("stage"), ["opera", "ballet", "overture"])
+  assert.deepEqual(formsForBrowseSlug("orchestral"), ["symphony", "suite", "serenade", "divertimento"])
+  assert.equal(formsForBrowseSlug("orchestral").includes("overture"), false)
+  assert.deepEqual(formsForBrowseSlug("baroque-keyboard"), [
+    "prelude",
+    "fugue",
+    "toccata",
+    "partita",
+    "fantasia",
+    "variations",
+  ])
+  assert.deepEqual(formsForBrowseSlug("concerto"), ["concerto"])
+  assert.deepEqual(formsForBrowseSlug("sonata"), ["sonata"])
+  assert.deepEqual(formsForBrowseSlug("song"), ["song"])
   assert.deepEqual(formsForBrowseSlug("quartet"), [])
+  assert.deepEqual(formsForBrowseSlug("symphony"), [])
   assert.deepEqual(formsForBrowseSlug("mass"), [])
   assert.equal(catalogGenreFromSlug("chamber")?.name, "Chamber")
-  assert.equal(catalogGenreFromSlug("choral")?.name, "Choral")
+  assert.equal(catalogGenreFromSlug("keyboard")?.name, "Keyboard")
+  assert.equal(catalogGenreFromSlug("stage")?.name, "Stage")
+  assert.equal(catalogGenreFromSlug("orchestral")?.name, "Orchestral")
+  assert.equal(catalogGenreFromSlug("baroque-keyboard")?.name, "Baroque keyboard")
   assert.equal(catalogGenreFromSlug("quartet"), undefined)
-  assert.equal(catalogGenreFromSlug("requiem"), undefined)
+  assert.equal(catalogGenreFromSlug("symphony"), undefined)
+  assert.equal(catalogGenreFromSlug("opera"), undefined)
+  assert.equal(catalogGenreFromSlug("prelude"), undefined)
   assert.equal(relocatedGenreHref("quartet"), "/genres/chamber?filter=quartet")
   assert.equal(relocatedGenreHref("trio"), "/genres/chamber?filter=trio")
   assert.equal(relocatedGenreHref("sextet"), "/genres/chamber?filter=sextet")
   assert.equal(relocatedGenreHref("mass"), "/genres/choral?filter=mass")
   assert.equal(relocatedGenreHref("oratorio"), "/genres/choral?filter=oratorio")
-  assert.equal(relocatedGenreHref("symphony"), null)
+  assert.equal(relocatedGenreHref("nocturne"), "/genres/keyboard?filter=nocturne")
+  assert.equal(relocatedGenreHref("scherzo"), "/genres/keyboard?filter=scherzo")
+  assert.equal(relocatedGenreHref("opera"), "/genres/stage?filter=opera")
+  assert.equal(relocatedGenreHref("overture"), "/genres/stage?filter=overture")
+  assert.equal(relocatedGenreHref("symphony"), "/genres/orchestral?filter=symphony")
+  assert.equal(relocatedGenreHref("divertimento"), "/genres/orchestral?filter=divertimento")
+  assert.equal(relocatedGenreHref("prelude"), "/genres/baroque-keyboard?filter=prelude")
+  assert.equal(relocatedGenreHref("variations"), "/genres/baroque-keyboard?filter=variations")
+  assert.equal(relocatedGenreHref("concerto"), null)
+  assert.equal(relocatedGenreHref("sonata"), null)
+  assert.equal(relocatedGenreHref("song"), null)
   assert.equal(genreHrefForLabel("Quartets"), "/genres/chamber?filter=quartet")
   assert.equal(genreHrefForLabel("Requiems"), "/genres/choral?filter=requiem")
   assert.equal(genreHrefForLabel("Motets"), "/genres/choral?filter=motet")
   assert.equal(genreHrefForLabel("Cantatas"), "/genres/choral?filter=cantata")
+  const children = new Set<string>()
   for (const group of FORM_GROUPS) {
-    for (const child of group.children) assert.ok(formFromSlug(child), child)
+    for (const child of group.children) {
+      assert.ok(formFromSlug(child), child)
+      assert.equal(children.has(child), false, child)
+      children.add(child)
+    }
   }
 })
 

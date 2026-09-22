@@ -141,15 +141,46 @@ test("catalog forms that name instruments expose those chips", () => {
   assert.ok(subtypeFilters(ofForm("suite")).some((item) => item.slug === "cello"))
 })
 
-test("chamber and choral list form chips in catalog order", () => {
-  const chamber = listedSubtypeFilters(
-    works.filter((work) => ["trio", "quartet", "quintet", "sextet"].includes(work.form))
-  ).map((item) => item.slug)
-  assert.deepEqual(chamber, ["trio", "quartet", "quintet", "sextet"])
-  const choral = listedSubtypeFilters(
-    works.filter((work) => ["requiem", "mass", "oratorio", "motet", "cantata"].includes(work.form))
-  ).map((item) => item.slug)
-  assert.deepEqual(choral, ["requiem", "mass", "oratorio", "motet", "cantata"])
+test("grouped genres list form chips in catalog order", () => {
+  const chips = (forms: string[]) =>
+    listedSubtypeFilters(works.filter((work) => forms.includes(work.form))).map((item) => item.slug)
+  assert.deepEqual(chips(["trio", "quartet", "quintet", "sextet"]), ["trio", "quartet", "quintet", "sextet"])
+  assert.deepEqual(chips(["requiem", "mass", "oratorio", "motet", "cantata"]), [
+    "requiem",
+    "mass",
+    "oratorio",
+    "motet",
+    "cantata",
+  ])
+  assert.deepEqual(
+    chips([
+      "nocturne",
+      "etude",
+      "mazurka",
+      "waltz",
+      "polonaise",
+      "impromptu",
+      "ballade",
+      "rhapsody",
+      "scherzo",
+    ]),
+    ["nocturne", "etude", "mazurka", "waltz", "polonaise", "impromptu", "ballade", "rhapsody", "scherzo"]
+  )
+  assert.deepEqual(chips(["opera", "ballet", "overture"]), ["opera", "ballet", "overture"])
+  assert.deepEqual(chips(["symphony", "suite", "serenade", "divertimento"]), [
+    "symphony",
+    "suite",
+    "serenade",
+    "divertimento",
+  ])
+  assert.deepEqual(chips(["prelude", "fugue", "toccata", "partita", "fantasia", "variations"]), [
+    "prelude",
+    "fugue",
+    "toccata",
+    "partita",
+    "fantasia",
+    "variations",
+  ])
   assert.equal(
     classifyListedSubtype({ form: "quartet", title: "String Quartet no. 14 in C sharp minor, op. 131" })?.slug,
     "quartet"

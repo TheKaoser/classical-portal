@@ -156,20 +156,35 @@ export async function listRankedPopularComposers(): Promise<OpenOpusComposer[]> 
   )
 }
 
-export async function listComposersByEpoch(epochName: string): Promise<OpenOpusComposer[]> {
-  const [data, popular, essential] = await Promise.all([
-    openOpusGet<{ status: Status; composers?: OpenOpusComposer[] }>(
-      `/composer/list/epoch/${encodePathSegment(epochName)}.json`
+export async function listComposersByEpochs(epochNames: string[]): Promise<OpenOpusComposer[]> {
+  const [lists, popular, essential] = await Promise.all([
+    Promise.all(
+      epochNames.map((epochName) =>
+        openOpusGet<{ status: Status; composers?: OpenOpusComposer[] }>(
+          `/composer/list/epoch/${encodePathSegment(epochName)}.json`
+        )
+      )
     ),
     listPopularComposers(),
     listEssentialComposers(),
   ])
-  const composers = isSuccess(data.status) ? data.composers ?? [] : []
+  const byId = new Map<string, OpenOpusComposer>()
+  for (const data of lists) {
+    if (!isSuccess(data.status)) continue
+    for (const composer of data.composers ?? []) {
+      if (!composer?.id || byId.has(composer.id)) continue
+      byId.set(composer.id, composer)
+    }
+  }
   return sortComposersByPopularity(
-    composers,
+    [...byId.values()],
     new Set(popular.map((composer) => composer.id)),
     new Set(essential.map((composer) => composer.id))
   )
+}
+
+export async function listComposersByEpoch(epochName: string): Promise<OpenOpusComposer[]> {
+  return listComposersByEpochs([epochName])
 }
 
 export async function getComposer(id: string): Promise<OpenOpusComposer | null> {
