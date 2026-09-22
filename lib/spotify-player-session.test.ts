@@ -71,37 +71,26 @@ test("album row stays highlighted for the playing recording across pages", () =>
   assert.equal(
     isAlbumRowActive({
       recordingId: "album-1",
-      selected: false,
       playRequestRecordingId: "album-1",
     }),
     true
   )
 })
 
-test("selected album still highlights when another recording is playing", () => {
+test("selected album does not use playing highlight when another recording is playing", () => {
   assert.equal(
     isAlbumRowActive({
       recordingId: "album-2",
-      selected: true,
       playRequestRecordingId: "album-1",
     }),
-    true
+    false
   )
 })
 
-test("idle selection highlights without a play request", () => {
+test("selection alone does not highlight without a play request", () => {
   assert.equal(
     isAlbumRowActive({
       recordingId: "album-1",
-      selected: true,
-      playRequestRecordingId: null,
-    }),
-    true
-  )
-  assert.equal(
-    isAlbumRowActive({
-      recordingId: "album-1",
-      selected: false,
       playRequestRecordingId: null,
     }),
     false
