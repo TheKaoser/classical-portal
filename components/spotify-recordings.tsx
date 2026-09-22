@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { ExternalLink, LogOut, Play } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { loadSpotifyPlaybackSdk, SpotifyWebPlayer, type PlaybackIssue } from "@/components/spotify-web-player"
-import { type SpotifyRecording, type SpotifyTrackMatch } from "@/lib/spotify"
+import { formatDuration, type SpotifyRecording, type SpotifyTrackMatch } from "@/lib/spotify"
 import {
   orderedTrackUris,
   parsePendingPlayback,
@@ -169,6 +169,7 @@ export function SpotifyRecordings({
   const [session, setSession] = useState<Session>(EMPTY_SESSION)
   const [playRequest, setPlayRequest] = useState<PlayRequest | null>(null)
   const [playerPhase, setPlayerPhase] = useState<"connecting" | "playing" | "paused" | "idle">("idle")
+  const [activeUri, setActiveUri] = useState<string | null>(null)
   const [savingRecordingId, setSavingRecordingId] = useState<string | null>(null)
   const [premiumBlocked, setPremiumBlocked] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
@@ -360,6 +361,7 @@ export function SpotifyRecordings({
     setPremiumBlocked(false)
     setNotice(null)
     setNoticeAction(null)
+    setActiveUri(null)
     generationRef.current += 1
     setPlayerPhase("connecting")
     setPlayRequest({ recordingId, uris, position, generation: generationRef.current })
@@ -407,6 +409,15 @@ export function SpotifyRecordings({
     requestPlayback(recording.id, uris, 0)
   }
 
+  function playMovement(recording: SpotifyRecording, track: SpotifyTrackMatch) {
+    const uris = orderedTrackUris(recording.tracks)
+    const index = uris.indexOf(track.uri)
+    if (index < 0) return
+    setSelectedRecordingId(recording.id)
+    setSelectedTrackId(track.id)
+    requestPlayback(recording.id, uris, index)
+  }
+
   function handleSavePlaylist(recording: SpotifyRecording) {
     const uris = orderedTrackUris(recording.tracks)
     if (uris.length < 2) return
@@ -437,6 +448,7 @@ export function SpotifyRecordings({
   function handleIssue(issue: PlaybackIssue) {
     setPlayRequest(null)
     setPlayerPhase("idle")
+    setActiveUri(null)
     if (issue.code === "premium_required") {
       setPremiumBlocked(true)
       setNotice(null)
@@ -505,6 +517,7 @@ export function SpotifyRecordings({
     setSession(EMPTY_SESSION)
     setPlayRequest(null)
     setPlayerPhase("idle")
+    setActiveUri(null)
     setPremiumBlocked(false)
   }
 
@@ -605,97 +618,154 @@ export function SpotifyRecordings({
               const canSave = movementCount > 1
               const connecting = playingThis && playerPhase === "connecting"
               const savingThis = savingRecordingId === recording.id
+              const albumActive = playingThis || (selected && !playRequest)
               return (
-                <li
-                  key={recording.id}
-                  className={`flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between ${
-                    playingThis || (selected && !playRequest) ? "bg-accent/80" : ""
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => selectAlbum(recording)}
-                    aria-pressed={selected}
-                    className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
+                <li key={recording.id}>
+                  <div
+                    className={`flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between ${
+                      albumActive ? "bg-accent/80" : ""
+                    }`}
                   >
-                    {recording.image ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={recording.image}
-                        alt=""
-                        width={40}
-                        height={40}
-                        className="h-10 w-10 rounded object-cover"
-                      />
-                    ) : (
-                      <div className="h-10 w-10 rounded bg-muted" />
-                    )}
-                    <span className="min-w-0">
-                      <span className={`block truncate text-sm ${selected || playingThis ? "font-medium text-primary" : ""}`}>
-                        {albumTitle}
+                    <button
+                      type="button"
+                      onClick={() => selectAlbum(recording)}
+                      aria-pressed={selected}
+                      aria-expanded={selected}
+                      className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
+                      style={{ cursor: "pointer" }}
+                    >
+                      {recording.image ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={recording.image}
+                          alt=""
+                          width={40}
+                          height={40}
+                          className="h-10 w-10 rounded object-cover"
+                        />
+                      ) : (
+                        <div className="h-10 w-10 rounded bg-muted" />
+                      )}
+                      <span className="min-w-0">
+                        <span className={`block truncate text-sm ${selected || playingThis ? "font-medium text-primary" : ""}`}>
+                          {albumTitle}
+                        </span>
+                        <span className="block truncate text-xs text-muted-foreground">
+                          {recording.artists}
+                          {movementCount > 1 ? ` · ${movementCount} movements` : ""}
+                        </span>
                       </span>
-                      <span className="block truncate text-xs text-muted-foreground">
-                        {recording.artists}
-                        {movementCount > 1 ? ` · ${movementCount} movements` : ""}
-                      </span>
-                    </span>
-                  </button>
-                  <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
-                    {oauthConfigured ? (
-                      <>
-                        <Button
-                          type="button"
-                          onClick={() => handlePlay(recording)}
-                          disabled={connecting || movementCount === 0}
-                          aria-pressed={Boolean(playingThis && playerPhase === "playing")}
-                          className="cursor-pointer"
-                          title={
-                            premiumBlocked
-                              ? "This Spotify account is not Premium, so this recording cannot play straight through in this page."
-                              : session.connected
-                                ? "Plays this recording from the first movement, in order, in this page."
-                                : "Signs you in to Spotify, then plays this recording from the first movement."
-                          }
-                        >
-                          <Play className="h-4 w-4" />
-                          {connecting ? "Connecting…" : "Play"}
-                        </Button>
-                        {canSave && (
+                    </button>
+                    <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
+                      {oauthConfigured ? (
+                        <>
                           <Button
                             type="button"
-                            variant="outline"
-                            onClick={() => handleSavePlaylist(recording)}
-                            disabled={playlistBusy || Boolean(savedPlaylist)}
+                            onClick={() => handlePlay(recording)}
+                            disabled={connecting || movementCount === 0}
+                            aria-pressed={Boolean(playingThis && playerPhase === "playing")}
                             className="cursor-pointer"
                             title={
-                              savedPlaylist
-                                ? "Saved as a private Spotify playlist. Playback stays in this page."
-                                : `Saves a private playlist of these ${movementCount} tracks. It does not start playback.`
+                              premiumBlocked
+                                ? "This Spotify account is not Premium, so this recording cannot play straight through in this page."
+                                : session.connected
+                                  ? "Plays this recording from the first movement, in order, in this page."
+                                  : "Signs you in to Spotify, then plays this recording from the first movement."
                             }
                           >
-                            {savingThis ? "Saving playlist…" : savedPlaylist ? "Playlist saved" : "Save playlist"}
+                            <Play className="h-4 w-4" />
+                            {connecting ? "Connecting…" : "Play"}
                           </Button>
-                        )}
-                      </>
-                    ) : (
-                      recording.tracks[0]?.url && (
+                          {canSave && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => handleSavePlaylist(recording)}
+                              disabled={playlistBusy || Boolean(savedPlaylist)}
+                              className="cursor-pointer"
+                              title={
+                                savedPlaylist
+                                  ? "Saved as a private Spotify playlist. Playback stays in this page."
+                                  : `Saves a private playlist of these ${movementCount} tracks. It does not start playback.`
+                              }
+                            >
+                              {savingThis ? "Saving playlist…" : savedPlaylist ? "Playlist saved" : "Save playlist"}
+                            </Button>
+                          )}
+                        </>
+                      ) : (
+                        recording.tracks[0]?.url && (
+                          <Button variant="outline" asChild className="cursor-pointer">
+                            <a href={recording.tracks[0].url} target="_blank" rel="noopener noreferrer">
+                              Open
+                              <ExternalLink className="h-4 w-4" />
+                            </a>
+                          </Button>
+                        )
+                      )}
+                      {savedPlaylist?.url && (
                         <Button variant="outline" asChild className="cursor-pointer">
-                          <a href={recording.tracks[0].url} target="_blank" rel="noopener noreferrer">
-                            Open
+                          <a href={savedPlaylist.url} target="_blank" rel="noopener noreferrer">
+                            Open playlist
                             <ExternalLink className="h-4 w-4" />
                           </a>
                         </Button>
-                      )
-                    )}
-                    {savedPlaylist?.url && (
-                      <Button variant="outline" asChild className="cursor-pointer">
-                        <a href={savedPlaylist.url} target="_blank" rel="noopener noreferrer">
-                          Open playlist
-                          <ExternalLink className="h-4 w-4" />
-                        </a>
-                      </Button>
-                    )}
+                      )}
+                    </div>
                   </div>
+                  {selected && recording.tracks.length > 0 && (
+                    <ul className="divide-y divide-border border-t border-border">
+                      {recording.tracks.map((track) => {
+                        const active = playingThis && activeUri === track.uri
+                        return (
+                          <li key={track.id}>
+                            <div className={`flex items-center gap-3 py-2 pr-3 pl-6 ${active ? "bg-accent/80" : ""}`}>
+                              <button
+                                type="button"
+                                onClick={() => playMovement(recording, track)}
+                                aria-pressed={active}
+                                title="Play this movement"
+                                className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
+                                style={{ cursor: "pointer" }}
+                              >
+                                {track.image ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={track.image}
+                                    alt=""
+                                    width={40}
+                                    height={40}
+                                    className="h-10 w-10 rounded object-cover"
+                                  />
+                                ) : (
+                                  <div className="h-10 w-10 rounded bg-muted" />
+                                )}
+                                <span className="min-w-0">
+                                  <span className={`block truncate text-sm ${active ? "font-medium text-primary" : ""}`}>
+                                    {track.name}
+                                  </span>
+                                  <span className="block truncate text-xs text-muted-foreground">
+                                    {track.artists}
+                                    {track.durationMs ? ` · ${formatDuration(track.durationMs)}` : ""}
+                                  </span>
+                                </span>
+                              </button>
+                              <Button variant="outline" size="sm" asChild className="shrink-0 cursor-pointer">
+                                <a
+                                  href={track.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  style={{ cursor: "pointer" }}
+                                >
+                                  Open
+                                </a>
+                              </Button>
+                            </div>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  )}
                 </li>
               )
             })}
@@ -712,6 +782,7 @@ export function SpotifyRecordings({
           visible={Boolean(playRequest)}
           onArm={registerArm}
           onPhase={setPlayerPhase}
+          onTrackUri={setActiveUri}
           onIssue={handleIssue}
           savedTrackUris={savedTrackUris}
           onSaveTrack={handleSaveTrack}
@@ -721,9 +792,10 @@ export function SpotifyRecordings({
       {recordings.length > 0 && (
         <p className="text-xs leading-relaxed text-muted-foreground">
           Results are movement groups from one album, not the rest of the disc. Play on an album streams that
-          recording in order in the bar at the bottom of this page. Save playlist stores the whole group as a private
-          Spotify playlist. Save track, in the player bar, adds only the current movement to a separate private
-          playlist. Neither save starts playback. {PREMIUM_REQUIRED_MESSAGE}
+          recording in order in the bar at the bottom of this page. The movements of the selected album are listed
+          under it; choosing one starts there. Save playlist stores the whole group as a private Spotify playlist.
+          Save track, in the player bar, adds only the current movement to a separate private playlist. Neither save
+          starts playback. {PREMIUM_REQUIRED_MESSAGE}
         </p>
       )}
     </section>
