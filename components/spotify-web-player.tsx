@@ -23,6 +23,12 @@ import {
   seekRatioFromPointer,
   shouldApplyPlaybackPosition,
 } from "@/lib/spotify-playback"
+import {
+  phaseFromPlayerPaused,
+  playbackControlAction,
+  playbackControlLabel,
+  playbackControlShowsPause,
+} from "@/lib/spotify-player-session"
 
 export type PlaybackIssue = {
   code: "premium_required" | "insufficient_scope" | "not_connected" | "browser" | "playback_failed"
@@ -227,6 +233,7 @@ export function SpotifyWebPlayer({
   active,
   visible,
   onArm,
+  onRegisterTransport,
   onPhase,
   onTrackUri,
   onIssue,
@@ -239,6 +246,7 @@ export function SpotifyWebPlayer({
   active: boolean
   visible: boolean
   onArm: (arm: () => void) => void
+  onRegisterTransport?: (transport: { pause: () => void; resume: () => void }) => void
   onPhase?: (phase: Phase) => void
   onTrackUri?: (uri: string | null) => void
   onIssue: (issue: PlaybackIssue) => void
@@ -249,10 +257,12 @@ export function SpotifyWebPlayer({
   const onPhaseRef = useRef(onPhase)
   const onTrackUriRef = useRef(onTrackUri)
   const onArmRef = useRef(onArm)
+  const onRegisterTransportRef = useRef(onRegisterTransport)
   onIssueRef.current = onIssue
   onPhaseRef.current = onPhase
   onTrackUriRef.current = onTrackUri
   onArmRef.current = onArm
+  onRegisterTransportRef.current = onRegisterTransport
 
   const playerRef = useRef<SpotifyPlayer | null>(null)
   const deviceIdRef = useRef<string | null>(null)
@@ -396,7 +406,7 @@ export function SpotifyWebPlayer({
         acceptPositionRef.current(state.position)
         setDuration(state.duration || track.duration_ms)
         setMovement(index >= 0 ? { index, total: urisRef.current.length } : null)
-        setPlaybackPhase(state.paused ? "paused" : "playing")
+        setPlaybackPhase(phaseFromPlayerPaused(state.paused))
         onTrackUriRef.current?.(track.uri)
       })
 
@@ -466,6 +476,15 @@ export function SpotifyWebPlayer({
         .catch(() => {
           // The play attempt reports a missing SDK.
         })
+    })
+    onRegisterTransportRef.current?.({
+      pause: () => {
+        void playerRef.current?.pause()
+      },
+      resume: () => {
+        unlockBrowserAudio(playerRef.current)
+        void playerRef.current?.resume()
+      },
     })
     return () => {
       mountedRef.current = false
@@ -604,7 +623,7 @@ export function SpotifyWebPlayer({
         if (!state || !mountedRef.current) return
         acceptPositionRef.current(state.position)
         setDuration(state.duration || state.track_window.current_track.duration_ms)
-        setPlaybackPhase(state.paused ? "paused" : "playing")
+        setPlaybackPhase(phaseFromPlayerPaused(state.paused))
       })
     }, 500)
     return () => window.clearInterval(id)
@@ -612,7 +631,8 @@ export function SpotifyWebPlayer({
 
   if (!visible || !portalReady) return null
 
-  const paused = phase !== "playing"
+  const showPause = playbackControlShowsPause(phase)
+  const controlLabel = playbackControlLabel(phase)
   const trackSaved = Boolean(trackUri && savedTrackUris.includes(trackUri))
   const title = trackName || (phase === "connecting" ? "Connecting the player…" : "Classical Portal")
   const movementLabel = movement ? `Movement ${movement.index + 1} of ${movement.total}` : "Now playing"
@@ -632,14 +652,21 @@ export function SpotifyWebPlayer({
           size="icon"
           className="shrink-0 cursor-pointer disabled:pointer-events-auto disabled:cursor-pointer"
           style={{ cursor: "pointer" }}
-          aria-label={paused ? "Play" : "Pause"}
+          aria-label={controlLabel === "Connecting…" ? "Play" : controlLabel}
           disabled={phase === "connecting"}
           onClick={() => {
             unlockBrowserAudio(playerRef.current)
-            void playerRef.current?.togglePlay()
+            const action = playbackControlAction(phase)
+            if (action === "pause") {
+              void playerRef.current?.pause()
+              return
+            }
+            if (action === "resume") {
+              void playerRef.current?.resume()
+            }
           }}
         >
-          {paused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
+          {showPause ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
         </Button>
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">

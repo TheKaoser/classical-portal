@@ -123,7 +123,7 @@ Supabase and YouTube are no longer used. Old `/admin`, `/blog`, and `/piece/:id`
 
 ## Playback notes
 
-- **Play** — on the album row. One click starts that recording’s track URIs in the player bar fixed to the bottom of the page, from the first movement. Audio is the Web Playback SDK in the browser, not remote control of another Spotify device. If Spotify is not connected yet, the same click signs the listener in and starts playback when they return.
+- **Play / Pause** — on the album row and the bottom player bar. While that recording is playing, the control shows **Pause** and pauses the Web Playback SDK player; when paused, it shows **Play** and resumes. Starting a different album (or the first Play when idle) still begins that recording from the first movement. Phase comes from SDK `player_state_changed` (`paused`).
 - **Movements** — listed under the selected album, expanded. Choosing a movement starts playback at that track in the same bottom player. The row uses a pointer cursor.
 - **Save playlist** — on the album row, separate from Play, for a group of two or more movements. Creates a private playlist of those movements and does not replace the in-page player.
 - **Save track** — on the player bar, in place of previous/next. Adds only the current movement to Spotify Liked Songs. It does not save the rest of the recording.

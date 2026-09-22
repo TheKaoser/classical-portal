@@ -32,6 +32,7 @@ declare global {
     ): boolean
     togglePlay(): Promise<void>
     pause(): Promise<void>
+    resume(): Promise<void>
     nextTrack(): Promise<void>
     previousTrack(): Promise<void>
     /** Jump to a position in the current track, in milliseconds. */
