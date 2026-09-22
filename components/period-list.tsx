@@ -4,18 +4,18 @@ import { cn } from "@/lib/utils"
 
 const ACCENTS = [
   {
-    bar: "bg-navy",
-    surface: "border-navy/15 bg-white/75 hover:border-navy/30 hover:bg-navy/5",
+    surface:
+      "border-navy/15 bg-gradient-to-br from-navy/10 via-white to-blue-mid/[0.07] hover:border-navy/30",
     meta: "text-navy/70",
   },
   {
-    bar: "bg-blue-mid",
-    surface: "border-blue-mid/20 bg-white/75 hover:border-blue-mid/40 hover:bg-blue-mid/5",
+    surface:
+      "border-blue-mid/20 bg-gradient-to-br from-blue-mid/10 via-white to-blue-bright/[0.08] hover:border-blue-mid/40",
     meta: "text-blue-mid",
   },
   {
-    bar: "bg-blue-bright",
-    surface: "border-blue-bright/20 bg-white/75 hover:border-blue-bright/40 hover:bg-blue-bright/5",
+    surface:
+      "border-blue-bright/25 bg-gradient-to-br from-blue-bright/10 via-white to-blue-mid/[0.08] hover:border-blue-bright/45",
     meta: "text-blue-bright",
   },
 ] as const
@@ -30,17 +30,12 @@ export function PeriodList({ showBlurb = false }: { showBlurb?: boolean }) {
             <Link
               href={`/periods/${epoch.slug}`}
               className={cn(
-                "flex w-full items-stretch overflow-hidden rounded-xl border shadow-sm transition-colors",
+                "block w-full rounded-xl border px-5 shadow-sm transition-colors sm:px-6",
+                showBlurb ? "py-4" : "py-3.5",
                 accent.surface
               )}
             >
-              <span aria-hidden className={cn("w-1.5 shrink-0", accent.bar)} />
-              <span
-                className={cn(
-                  "flex min-w-0 flex-1 flex-col justify-center px-5 sm:px-6",
-                  showBlurb ? "py-4" : "py-3.5"
-                )}
-              >
+              <span className="flex min-w-0 flex-col justify-center">
                 <span className="flex items-baseline justify-between gap-4">
                   <span
                     className={cn(

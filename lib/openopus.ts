@@ -133,6 +133,16 @@ export function sortComposersByPopularity(
   return sortComposersByImportance(composers, popularIds, essentialIds)
 }
 
+/** `/composer/list/pop.json`, ranked with the same importance tiers as period lists. */
+export async function listRankedPopularComposers(): Promise<OpenOpusComposer[]> {
+  const [popular, essential] = await Promise.all([listPopularComposers(), listEssentialComposers()])
+  return sortComposersByPopularity(
+    popular,
+    new Set(popular.map((composer) => composer.id)),
+    new Set(essential.map((composer) => composer.id))
+  )
+}
+
 export async function listComposersByEpoch(epochName: string): Promise<OpenOpusComposer[]> {
   const [data, popular, essential] = await Promise.all([
     openOpusGet<{ status: Status; composers?: OpenOpusComposer[] }>(
