@@ -1,37 +1,10 @@
 import Link from "next/link"
-import { cn } from "@/lib/utils"
 
-const PAIR = [
-  {
-    href: "/periods",
-    title: "Periods",
-  },
-  {
-    href: "/genres",
-    title: "Genres",
-  },
+const ENTRIES = [
+  { href: "/periods", title: "Periods" },
+  { href: "/genres", title: "Genres" },
+  { href: "/composers", title: "Composers" },
 ] as const
-
-const COMPOSERS = {
-  href: "/composers",
-  title: "Composers",
-} as const
-
-function EntryButton({ href, title }: { href: string; title: string }) {
-  return (
-    <Link
-      href={href}
-      className={cn(
-        "inline-flex min-w-52 items-center justify-center rounded-2xl bg-surface-blue px-14 py-7",
-        "text-3xl font-medium tracking-tight text-primary sm:min-w-64 sm:px-16 sm:py-8 sm:text-4xl",
-        "outline-none transition-colors hover:bg-accent hover:text-accent-foreground",
-        "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-      )}
-    >
-      {title}
-    </Link>
-  )
-}
 
 export default function HomePage() {
   return (
@@ -46,15 +19,18 @@ export default function HomePage() {
       </section>
 
       <nav
-        className="mx-auto flex w-full max-w-3xl flex-col items-center gap-4 sm:gap-5"
+        className="flex flex-nowrap items-center justify-center gap-8 sm:gap-14 md:gap-20"
         aria-label="Browse catalog"
       >
-        <div className="flex w-full flex-col items-center justify-center gap-4 sm:flex-row sm:gap-5">
-          {PAIR.map((entry) => (
-            <EntryButton key={entry.href} {...entry} />
-          ))}
-        </div>
-        <EntryButton {...COMPOSERS} />
+        {ENTRIES.map(({ href, title }) => (
+          <Link
+            key={href}
+            href={href}
+            className="shrink-0 text-xl font-medium tracking-tight text-primary outline-none transition-colors hover:text-primary-hover focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:text-2xl md:text-3xl"
+          >
+            {title}
+          </Link>
+        ))}
       </nav>
     </div>
   )
