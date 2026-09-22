@@ -94,7 +94,7 @@ export default function HomePage() {
           Classical <span className="text-primary">Portal</span>
         </h1>
         <p className="mx-auto max-w-xl text-lg text-muted-foreground">
-          Explore classical music your way
+          Explore classical music your way.
         </p>
       </section>
 
