@@ -797,9 +797,9 @@ export function SpotifyRecordings({
         <p className="text-xs leading-relaxed text-muted-foreground">
           Results are movement groups from one album, not the rest of the disc. Play on an album streams that
           recording in order in the bar at the bottom of this page. The movements of the selected album are listed
-          under it; choosing one starts there. Save playlist stores the whole group as a private Spotify playlist.
-          Save track, in the player bar, adds only the current movement to a separate private playlist. Neither save
-          starts playback. {PREMIUM_REQUIRED_MESSAGE}
+          under it; choosing one starts there. Save playlist stores the whole group as a private Spotify playlist;
+          after a successful save, that same control becomes Open playlist. Save track, in the player bar, adds only
+          the current movement to a separate private playlist. Neither save starts playback. {PREMIUM_REQUIRED_MESSAGE}
         </p>
       )}
     </section>
