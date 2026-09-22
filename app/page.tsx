@@ -1,7 +1,7 @@
 import Link from "next/link"
 import { cn } from "@/lib/utils"
 
-const ENTRIES = [
+const PAIR = [
   {
     href: "/periods",
     title: "Periods",
@@ -10,19 +10,20 @@ const ENTRIES = [
     href: "/genres",
     title: "Genres",
   },
-  {
-    href: "/composers",
-    title: "Composers",
-  },
 ] as const
+
+const COMPOSERS = {
+  href: "/composers",
+  title: "Composers",
+} as const
 
 function EntryButton({ href, title }: { href: string; title: string }) {
   return (
     <Link
       href={href}
       className={cn(
-        "inline-flex min-w-44 items-center justify-center rounded-2xl bg-surface-blue px-12 py-5",
-        "text-xl font-medium tracking-tight text-primary sm:min-w-52 sm:px-14 sm:py-6 sm:text-2xl",
+        "inline-flex min-w-52 items-center justify-center rounded-2xl bg-surface-blue px-14 py-7",
+        "text-3xl font-medium tracking-tight text-primary sm:min-w-64 sm:px-16 sm:py-8 sm:text-4xl",
         "outline-none transition-colors hover:bg-accent hover:text-accent-foreground",
         "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       )}
@@ -45,12 +46,15 @@ export default function HomePage() {
       </section>
 
       <nav
-        className="flex flex-col items-center justify-center gap-4 sm:flex-row sm:gap-5"
+        className="mx-auto flex w-full max-w-3xl flex-col items-center gap-4 sm:gap-5"
         aria-label="Browse catalog"
       >
-        {ENTRIES.map((entry) => (
-          <EntryButton key={entry.href} {...entry} />
-        ))}
+        <div className="flex w-full flex-col items-center justify-center gap-4 sm:flex-row sm:gap-5">
+          {PAIR.map((entry) => (
+            <EntryButton key={entry.href} {...entry} />
+          ))}
+        </div>
+        <EntryButton {...COMPOSERS} />
       </nav>
     </div>
   )
