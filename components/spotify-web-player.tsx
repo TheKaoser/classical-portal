@@ -1,8 +1,16 @@
 "use client"
 
-import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react"
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react"
+import { createPortal } from "react-dom"
 import { Pause, Play } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import {
+  PLAYER_BAR_DOCK_CLASS,
+  PLAYER_BAR_DOCK_STYLE,
+  PLAYER_BAR_FALLBACK_HEIGHT_PX,
+  PLAYER_BAR_HEIGHT_VAR,
+  playerBarPaddingCss,
+} from "@/lib/player-bar-layout"
 import {
   PLAYBACK_SEEK_SYNC_MS,
   PLAYER_TRY_AGAIN_MESSAGE,
@@ -544,14 +552,50 @@ export function SpotifyWebPlayer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, generation, uris.join("\n")])
 
+  const barRef = useRef<HTMLDivElement | null>(null)
+  const [portalReady, setPortalReady] = useState(false)
+
   useEffect(() => {
+    setPortalReady(true)
+  }, [])
+
+  useLayoutEffect(() => {
     if (!visible) return
-    const previous = document.body.style.paddingBottom
-    document.body.style.paddingBottom = "9.5rem"
-    return () => {
-      document.body.style.paddingBottom = previous
+    const root = document.documentElement
+    const previousPadding = document.body.style.paddingBottom
+    const previousVar = root.style.getPropertyValue(PLAYER_BAR_HEIGHT_VAR)
+
+    const applyHeight = (heightPx: number) => {
+      const css = playerBarPaddingCss(heightPx)
+      document.body.style.paddingBottom = css
+      root.style.setProperty(PLAYER_BAR_HEIGHT_VAR, css)
     }
-  }, [visible])
+
+    applyHeight(PLAYER_BAR_FALLBACK_HEIGHT_PX)
+
+    const node = barRef.current
+    if (!node || typeof ResizeObserver === "undefined") {
+      return () => {
+        document.body.style.paddingBottom = previousPadding
+        if (previousVar) root.style.setProperty(PLAYER_BAR_HEIGHT_VAR, previousVar)
+        else root.style.removeProperty(PLAYER_BAR_HEIGHT_VAR)
+      }
+    }
+
+    const observer = new ResizeObserver((entries) => {
+      const height = entries[0]?.contentRect.height ?? node.getBoundingClientRect().height
+      applyHeight(height)
+    })
+    observer.observe(node)
+    applyHeight(node.getBoundingClientRect().height)
+
+    return () => {
+      observer.disconnect()
+      document.body.style.paddingBottom = previousPadding
+      if (previousVar) root.style.setProperty(PLAYER_BAR_HEIGHT_VAR, previousVar)
+      else root.style.removeProperty(PLAYER_BAR_HEIGHT_VAR)
+    }
+  }, [visible, portalReady])
 
   useEffect(() => {
     if (!active || phase === "connecting" || phase === "paused") return
@@ -566,20 +610,23 @@ export function SpotifyWebPlayer({
     return () => window.clearInterval(id)
   }, [active, phase])
 
-  if (!visible) return null
+  if (!visible || !portalReady) return null
 
   const paused = phase !== "playing"
   const trackSaved = Boolean(trackUri && savedTrackUris.includes(trackUri))
   const title = trackName || (phase === "connecting" ? "Connecting the player…" : "Classical Portal")
   const movementLabel = movement ? `Movement ${movement.index + 1} of ${movement.total}` : "Now playing"
 
-  return (
+  return createPortal(
     <div
+      ref={barRef}
       role="region"
       aria-label="In-page player"
-      className="fixed inset-x-0 bottom-0 z-50 border-t border-border bg-card shadow-float"
+      data-player-dock="flush"
+      className={PLAYER_BAR_DOCK_CLASS}
+      style={PLAYER_BAR_DOCK_STYLE}
     >
-      <div className="mx-auto flex max-w-4xl items-center gap-2 px-3 py-3 sm:gap-3 sm:px-4">
+      <div className="mx-auto flex w-full max-w-4xl items-center gap-2 px-3 py-3 sm:gap-3 sm:px-4">
         <Button
           type="button"
           size="icon"
@@ -645,9 +692,10 @@ export function SpotifyWebPlayer({
           {savingTrack ? "Saving…" : trackSaved ? "Saved" : "Save track"}
         </Button>
       </div>
-      <p className="mx-auto max-w-4xl border-t border-border px-3 py-2 text-xs text-muted-foreground sm:px-4">
+      <p className="mx-auto w-full max-w-4xl border-t border-border px-3 py-2 text-xs text-muted-foreground sm:px-4">
         {saveTrackError ? saveTrackError : `Playing across pages. ${PREMIUM_REQUIRED_MESSAGE}`}
       </p>
-    </div>
+    </div>,
+    document.body,
   )
 }

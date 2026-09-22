@@ -1,4 +1,4 @@
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import type { ReactNode } from "react"
 import { Newsreader, Inter } from "next/font/google"
 import "./globals.css"
@@ -23,6 +23,12 @@ export const metadata: Metadata = {
     template: "%s · Classical Portal",
   },
   description: "Browse classical composers and works, then play matching recordings on Spotify.",
+}
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 }
 
 export default function RootLayout({
