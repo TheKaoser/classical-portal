@@ -41,6 +41,11 @@ test("grouped genres keep their own icons, and folded romantic eras are not tile
   assert.equal(PERIOD_ICONS["early-romantic"], undefined)
   assert.equal(PERIOD_ICONS["late-romantic"], undefined)
   assert.equal(iconKey(periodIcon("romantic")), iconKey(PERIOD_ICONS.romantic))
+  assert.ok(PERIOD_ICONS.modern)
+  assert.equal(PERIOD_ICONS["20th-century"], undefined)
+  assert.equal(PERIOD_ICONS["post-war"], undefined)
+  assert.equal(PERIOD_ICONS["21st-century"], undefined)
+  assert.equal(iconKey(periodIcon("modern")), iconKey(PERIOD_ICONS.modern))
 })
 
 test("period icons and genre icons do not share a drawing", () => {

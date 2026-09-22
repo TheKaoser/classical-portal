@@ -10,22 +10,16 @@ import {
   relocatedEpochHref,
 } from "./epochs.ts"
 
-test("browse periods are the eight eras, with one Romantic", () => {
+test("browse periods are six eras, with one Romantic and one Modern", () => {
   assert.deepEqual(
     EPOCHS.map((epoch) => epoch.slug),
-    [
-      "medieval",
-      "renaissance",
-      "baroque",
-      "classical",
-      "romantic",
-      "20th-century",
-      "post-war",
-      "21st-century",
-    ]
+    ["medieval", "renaissance", "baroque", "classical", "romantic", "modern"]
   )
   assert.equal(EPOCHS.some((epoch) => epoch.slug === "early-romantic"), false)
   assert.equal(EPOCHS.some((epoch) => epoch.slug === "late-romantic"), false)
+  assert.equal(EPOCHS.some((epoch) => epoch.slug === "20th-century"), false)
+  assert.equal(EPOCHS.some((epoch) => epoch.slug === "post-war"), false)
+  assert.equal(EPOCHS.some((epoch) => epoch.slug === "21st-century"), false)
 })
 
 test("romantic spans the early and late Open Opus eras", () => {
@@ -38,6 +32,22 @@ test("romantic spans the early and late Open Opus eras", () => {
       ["early", "Early", "Early Romantic"],
       ["romantic", "Romantic", "Romantic"],
       ["late", "Late", "Late Romantic"],
+    ]
+  )
+})
+
+test("modern spans the twentieth century through living composers", () => {
+  const modern = epochFromSlug("modern")
+  assert.equal(modern?.name, "Modern")
+  assert.equal(modern?.years, "c. 1900–")
+  assert.match(modern?.blurb ?? "", /modernism/i)
+  assert.match(modern?.blurb ?? "", /living composers/i)
+  assert.deepEqual(
+    modern?.sources?.map((source) => [source.slug, source.label, source.name]),
+    [
+      ["20th", "20th", "20th Century"],
+      ["post-war", "Post-War", "Post-War"],
+      ["21st", "21st", "21st Century"],
     ]
   )
 })
@@ -59,7 +69,24 @@ test("old romantic urls and composer tags land on the matching chip", () => {
   assert.equal(epochHref("Unknown Era"), "/periods/unknown%20era")
 })
 
-test("Open Opus fetches still include the folded romantic epochs", () => {
+test("old modern urls and composer tags land on the matching chip", () => {
+  assert.equal(relocatedEpochHref("20th-century"), "/periods/modern?filter=20th")
+  assert.equal(relocatedEpochHref("post-war"), "/periods/modern?filter=post-war")
+  assert.equal(relocatedEpochHref("21st-century"), "/periods/modern?filter=21st")
+  assert.equal(relocatedEpochHref("modern"), null)
+  assert.equal(legacyEpochName("20th-century"), "20th Century")
+  assert.equal(legacyEpochName("post-war"), "Post-War")
+  assert.equal(legacyEpochName("21st-century"), "21st Century")
+  assert.equal(epochFromName("20th Century")?.slug, "modern")
+  assert.equal(epochFromName("Post-War")?.slug, "modern")
+  assert.equal(epochFromName("21st Century")?.slug, "modern")
+  assert.equal(epochHref("20th Century"), "/periods/modern?filter=20th")
+  assert.equal(epochHref("Post-War"), "/periods/modern?filter=post-war")
+  assert.equal(epochHref("21st Century"), "/periods/modern?filter=21st")
+  assert.equal(epochHref("Modern"), "/periods/modern")
+})
+
+test("Open Opus fetches still include the folded romantic and modern epochs", () => {
   assert.deepEqual(openOpusEpochNames(), [
     "Medieval",
     "Renaissance",

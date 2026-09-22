@@ -111,8 +111,8 @@ Without `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` the work page still offers
 ## Routes
 
 - `/` — title, and banners for periods and genres (search stays in the header)
-- `/periods` — eight periods. Romantic covers Open Opus Early Romantic, Romantic, and Late Romantic
-- `/periods/[epoch]` — composers in that period, by Spotify popularity (`baroque`, `romantic`, …). `/periods/romantic` adds Early / Romantic / Late chips. `/periods/early-romantic` and `/periods/late-romantic` redirect to that page with the matching chip
+- `/periods` — six periods. Romantic covers Open Opus Early Romantic, Romantic, and Late Romantic. Modern covers 20th Century, Post-War, and 21st Century
+- `/periods/[epoch]` — composers in that period, by Spotify popularity (`baroque`, `romantic`, `modern`, …). `/periods/romantic` adds Early / Romantic / Late chips. `/periods/modern` adds 20th / Post-War / 21st chips. `/periods/early-romantic`, `/periods/late-romantic`, `/periods/20th-century`, `/periods/post-war`, and `/periods/21st-century` redirect to the unified page with the matching chip
 - `/genres` — concertos, sonatas, songs, and the folded genres (chamber, choral, keyboard, stage, orchestral, baroque keyboard)
 - `/genres/[slug]` — works of that genre, by Spotify popularity. Concertos, sonatas, and the folded genres filter in place with `?filter=` (piano, violin, quartet, mass, nocturne, opera, symphony, prelude, …). Old fine-form URLs such as `/genres/quartet`, `/genres/opera`, `/genres/symphony`, and `/genres/prelude` redirect to the parent genre with that chip selected. Changing a chip replaces the current history entry
 - `/composers` — the Open Opus popular composers, by Spotify popularity
