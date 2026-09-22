@@ -1,9 +1,9 @@
 import type { Metadata } from "next"
+import { CatalogTile } from "@/components/catalog-icon"
 import { ListLink } from "@/components/list-link"
 import { PageHeader } from "@/components/page-header"
 import { catalogAccent } from "@/lib/accents"
 import { formSummaries } from "@/lib/form-catalog"
-import { cn } from "@/lib/utils"
 
 export const metadata: Metadata = {
   title: "Genres",
@@ -27,15 +27,7 @@ export default function GenresPage() {
           return (
             <li key={form.slug}>
               <ListLink href={`/genres/${form.slug}`}>
-                <span
-                  aria-hidden
-                  className={cn(
-                    "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-base font-medium",
-                    accent.tile
-                  )}
-                >
-                  {form.name.slice(0, 1)}
-                </span>
+                <CatalogTile kind="genre" slug={form.slug} label={form.name} className={accent.tile} />
                 <span className="min-w-0 flex-1 pt-0.5">
                   <span className="flex items-baseline justify-between gap-4">
                     <span className="text-base font-medium text-foreground group-hover:text-primary">{form.name}</span>

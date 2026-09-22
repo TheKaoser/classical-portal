@@ -1,7 +1,7 @@
+import { CatalogTile } from "@/components/catalog-icon"
 import { ListLink } from "@/components/list-link"
 import { catalogAccent } from "@/lib/accents"
 import { EPOCHS } from "@/lib/epochs"
-import { cn } from "@/lib/utils"
 
 export function PeriodList({ showBlurb = false }: { showBlurb?: boolean }) {
   return (
@@ -11,15 +11,7 @@ export function PeriodList({ showBlurb = false }: { showBlurb?: boolean }) {
         return (
           <li key={epoch.slug}>
             <ListLink href={`/periods/${epoch.slug}`}>
-              <span
-                aria-hidden
-                className={cn(
-                  "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-base font-medium",
-                  accent.tile
-                )}
-              >
-                {epoch.name.slice(0, 1)}
-              </span>
+              <CatalogTile kind="period" slug={epoch.slug} label={epoch.name} className={accent.tile} />
               <span className="min-w-0 flex-1 pt-0.5">
                 <span className="flex items-baseline justify-between gap-4">
                   <span className="text-base font-medium text-foreground group-hover:text-primary">{epoch.name}</span>
