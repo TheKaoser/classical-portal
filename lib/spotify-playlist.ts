@@ -1,6 +1,10 @@
 export const PLAYLIST_NAME_PREFIX = "Classical Portal"
 
+/** Private playlist of individually saved movements. Separate from a work’s Save playlist. */
+export const SAVED_TRACKS_PLAYLIST_NAME = "Classical Portal · Saved tracks"
+
 const TRACK_URI = /^spotify:track:[A-Za-z0-9]+$/
+const PLAYLIST_ID = /^[A-Za-z0-9]{10,40}$/
 
 export type CachedPlaylist = {
   id: string
@@ -54,6 +58,21 @@ export function classicalPlaylistName(composerName: string, workTitle: string): 
 export function classicalPlaylistDescription(playlistName: string): string {
   const text = `Private playlist so these movements play in order. ${playlistName}. Created by Classical Portal.`
   return text.replace(/\s+/g, " ").trim().slice(0, 300)
+}
+
+export function savedTracksPlaylistDescription(): string {
+  return "Individual movements saved from the Classical Portal player."
+}
+
+/** One current movement, plus an optional existing saved-tracks playlist. */
+export function saveTrackRequest(input: {
+  uri?: unknown
+  playlistId?: unknown
+}): { uri: string; playlistId: string | null } | null {
+  if (typeof input.uri !== "string" || !isSpotifyTrackUri(input.uri)) return null
+  if (input.playlistId == null || input.playlistId === "") return { uri: input.uri, playlistId: null }
+  if (typeof input.playlistId !== "string" || !PLAYLIST_ID.test(input.playlistId)) return null
+  return { uri: input.uri, playlistId: input.playlistId }
 }
 
 export function spotifyPlaylistCreateBody(input: { name: string; description?: string }): {

@@ -4,6 +4,9 @@ import {
   choosePlaybackEmbed,
   classicalPlaylistDescription,
   classicalPlaylistName,
+  SAVED_TRACKS_PLAYLIST_NAME,
+  savedTracksPlaylistDescription,
+  saveTrackRequest,
   dedupePlaylistCreate,
   nextPlaybackAction,
   orderedTrackUris,
@@ -28,6 +31,21 @@ test("playlist name collapses space and stays within Spotify's 100 character lim
   const long = classicalPlaylistName("Mahler", "x".repeat(200))
   assert.equal(long.length, 100)
   assert.equal(long.startsWith("Classical Portal · Mahler "), true)
+})
+
+test("save track accepts one movement and an existing playlist id", () => {
+  assert.equal(SAVED_TRACKS_PLAYLIST_NAME, "Classical Portal · Saved tracks")
+  assert.match(savedTracksPlaylistDescription(), /Individual movements/)
+  assert.deepEqual(saveTrackRequest({ uri: "spotify:track:abc123" }), {
+    uri: "spotify:track:abc123",
+    playlistId: null,
+  })
+  assert.deepEqual(saveTrackRequest({ uri: "spotify:track:abc123", playlistId: "0123456789abcdef" }), {
+    uri: "spotify:track:abc123",
+    playlistId: "0123456789abcdef",
+  })
+  assert.equal(saveTrackRequest({ uri: "spotify:album:abc123" }), null)
+  assert.equal(saveTrackRequest({ uri: "spotify:track:abc123", playlistId: "bad id" }), null)
 })
 
 test("playlist description says the playlist is private and fits Spotify's limit", () => {

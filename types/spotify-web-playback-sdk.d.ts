@@ -22,6 +22,8 @@ declare global {
   interface SpotifyPlayer {
     connect(): Promise<boolean>
     disconnect(): void
+    /** Required in a click handler so the browser will play audio in this page. */
+    activateElement(): Promise<void>
     addListener(event: "ready" | "not_ready", callback: (event: { device_id: string }) => void): boolean
     addListener(event: "player_state_changed", callback: (state: SpotifyPlaybackState | null) => void): boolean
     addListener(
@@ -32,6 +34,7 @@ declare global {
     pause(): Promise<void>
     nextTrack(): Promise<void>
     previousTrack(): Promise<void>
+    /** Jump to a position in the current track, in milliseconds. */
     seek(positionMs: number): Promise<void>
     getCurrentState(): Promise<SpotifyPlaybackState | null>
     setVolume(volume: number): Promise<void>

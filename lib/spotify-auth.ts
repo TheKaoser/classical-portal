@@ -293,7 +293,6 @@ export async function getSpotifyUserSession(): Promise<SpotifyUserSession> {
   } catch {
     return DISCONNECTED
   }
-
   const me = await fetchSpotifyMe(token)
   if (me) {
     const product = me.product ?? stored.product ?? null
@@ -358,6 +357,28 @@ export async function createSpotifyPlaylist(input: {
     id: playlist.id,
     url: playlist.external_urls?.spotify ?? `https://open.spotify.com/playlist/${playlist.id}`,
   }
+}
+
+export async function addTracksToSpotifyPlaylist(input: {
+  playlistId: string
+  trackUris: string[]
+}): Promise<{ ok: true } | { error: string; status: number }> {
+  const token = await getUserAccessToken()
+  if (!token) return { error: "Not connected to Spotify", status: 401 }
+  const uris = input.trackUris.slice(0, 100)
+  if (!uris.length) return { error: "A track is required", status: 400 }
+
+  const add = await fetch(`https://api.spotify.com/v1/playlists/${input.playlistId}/tracks`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ uris }),
+    cache: "no-store",
+  })
+  if (!add.ok) return { error: "Could not save the track", status: add.status }
+  return { ok: true }
 }
 
 export function authorizeUrl(input: {

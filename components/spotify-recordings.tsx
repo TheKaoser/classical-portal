@@ -1,9 +1,9 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { ExternalLink, LogOut, Play } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { SpotifyWebPlayer, type PlaybackIssue } from "@/components/spotify-web-player"
+import { loadSpotifyPlaybackSdk, SpotifyWebPlayer, type PlaybackIssue } from "@/components/spotify-web-player"
 import { formatDuration, type SpotifyRecording, type SpotifyTrackMatch } from "@/lib/spotify"
 import {
   orderedTrackUris,
@@ -26,6 +26,14 @@ import {
 const PENDING_PLAYLIST_KEY = "cp_pending_playlist"
 const PENDING_PLAYBACK_KEY = "cp_pending_playback"
 const CACHE_KEY = "cp_playlist_cache"
+const SAVED_TRACKS_KEY = "cp_saved_tracks_playlist"
+
+type SavedTracksPlaylist = {
+  userId: string
+  id: string
+  url: string
+  uris: string[]
+}
 
 type Session = {
   connected: boolean
@@ -60,6 +68,20 @@ function readPlaylistCache(): Record<string, CachedPlaylist> {
 
 function writePlaylistCache(cache: Record<string, CachedPlaylist>) {
   localStorage.setItem(CACHE_KEY, JSON.stringify(cache))
+}
+
+function readSavedTracks(userId: string): SavedTracksPlaylist | null {
+  try {
+    const value = JSON.parse(localStorage.getItem(SAVED_TRACKS_KEY) || "null") as SavedTracksPlaylist | null
+    if (!value || value.userId !== userId || typeof value.id !== "string") return null
+    return { ...value, uris: Array.isArray(value.uris) ? value.uris.filter((uri) => typeof uri === "string") : [] }
+  } catch {
+    return null
+  }
+}
+
+function writeSavedTracks(value: SavedTracksPlaylist) {
+  localStorage.setItem(SAVED_TRACKS_KEY, JSON.stringify(value))
 }
 
 function loginHref(reconnect: boolean) {
@@ -126,18 +148,23 @@ export function SpotifyRecordings({
   const [failedKey, setFailedKey] = useState<string | null>(null)
   const [session, setSession] = useState<Session>(EMPTY_SESSION)
   const [playRequest, setPlayRequest] = useState<PlayRequest | null>(null)
-  const [playerPhase, setPlayerPhase] = useState<"idle" | "connecting" | "playing" | "paused">("idle")
+  const [playerPhase, setPlayerPhase] = useState<"connecting" | "playing" | "paused" | "idle">("idle")
   const [activeUri, setActiveUri] = useState<string | null>(null)
   const [premiumBlocked, setPremiumBlocked] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [noticeAction, setNoticeAction] = useState<null | "login" | "reconnect">(null)
+  const [savedTrackUris, setSavedTrackUris] = useState<string[]>([])
   const mountedRef = useRef(true)
   const playbackResumeRef = useRef(false)
   const generationRef = useRef(0)
+  const armPlaybackRef = useRef<(() => void) | null>(null)
+  const registerArm = useCallback((arm: () => void) => {
+    armPlaybackRef.current = arm
+  }, [])
 
   const movementCount = selectedRecording?.tracks.length ?? 0
   const playlistForSelection = selectedRecording ? playlists[selectedRecording.id] ?? null : null
-  const playingThisGroup = Boolean(playRequest) && playRequest?.recordingId === selectedRecording?.id
+  const playingThisRecording = Boolean(playRequest) && playRequest?.recordingId === selectedRecording?.id
 
   useEffect(() => {
     mountedRef.current = true
@@ -145,6 +172,21 @@ export function SpotifyRecordings({
       mountedRef.current = false
     }
   }, [])
+
+  useEffect(() => {
+    if (!session.userId) {
+      setSavedTrackUris([])
+      return
+    }
+    setSavedTrackUris(readSavedTracks(session.userId)?.uris ?? [])
+  }, [session.userId])
+
+  useEffect(() => {
+    if (!oauthConfigured) return
+    void loadSpotifyPlaybackSdk().catch(() => {
+      // Play all explains this if the browser cannot load the SDK.
+    })
+  }, [oauthConfigured])
 
   useEffect(() => {
     if (!oauthConfigured) return
@@ -276,6 +318,15 @@ export function SpotifyRecordings({
     })
   }, [oauthConfigured, recordings, session.connected, session.premium])
 
+  function beginPlayback(recordingId: string, uris: string[], position: number) {
+    setPremiumBlocked(false)
+    setNotice(null)
+    setNoticeAction(null)
+    generationRef.current += 1
+    setPlayerPhase("connecting")
+    setPlayRequest({ recordingId, uris, position, generation: generationRef.current })
+  }
+
   function requestPlayback(recordingId: string, uris: string[], position: number) {
     setNotice(null)
     setNoticeAction(null)
@@ -286,7 +337,10 @@ export function SpotifyRecordings({
     if (!session.connected) {
       try {
         sessionStorage.removeItem(PENDING_PLAYLIST_KEY)
-        sessionStorage.setItem(PENDING_PLAYBACK_KEY, JSON.stringify({ recordingId, uris, position }))
+        sessionStorage.setItem(
+          PENDING_PLAYBACK_KEY,
+          JSON.stringify({ recordingId, uris, position } satisfies PendingPlayback)
+        )
       } catch {
         setNotice("Spotify login needs browser storage, which is blocked.")
         return
@@ -294,15 +348,13 @@ export function SpotifyRecordings({
       window.location.href = loginHref(false)
       return
     }
-    if (session.premium === false) {
+    if (session.premium === false || premiumBlocked) {
       setPlayRequest(null)
       setPremiumBlocked(true)
       return
     }
-    setPremiumBlocked(false)
-    generationRef.current += 1
-    setPlayerPhase("connecting")
-    setPlayRequest({ recordingId, uris, position, generation: generationRef.current })
+    armPlaybackRef.current?.()
+    beginPlayback(recordingId, uris, position)
   }
 
   function handlePlayAll() {
@@ -380,6 +432,48 @@ export function SpotifyRecordings({
     setNotice(issue.message || "Spotify could not start playback.")
   }
 
+  async function handleSaveTrack(uri: string): Promise<{ ok: true } | { ok: false; message: string }> {
+    const userId = session.userId
+    const existing = userId ? readSavedTracks(userId) : null
+    if (existing?.uris.includes(uri)) return { ok: true }
+    try {
+      const res = await fetch("/api/spotify/save-track", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uri, playlistId: existing?.id }),
+      })
+      const data = (await res.json().catch(() => ({}))) as { id?: string; url?: string; error?: string; code?: string }
+      if (res.status === 401 || data.code === "not_connected") {
+        const message = "Spotify login expired. Sign in again."
+        setNotice(message)
+        setNoticeAction("login")
+        return { ok: false, message }
+      }
+      if (res.status === 403 || data.code === "insufficient_scope") {
+        const message = "Reconnect Spotify to allow saving tracks."
+        setNotice(message)
+        setNoticeAction("reconnect")
+        return { ok: false, message }
+      }
+      if (!res.ok || !data.id) {
+        return { ok: false, message: data.error || "Could not save this track." }
+      }
+      const uris = existing ? [...new Set([...existing.uris, uri])] : [uri]
+      if (userId) {
+        writeSavedTracks({
+          userId,
+          id: data.id,
+          url: data.url ?? `https://open.spotify.com/playlist/${data.id}`,
+          uris,
+        })
+      }
+      setSavedTrackUris(uris)
+      return { ok: true }
+    } catch {
+      return { ok: false, message: "Could not save this track." }
+    }
+  }
+
   async function handleLogout() {
     await fetch("/api/spotify/logout", { method: "POST" })
     setSession(EMPTY_SESSION)
@@ -392,13 +486,13 @@ export function SpotifyRecordings({
   const playAllDetail = !oauthConfigured
     ? "Sequential playback needs Spotify login, which is not configured on this server."
     : premiumBlocked
-      ? "This Spotify account is not Premium, so these movements cannot play straight through in the app."
-      : playingThisGroup && playerPhase === "connecting"
-        ? "Connecting the in-app Spotify player…"
-        : playingThisGroup
-          ? `These ${movementCount} movements play in order in this page. Spotify continues from one to the next.`
+      ? "This Spotify account is not Premium, so these movements cannot play straight through in this page."
+      : playingThisRecording && playerPhase === "connecting"
+        ? "Starting the player in this page…"
+        : playingThisRecording
+          ? `These ${movementCount} movements play in order in the bar below. Spotify continues from one to the next.`
           : session.connected
-            ? `Plays these ${movementCount} movements in order in this page.`
+            ? `Plays these ${movementCount} movements in order in this page. Audio stays in the browser.`
             : `Signs you in to Spotify, then plays these ${movementCount} movements in order in this page.`
 
   const saveDetail = playlistForSelection
@@ -471,12 +565,12 @@ export function SpotifyRecordings({
                   type="button"
                   size="lg"
                   onClick={handlePlayAll}
-                  disabled={playingThisGroup && playerPhase === "connecting"}
-                  aria-pressed={Boolean(playingThisGroup && playerPhase === "playing" && playRequest?.position === 0)}
+                  disabled={playingThisRecording && playerPhase === "connecting"}
+                  aria-pressed={Boolean(playingThisRecording && playerPhase === "playing" && playRequest?.position === 0)}
                   aria-describedby="play-all-detail"
                 >
                   <Play className="h-4 w-4" />
-                  {playingThisGroup && playerPhase === "connecting" ? "Connecting…" : "Play all"}
+                  {playingThisRecording && playerPhase === "connecting" ? "Connecting…" : "Play all"}
                 </Button>
                 <Button
                   type="button"
@@ -509,19 +603,29 @@ export function SpotifyRecordings({
         </div>
       )}
 
-      {selectedRecording && (
+      {oauthConfigured && session.connected && selectedRecording && (
         <SpotifyWebPlayer
-          uris={playRequest?.uris ?? []}
-          startPosition={playRequest?.position ?? 0}
+          uris={playingThisRecording && playRequest ? playRequest.uris : []}
+          startPosition={playingThisRecording && playRequest ? playRequest.position : 0}
           generation={playRequest?.generation ?? 0}
+          active={Boolean(playingThisRecording && playRequest)}
+          visible={Boolean(playingThisRecording && playRequest)}
+          onArm={registerArm}
           onPhase={setPlayerPhase}
           onTrackUri={setActiveUri}
           onIssue={handleIssue}
-          onRequestPlay={() => {
-            if (movementCount > 1) handlePlayAll()
-            else if (selectedTrack) playMovement(selectedTrack)
-          }}
+          savedTrackUris={savedTrackUris}
+          onSaveTrack={handleSaveTrack}
         />
+      )}
+
+      {selectedTrack?.previewUrl && !playingThisRecording && (
+        <div className="space-y-1">
+          <p className="text-xs text-muted-foreground">30-second preview (no Premium required)</p>
+          <audio controls preload="none" src={selectedTrack.previewUrl} className="w-full">
+            Your browser does not support audio previews.
+          </audio>
+        </div>
       )}
 
       {selectedRecording && (
@@ -591,7 +695,7 @@ export function SpotifyRecordings({
                   {selected && (
                     <ul className="divide-y divide-border border-t border-border">
                       {recording.tracks.map((track) => {
-                        const active = playingThisGroup && activeUri === track.uri
+                        const active = playingThisRecording && activeUri === track.uri
                         return (
                           <li key={track.id}>
                             <div className={`flex items-center gap-3 py-2 pr-3 pl-6 ${active ? "bg-accent/80" : ""}`}>
@@ -642,20 +746,12 @@ export function SpotifyRecordings({
         </div>
       )}
 
-      {selectedTrack?.previewUrl && !playingThisGroup && (
-        <div className="space-y-1">
-          <p className="text-xs text-muted-foreground">30-second preview (no Premium required)</p>
-          <audio controls preload="none" src={selectedTrack.previewUrl} className="w-full">
-            Your browser does not support audio previews.
-          </audio>
-        </div>
-      )}
-
       {recordings.length > 0 && (
         <p className="text-xs leading-relaxed text-muted-foreground">
           Results are movement groups from one album, not the rest of the disc. Play all streams those movements in
-          order in this page. Save playlist stores the same tracks as a private Spotify playlist and does not start
-          playback. Choosing a movement starts there. {PREMIUM_REQUIRED_MESSAGE}
+          order in the bar on this page. Save playlist stores the whole group as a private Spotify playlist. Save track
+          adds only the current movement to a separate private playlist. Neither starts playback. Choosing a movement
+          starts there. {PREMIUM_REQUIRED_MESSAGE}
         </p>
       )}
     </section>
