@@ -1,6 +1,8 @@
 /**
- * In-app sequential playback, modeled on Concertmaster:
- * load the Web Playback SDK, then PUT /me/player/play with track URIs.
+ * In-page sequential playback, modeled on Concertmaster.
+ * The browser creates a Web Playback SDK player and audio stays in this page.
+ * PUT /me/player/play always includes that player's device_id.
+ * Playback is not transferred to the Spotify app or any other device.
  * No temporary playlist is created.
  */
 
@@ -48,6 +50,15 @@ export function isSpotifyTrackUri(uri: string): boolean {
 
 export function isSpotifyDeviceId(value: string): boolean {
   return DEVICE_ID.test(value)
+}
+
+/**
+ * Start playback on the Web Playback SDK instance this page created.
+ * A play call without device_id would target whatever Spotify app is already active.
+ */
+export function inPagePlayerPlayUrl(deviceId: string): string | null {
+  if (!isSpotifyDeviceId(deviceId)) return null
+  return `https://api.spotify.com/v1/me/player/play?device_id=${encodeURIComponent(deviceId)}`
 }
 
 /** Keep valid track URIs in the order they were matched. */

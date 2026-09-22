@@ -5,6 +5,7 @@ import {
   SPOTIFY_OAUTH_SCOPES,
   chooseTrackEmbed,
   classifySpotifyPlayError,
+  inPagePlayerPlayUrl,
   isSpotifyDeviceId,
   orderedTrackUris,
   parsePendingPlayback,
@@ -91,6 +92,14 @@ test("device ids are the Spotify player id shape", () => {
   assert.equal(isSpotifyDeviceId("58c0a166ebaa633d9d6e47cf4226830ba1704062"), true)
   assert.equal(isSpotifyDeviceId("short"), false)
   assert.equal(isSpotifyDeviceId("bad id with spaces"), false)
+})
+
+test("playback is addressed only to this page's SDK player", () => {
+  const id = "58c0a166ebaa633d9d6e47cf4226830ba1704062"
+  assert.equal(inPagePlayerPlayUrl(id), `https://api.spotify.com/v1/me/player/play?device_id=${id}`)
+  assert.equal(inPagePlayerPlayUrl(""), null)
+  assert.equal(inPagePlayerPlayUrl("not a device"), null)
+  assert.equal(inPagePlayerPlayUrl(id)?.endsWith("/me/player"), false)
 })
 
 test("pending playback resumes only a real multi-track group", () => {

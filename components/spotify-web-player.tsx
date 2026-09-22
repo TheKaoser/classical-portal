@@ -19,7 +19,7 @@ function browserError(message: string): Error {
   return Object.assign(new Error(message), { code: "browser" })
 }
 
-function loadSpotifyPlaybackSdk(): Promise<void> {
+export function loadSpotifyPlaybackSdk(): Promise<void> {
   if (typeof window === "undefined") return Promise.reject(browserError("browser"))
   if (window.Spotify) return Promise.resolve()
   if (sdkPromise) return sdkPromise
@@ -63,6 +63,11 @@ function clock(ms: number): string {
   return `${minutes}:${seconds.toString().padStart(2, "0")}`
 }
 
+function unlockBrowserAudio(player: SpotifyPlayer | null) {
+  if (!player || typeof player.activateElement !== "function") return
+  void player.activateElement()
+}
+
 async function readToken(onIssue: (issue: PlaybackIssue) => void): Promise<string> {
   const res = await fetch("/api/spotify/token", { cache: "no-store" })
   const data = (await res.json().catch(() => ({}))) as { accessToken?: string; premium?: boolean | null }
@@ -93,12 +98,18 @@ async function startOnDevice(
 export function SpotifyWebPlayer({
   uris,
   generation,
+  active,
+  visible,
+  onArm,
   onPhase,
   onTrackUri,
   onIssue,
 }: {
   uris: string[]
   generation: number
+  active: boolean
+  visible: boolean
+  onArm: (arm: () => void) => void
   onPhase?: (phase: Phase) => void
   onTrackUri?: (uri: string | null) => void
   onIssue: (issue: PlaybackIssue) => void
@@ -106,14 +117,19 @@ export function SpotifyWebPlayer({
   const onIssueRef = useRef(onIssue)
   const onPhaseRef = useRef(onPhase)
   const onTrackUriRef = useRef(onTrackUri)
+  const onArmRef = useRef(onArm)
   onIssueRef.current = onIssue
   onPhaseRef.current = onPhase
   onTrackUriRef.current = onTrackUri
+  onArmRef.current = onArm
 
   const playerRef = useRef<SpotifyPlayer | null>(null)
   const deviceIdRef = useRef<string | null>(null)
   const connectingRef = useRef<Promise<string> | null>(null)
+  const readyTimerRef = useRef<number | null>(null)
   const mountedRef = useRef(true)
+  const urisRef = useRef(uris)
+  urisRef.current = uris
 
   const [phase, setPhase] = useState<Phase>("connecting")
   const [trackName, setTrackName] = useState("")
@@ -128,6 +144,10 @@ export function SpotifyWebPlayer({
   }
 
   function destroyPlayer() {
+    if (readyTimerRef.current != null) {
+      window.clearTimeout(readyTimerRef.current)
+      readyTimerRef.current = null
+    }
     connectingRef.current = null
     deviceIdRef.current = null
     const player = playerRef.current
@@ -139,107 +159,124 @@ export function SpotifyWebPlayer({
     }
   }
 
-  function ensurePlayer(): Promise<string> {
-    if (playerRef.current && deviceIdRef.current) return Promise.resolve(deviceIdRef.current)
-    if (connectingRef.current) return connectingRef.current
+  function attachPlayer(): SpotifyPlayer | null {
+    if (playerRef.current) return playerRef.current
+    const SpotifySdk = window.Spotify
+    if (!SpotifySdk) return null
 
-    const pending = loadSpotifyPlaybackSdk()
-      .then(
-        () =>
-          new Promise<string>((resolve, reject) => {
-            const SpotifySdk = window.Spotify
-            if (!SpotifySdk) {
-              reject(browserError("missing"))
-              return
-            }
-            let settled = false
-            const timeout = window.setTimeout(() => {
-              if (settled) return
-              settled = true
-              reject(browserError("timeout"))
-            }, 12_000)
-
-            const player = new SpotifySdk.Player({
-              name: SPOTIFY_PLAYER_NAME,
-              volume: 0.8,
-              getOAuthToken: (callback) => {
-                void readToken((issue) => onIssueRef.current(issue))
-                  .then((token) => callback(token))
-                  .catch(() => callback(""))
-              },
-            })
-
-            player.addListener("ready", ({ device_id }) => {
-              if (playerRef.current !== player) return
-              parkSdkIframe()
-              deviceIdRef.current = device_id
-              if (settled) return
-              settled = true
-              window.clearTimeout(timeout)
-              resolve(device_id)
-            })
-            player.addListener("not_ready", () => {
-              if (playerRef.current !== player) return
-              deviceIdRef.current = null
-            })
-            player.addListener("initialization_error", () => {
-              if (settled) return
-              settled = true
-              window.clearTimeout(timeout)
-              reject(browserError("initialization"))
-            })
-            player.addListener("authentication_error", () => {
-              onIssueRef.current({ code: "not_connected", message: "Spotify login expired. Sign in again." })
-              if (settled) return
-              settled = true
-              window.clearTimeout(timeout)
-              reject(Object.assign(new Error("auth"), { code: "not_connected" }))
-            })
-            player.addListener("account_error", () => {
-              onIssueRef.current({ code: "premium_required", message: PREMIUM_REQUIRED_MESSAGE })
-              if (settled) return
-              settled = true
-              window.clearTimeout(timeout)
-              reject(Object.assign(new Error("premium"), { code: "premium_required" }))
-            })
-            player.addListener("playback_error", ({ message }) => {
-              onIssueRef.current({ code: "playback_failed", message: message || "Spotify could not start playback." })
-            })
-            player.addListener("player_state_changed", (state) => {
-              if (!mountedRef.current) return
-              if (!state) {
-                onTrackUriRef.current?.(null)
-                return
-              }
-              const track = state.track_window.current_track
-              const index = urisRef.current.indexOf(track.uri)
-              setTrackName(track.name)
-              setArtists(track.artists.map((artist) => artist.name).join(", "))
-              setPosition(state.position)
-              setDuration(state.duration || track.duration_ms)
-              setMovement(index >= 0 ? { index, total: urisRef.current.length } : null)
-              setPlaybackPhase(state.paused ? "paused" : "playing")
-              onTrackUriRef.current?.(track.uri)
-            })
-
-            playerRef.current = player
-            void player.connect()
-          })
-      )
-      .catch((error: unknown) => {
-        destroyPlayer()
-        throw error
+    let settled = false
+    let player!: SpotifyPlayer
+    const pending = new Promise<string>((resolve, reject) => {
+      player = new SpotifySdk.Player({
+        name: SPOTIFY_PLAYER_NAME,
+        volume: 0.8,
+        getOAuthToken: (callback) => {
+          void readToken((issue) => onIssueRef.current(issue))
+            .then((token) => callback(token))
+            .catch(() => callback(""))
+        },
       })
 
-    connectingRef.current = pending
-    return pending
+      let readyWait = 0
+      player.addListener("ready", ({ device_id }) => {
+        if (playerRef.current !== player) return
+        parkSdkIframe()
+        deviceIdRef.current = device_id
+        if (settled) return
+        settled = true
+        window.clearTimeout(readyWait)
+        resolve(device_id)
+      })
+      player.addListener("not_ready", () => {
+        if (playerRef.current !== player) return
+        deviceIdRef.current = null
+      })
+      player.addListener("initialization_error", () => {
+        if (settled) return
+        settled = true
+        window.clearTimeout(readyWait)
+        reject(browserError("initialization"))
+      })
+      player.addListener("authentication_error", () => {
+        onIssueRef.current({ code: "not_connected", message: "Spotify login expired. Sign in again." })
+        if (settled) return
+        settled = true
+        window.clearTimeout(readyWait)
+        reject(Object.assign(new Error("auth"), { code: "not_connected" }))
+      })
+      player.addListener("account_error", () => {
+        onIssueRef.current({ code: "premium_required", message: PREMIUM_REQUIRED_MESSAGE })
+        if (settled) return
+        settled = true
+        window.clearTimeout(readyWait)
+        reject(Object.assign(new Error("premium"), { code: "premium_required" }))
+      })
+      player.addListener("playback_error", ({ message }) => {
+        onIssueRef.current({ code: "playback_failed", message: message || "Spotify could not start playback." })
+      })
+      player.addListener("player_state_changed", (state) => {
+        if (!mountedRef.current) return
+        if (!state) {
+          onTrackUriRef.current?.(null)
+          return
+        }
+        const track = state.track_window.current_track
+        const index = urisRef.current.indexOf(track.uri)
+        setTrackName(track.name)
+        setArtists(track.artists.map((artist) => artist.name).join(", "))
+        setPosition(state.position)
+        setDuration(state.duration || track.duration_ms)
+        setMovement(index >= 0 ? { index, total: urisRef.current.length } : null)
+        setPlaybackPhase(state.paused ? "paused" : "playing")
+        onTrackUriRef.current?.(track.uri)
+      })
+
+      playerRef.current = player
+      readyWait = window.setTimeout(() => {
+        if (settled || playerRef.current !== player) return
+        settled = true
+        reject(browserError("timeout"))
+      }, 12_000)
+      readyTimerRef.current = readyWait
+      void player.connect()
+    })
+
+    const created = playerRef.current
+    connectingRef.current = pending.catch((error: unknown) => {
+      if (created && playerRef.current === created) destroyPlayer()
+      throw error
+    })
+    return created
   }
 
-  const urisRef = useRef(uris)
-  urisRef.current = uris
+  const attachRef = useRef(attachPlayer)
+  attachRef.current = attachPlayer
+
+  function ensurePlayer(): Promise<string> {
+    return loadSpotifyPlaybackSdk().then(() => {
+      attachPlayer()
+      if (deviceIdRef.current) return deviceIdRef.current
+      if (connectingRef.current) return connectingRef.current
+      return Promise.reject(browserError("missing"))
+    })
+  }
 
   useEffect(() => {
     mountedRef.current = true
+    void loadSpotifyPlaybackSdk().catch(() => {
+      // Play all reports this if the script is still missing when playback starts.
+    })
+    onArmRef.current(() => {
+      if (window.Spotify) {
+        unlockBrowserAudio(attachRef.current())
+        return
+      }
+      void loadSpotifyPlaybackSdk()
+        .then(() => unlockBrowserAudio(attachRef.current()))
+        .catch(() => {
+          // The play attempt reports a missing SDK.
+        })
+    })
     return () => {
       mountedRef.current = false
       destroyPlayer()
@@ -247,6 +284,12 @@ export function SpotifyWebPlayer({
   }, [])
 
   useEffect(() => {
+    if (active) return
+    void playerRef.current?.pause()
+  }, [active])
+
+  useEffect(() => {
+    if (!active || uris.length === 0) return
     let cancelled = false
     setPlaybackPhase("connecting")
     setTrackName("")
@@ -289,7 +332,7 @@ export function SpotifyWebPlayer({
       if (code === "browser") {
         onIssueRef.current({
           code: "browser",
-          message: "This browser cannot run Spotify’s in-app player. Open a movement in Spotify instead.",
+          message: "This browser cannot run the in-page player. Open a movement in Spotify instead.",
         })
         return
       }
@@ -301,10 +344,10 @@ export function SpotifyWebPlayer({
     }
     // ensurePlayer closes over refs. Re-run only when the requested group changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [generation, uris.join("\n")])
+  }, [active, generation, uris.join("\n")])
 
   useEffect(() => {
-    if (phase === "connecting" || phase === "paused") return
+    if (!active || phase === "connecting" || phase === "paused") return
     const id = window.setInterval(() => {
       void playerRef.current?.getCurrentState().then((state) => {
         if (!state || !mountedRef.current) return
@@ -314,66 +357,74 @@ export function SpotifyWebPlayer({
       })
     }, 500)
     return () => window.clearInterval(id)
-  }, [phase])
+  }, [active, phase])
+
+  if (!visible) return null
 
   const percent = duration > 0 ? Math.min(100, (position / duration) * 100) : 0
   const paused = phase !== "playing"
-  const title = trackName || (phase === "connecting" ? "Connecting the in-app player…" : "Classical Portal")
+  const title = trackName || (phase === "connecting" ? "Connecting the player…" : "Classical Portal")
+  const movementLabel = movement ? `Movement ${movement.index + 1} of ${movement.total}` : "In this page"
 
   return (
-    <div className="overflow-hidden rounded-md border border-primary/30 bg-card shadow-sm">
-      <div className="space-y-3 bg-accent/40 p-4">
-        <div className="flex items-center gap-3">
-          <Button
-            type="button"
-            size="icon"
-            aria-label={paused ? "Play" : "Pause"}
-            disabled={phase === "connecting"}
-            onClick={() => void playerRef.current?.togglePlay()}
-          >
-            {paused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
-          </Button>
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-navy">{title}</p>
-            <p className="truncate text-xs text-muted-foreground">
-              {artists || SPOTIFY_PLAYER_NAME}
-              {movement ? ` · Movement ${movement.index + 1} of ${movement.total}` : ""}
+    <div
+      role="region"
+      aria-label="In-page player"
+      className="overflow-hidden rounded-md border border-primary/30 bg-card shadow-sm"
+    >
+      <div className="flex items-center gap-2 px-2 py-2 sm:gap-3 sm:px-3">
+        <Button
+          type="button"
+          size="icon"
+          className="shrink-0"
+          aria-label={paused ? "Play" : "Pause"}
+          disabled={phase === "connecting"}
+          onClick={() => {
+            unlockBrowserAudio(playerRef.current)
+            void playerRef.current?.togglePlay()
+          }}
+        >
+          {paused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />}
+        </Button>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-2">
+            <p className="min-w-0 flex-1 truncate text-sm font-medium text-navy">{title}</p>
+            <p className="shrink-0 text-xs tabular-nums text-muted-foreground">
+              {duration > 0 ? `${clock(position)} / ${clock(duration)}` : movement ? `${movement.index + 1}/${movement.total}` : ""}
             </p>
           </div>
-          <div className="flex shrink-0 gap-1">
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              aria-label="Previous movement"
-              disabled={phase === "connecting"}
-              onClick={() => void playerRef.current?.previousTrack()}
-            >
-              <SkipBack className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              aria-label="Next movement"
-              disabled={phase === "connecting"}
-              onClick={() => void playerRef.current?.nextTrack()}
-            >
-              <SkipForward className="h-4 w-4" />
-            </Button>
-          </div>
+          <p className="truncate text-xs text-muted-foreground">
+            {movementLabel}
+            {artists ? ` · ${artists}` : phase === "connecting" ? "" : ` · ${SPOTIFY_PLAYER_NAME}`}
+          </p>
+          <Progress value={percent} aria-label="Playback position" className="mt-1.5 h-1" />
         </div>
-        <div className="space-y-1">
-          <Progress value={percent} aria-label="Playback position" />
-          <div className="flex justify-between text-xs tabular-nums text-muted-foreground">
-            <span>{clock(position)}</span>
-            <span>{clock(duration)}</span>
-          </div>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Playing in this browser. Spotify Premium is required for in-app continuous play.
-        </p>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="shrink-0"
+          aria-label="Previous movement"
+          disabled={phase === "connecting"}
+          onClick={() => void playerRef.current?.previousTrack()}
+        >
+          <SkipBack className="h-4 w-4" />
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="shrink-0"
+          aria-label="Next movement"
+          disabled={phase === "connecting"}
+          onClick={() => void playerRef.current?.nextTrack()}
+        >
+          <SkipForward className="h-4 w-4" />
+        </Button>
       </div>
+      <p className="border-t border-primary/10 px-3 py-1.5 text-xs text-muted-foreground">
+        Playing in this page. {PREMIUM_REQUIRED_MESSAGE}
+      </p>
     </div>
   )
 }

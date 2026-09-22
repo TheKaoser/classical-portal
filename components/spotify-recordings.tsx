@@ -1,9 +1,9 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ExternalLink, LogOut, Play } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { SpotifyWebPlayer, type PlaybackIssue } from "@/components/spotify-web-player"
+import { loadSpotifyPlaybackSdk, SpotifyWebPlayer, type PlaybackIssue } from "@/components/spotify-web-player"
 import { formatDuration, type SpotifyRecording, type SpotifyTrackMatch } from "@/lib/spotify"
 import {
   chooseTrackEmbed,
@@ -75,6 +75,10 @@ export function SpotifyRecordings({
   const [noticeAction, setNoticeAction] = useState<null | "login" | "reconnect">(null)
   const resumedRef = useRef(false)
   const generationRef = useRef(0)
+  const armPlaybackRef = useRef<(() => void) | null>(null)
+  const registerArm = useCallback((arm: () => void) => {
+    armPlaybackRef.current = arm
+  }, [])
 
   const movementCount = selectedRecording?.tracks.length ?? 0
   const playingThisGroup =
@@ -90,6 +94,13 @@ export function SpotifyRecordings({
       // Private mode can block storage. Playback does not depend on it.
     }
   }, [])
+
+  useEffect(() => {
+    if (!oauthConfigured) return
+    void loadSpotifyPlaybackSdk().catch(() => {
+      // Play all explains this if the browser cannot load the SDK.
+    })
+  }, [oauthConfigured])
 
   useEffect(() => {
     if (!oauthConfigured) return
@@ -170,11 +181,12 @@ export function SpotifyRecordings({
       window.location.href = loginHref(false)
       return
     }
-    if (session.premium === false) {
+    if (session.premium === false || premiumBlocked) {
       setPlayRequest(null)
       setPremiumBlocked(true)
       return
     }
+    armPlaybackRef.current?.()
     beginPlayback(selectedRecording.id, uris)
   }
 
@@ -224,13 +236,13 @@ export function SpotifyRecordings({
   const playAllDetail = !oauthConfigured
     ? "Sequential playback needs Spotify login, which is not configured on this server."
     : premiumBlocked
-      ? "This Spotify account is not Premium, so these movements cannot play straight through in the app. Open a movement below, or listen in the embed."
+      ? "This Spotify account is not Premium, so these movements cannot play in this page. Open a movement below, or listen in the embed."
       : playingThisGroup && playerPhase === "connecting"
-        ? "Connecting the in-app Spotify player…"
+        ? "Starting the player in this page…"
         : playingThisGroup
-          ? `These ${movementCount} movements play in order in this page. Spotify continues from one to the next.`
+          ? `These ${movementCount} movements play in order in the bar below.`
           : session.connected
-            ? `Plays these ${movementCount} movements in order in this page.`
+            ? `Plays these ${movementCount} movements in order in this page. Audio stays in the browser.`
             : `Signs you in to Spotify, then plays these ${movementCount} movements in order in this page.`
 
   return (
@@ -310,10 +322,13 @@ export function SpotifyRecordings({
         </div>
       )}
 
-      {playingThisGroup && playRequest && (
+      {oauthConfigured && session.connected && movementCount > 1 && (
         <SpotifyWebPlayer
-          uris={playRequest.uris}
-          generation={playRequest.generation}
+          uris={playRequest?.uris ?? []}
+          generation={playRequest?.generation ?? 0}
+          active={Boolean(playingThisGroup && playRequest)}
+          visible={Boolean(playingThisGroup && playRequest)}
+          onArm={registerArm}
           onPhase={setPlayerPhase}
           onTrackUri={setActiveUri}
           onIssue={handleIssue}
@@ -490,10 +505,10 @@ export function SpotifyRecordings({
 
       {recordings.length > 0 && (
         <p className="text-xs leading-relaxed text-muted-foreground">
-          Results are individual tracks (and movement groups) for this work, not full albums. Play all streams those
-          movements in order in this page through Spotify’s player. It does not create a playlist. Choosing one
-          movement uses the embed for that track only. The embed plays a preview unless you are logged into Spotify
-          in this browser. Spotify Premium is required for in-app continuous play.
+          Results are individual tracks (and movement groups) for this work, not full albums. Play all uses the player
+          bar in this page and keeps the audio in the browser. It does not open the Spotify app or create a playlist.
+          Choosing one movement uses the embed for that track only. The embed plays a preview unless you are logged
+          into Spotify in this browser. Spotify Premium is required for in-app continuous play.
         </p>
       )}
     </section>

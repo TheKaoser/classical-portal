@@ -71,7 +71,7 @@ Create an app at [developer.spotify.com/dashboard](https://developer.spotify.com
 
 **Search / matching** uses Client Credentials and does not need a redirect URI.
 
-**Play all** uses Authorization Code + PKCE and the [Web Playback SDK](https://developer.spotify.com/documentation/web-playback-sdk). Scopes are `streaming`, `user-modify-playback-state`, `user-read-private`, and `user-read-email`. Playlist-modify scopes are not requested. The browser loads the SDK, connects a player named Classical Portal, and starts the matched tracks with `PUT /v1/me/player/play?device_id=…` and `{ uris, offset: { position: 0 } }`. No temporary playlist is created.
+**Play all** uses Authorization Code + PKCE and the [Web Playback SDK](https://developer.spotify.com/documentation/web-playback-sdk). Scopes are `streaming`, `user-modify-playback-state`, `user-read-private`, and `user-read-email`. Playlist-modify scopes are not requested. The page loads the SDK and creates a player named Classical Portal. That player is the only device Play all starts: `PUT /v1/me/player/play?device_id=…` with `{ uris, offset: { position: 0 } }`. The `device_id` always comes from that in-page player. The app does not list other devices or transfer playback to the Spotify app. No temporary playlist is created. A bar in the page offers play/pause, progress, the current movement, and previous/next.
 
 **Spotify Premium** is required for that in-app player. Free (`free` / `open`) accounts get a clear message and can still use the track embed, the 30-second preview, and “Open in Spotify”.
 
@@ -98,14 +98,14 @@ Without `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` the work page still offers
 - `/api/spotify/callback` — OAuth redirect target
 - `/api/spotify/session` — whether the visitor is connected, and whether the account is Premium
 - `/api/spotify/token` — access token for the Web Playback SDK (`getOAuthToken`)
-- `/api/spotify/play` — `PUT /v1/me/player/play` for the SDK device, with the movement track URIs
+- `/api/spotify/play` — `PUT /v1/me/player/play?device_id=…` for this page’s SDK player only, with the movement track URIs
 - `/api/spotify/logout` — clear Spotify cookies
 
 Supabase and YouTube are no longer used. Old `/admin`, `/blog`, and `/piece/:id` URLs redirect home.
 
 ## Playback notes
 
-- **Play all** — for a group of two or more movements. One click connects the Web Playback SDK and plays those track URIs in order on that device. If Spotify is not connected yet, the same click signs the listener in and starts playback when they return. Choosing one row stops the in-app player and shows that track’s embed. A single matched track stays on the embed.
+- **Play all** — for a group of two or more movements. One click starts those track URIs in the player bar on this page. Audio is the Web Playback SDK in the browser, not remote control of another Spotify device. If Spotify is not connected yet, the same click signs the listener in and starts playback when they return. Choosing one row pauses the in-page player and shows that track’s embed. A single matched track stays on the embed.
 - **Open in Spotify** — works for Free and Premium; each listed item is a single track.
 - **Embed** — fallback for browsing one movement. ~30s preview unless the visitor is logged into Spotify in that browser; full playback in the embed often needs Premium.
 - **Web Playback SDK** — used for Play all. It needs the `streaming` scope and **Spotify Premium**. Free accounts see that Premium is required and are not offered a temporary playlist.
