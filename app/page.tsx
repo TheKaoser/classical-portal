@@ -9,8 +9,8 @@ const ENTRIES = [
 
 export default function HomePage() {
   return (
-    <div className="space-y-14">
-      <section className="space-y-3 py-20 text-center sm:py-28">
+    <div className="pt-24 text-center sm:pt-32 md:pt-40">
+      <section className="space-y-12 sm:space-y-16 md:space-y-24">
         <h1 className="font-serif text-5xl tracking-tight sm:text-6xl">
           <span className="sr-only">Classical Portal</span>
           <span
@@ -31,7 +31,7 @@ export default function HomePage() {
       </section>
 
       <nav
-        className="flex flex-nowrap items-center justify-center gap-8 sm:gap-14 md:gap-20"
+        className="mt-40 flex flex-nowrap items-center justify-center gap-8 sm:mt-48 sm:gap-16 md:mt-52 md:gap-24"
         aria-label="Browse catalog"
       >
         {ENTRIES.map(({ href, title }) => (
