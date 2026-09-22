@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils"
 
 export const metadata: Metadata = {
   title: "Genres",
-  description: "Browse classical works by form, from symphonies and sonatas to operas and nocturnes.",
+  description: "Browse classical works by genre, from symphonies, concertos, and chamber music to choral works and operas.",
 }
 
 export default function GenresPage() {
@@ -17,7 +17,7 @@ export default function GenresPage() {
     <div>
       <PageHeader
         title="Genres"
-        description="Forms found in Open Opus titles and subtitles, ordered by how many works are marked popular."
+        description="Important genres from Open Opus titles and subtitles, ordered by how many works are marked popular."
         backHref="/"
         backLabel="Home"
       />

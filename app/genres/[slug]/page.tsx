@@ -1,12 +1,12 @@
 import type { Metadata } from "next"
-import { notFound } from "next/navigation"
+import { notFound, permanentRedirect } from "next/navigation"
 import { GenreWorkBrowser } from "@/components/genre-work-browser"
 import { PageHeader } from "@/components/page-header"
 import { WorkList } from "@/components/work-list"
 import { attachCompositionYearsByComposer } from "@/lib/composition-years"
 import { formSummaries, worksForForm } from "@/lib/form-catalog"
-import { formFromSlug } from "@/lib/forms"
-import { classifyWorkSubtype, subtypeFilters } from "@/lib/work-subtypes"
+import { catalogGenreFromSlug, formFromSlug, relocatedGenreHref } from "@/lib/forms"
+import { classifyListedSubtype, listedSubtypeFilters } from "@/lib/work-subtypes"
 
 export function generateStaticParams() {
   return formSummaries().map((form) => ({ slug: form.slug }))
@@ -18,18 +18,21 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>
 }): Promise<Metadata> {
   const { slug } = await params
-  const form = formFromSlug(slug)
+  const form = catalogGenreFromSlug(slug) ?? (relocatedGenreHref(slug) ? formFromSlug(slug) : undefined)
   return { title: form?.name ?? "Genre" }
 }
 
 export default async function GenrePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
-  const form = formFromSlug(slug)
+  const moved = relocatedGenreHref(slug)
+  if (moved) permanentRedirect(moved)
+
+  const form = catalogGenreFromSlug(slug)
   if (!form) notFound()
 
   const listed = worksForForm(slug)
   if (!listed.length) notFound()
-  const filters = subtypeFilters(listed)
+  const filters = listedSubtypeFilters(listed)
   const works = await attachCompositionYearsByComposer(
     listed.map((work) => ({
       id: work.id,
@@ -39,7 +42,7 @@ export default async function GenrePage({ params }: { params: Promise<{ slug: st
       popular: work.popular,
       recommended: work.recommended,
       composerLabel: work.composerName,
-      subtype: classifyWorkSubtype(work)?.slug ?? null,
+      subtype: classifyListedSubtype(work)?.slug ?? null,
       composer: {
         id: work.composerId,
         name: work.composerName,

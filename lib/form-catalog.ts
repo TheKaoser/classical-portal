@@ -1,6 +1,12 @@
 import catalog from "@/data/form-works.json"
 import { compareWorksByPopularity, dedupeWorks, isPopular } from "@/lib/openopus"
-import { WORK_FORMS, formFromSlug, type WorkForm } from "@/lib/forms"
+import {
+  FORM_GROUPS,
+  WORK_FORMS,
+  formsForBrowseSlug,
+  groupForForm,
+  type CatalogGenre,
+} from "@/lib/forms"
 
 export type FormWork = {
   id: string
@@ -14,7 +20,7 @@ export type FormWork = {
   form: string
 }
 
-export type FormSummary = WorkForm & {
+export type FormSummary = CatalogGenre & {
   total: number
   popular: number
 }
@@ -33,14 +39,33 @@ export function formSummaries(): FormSummary[] {
     counts.set(work.form, row)
   }
 
-  return WORK_FORMS.flatMap((form) => {
+  const summaries: FormSummary[] = []
+
+  for (const form of WORK_FORMS) {
+    if (groupForForm(form.slug)) continue
     const row = counts.get(form.slug)
-    if (!row?.total) return []
-    return [{ ...form, ...row }]
-  }).sort((a, b) => b.popular - a.popular || b.total - a.total || a.name.localeCompare(b.name))
+    if (!row?.total) continue
+    summaries.push({ slug: form.slug, name: form.name, blurb: form.blurb, ...row })
+  }
+
+  for (const group of FORM_GROUPS) {
+    let total = 0
+    let popular = 0
+    for (const child of group.children) {
+      const row = counts.get(child)
+      if (!row) continue
+      total += row.total
+      popular += row.popular
+    }
+    if (!total) continue
+    summaries.push({ slug: group.slug, name: group.name, blurb: group.blurb, total, popular })
+  }
+
+  return summaries.sort((a, b) => b.popular - a.popular || b.total - a.total || a.name.localeCompare(b.name))
 }
 
 export function worksForForm(slug: string): FormWork[] {
-  if (!formFromSlug(slug)) return []
-  return dedupeWorks(loadFormWorks().filter((work) => work.form === slug)).sort(compareWorksByPopularity)
+  const forms = new Set(formsForBrowseSlug(slug))
+  if (!forms.size) return []
+  return dedupeWorks(loadFormWorks().filter((work) => forms.has(work.form))).sort(compareWorksByPopularity)
 }
