@@ -153,9 +153,8 @@ function PlaybackSeekBar({
       aria-valuenow={Math.max(0, Math.round(Math.min(position, duration)))}
       aria-valuetext={duration > 0 ? `${clock(position)} of ${clock(duration)}` : "Not playing"}
       aria-disabled={disabled}
-      className={`relative mt-1.5 flex h-6 w-full touch-none items-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-        disabled ? "cursor-default" : "cursor-pointer"
-      }`}
+      className="relative mt-1.5 flex h-6 w-full cursor-pointer touch-none items-center rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      style={{ cursor: "pointer" }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={finishDrag}
@@ -509,6 +508,15 @@ export function SpotifyWebPlayer({
   }, [active, generation, uris.join("\n")])
 
   useEffect(() => {
+    if (!visible) return
+    const previous = document.body.style.paddingBottom
+    document.body.style.paddingBottom = "8.5rem"
+    return () => {
+      document.body.style.paddingBottom = previous
+    }
+  }, [visible])
+
+  useEffect(() => {
     if (!active || phase === "connecting" || phase === "paused") return
     const id = window.setInterval(() => {
       void playerRef.current?.getCurrentState().then((state) => {
@@ -532,13 +540,14 @@ export function SpotifyWebPlayer({
     <div
       role="region"
       aria-label="In-page player"
-      className="overflow-hidden rounded-md border border-primary/30 bg-card shadow-sm"
+      className="fixed inset-x-0 bottom-0 z-50 border-t border-primary/30 bg-card/95 shadow-[0_-10px_30px_rgba(41,50,62,0.14)] backdrop-blur-sm"
     >
-      <div className="flex items-center gap-2 px-2 py-2 sm:gap-3 sm:px-3">
+      <div className="mx-auto flex max-w-4xl items-center gap-2 px-2 py-2 sm:gap-3 sm:px-3">
         <Button
           type="button"
           size="icon"
-          className="shrink-0"
+          className="shrink-0 cursor-pointer disabled:pointer-events-auto disabled:cursor-pointer"
+          style={{ cursor: "pointer" }}
           aria-label={paused ? "Play" : "Pause"}
           disabled={phase === "connecting"}
           onClick={() => {
@@ -580,7 +589,8 @@ export function SpotifyWebPlayer({
           type="button"
           variant="outline"
           size="sm"
-          className="shrink-0"
+          className="shrink-0 cursor-pointer disabled:pointer-events-auto disabled:cursor-pointer"
+          style={{ cursor: "pointer" }}
           aria-label="Save track"
           aria-pressed={trackSaved}
           disabled={!trackUri || phase === "connecting" || savingTrack || trackSaved || !onSaveTrack}
@@ -598,7 +608,7 @@ export function SpotifyWebPlayer({
           {savingTrack ? "Saving…" : trackSaved ? "Saved" : "Save track"}
         </Button>
       </div>
-      <p className="border-t border-primary/10 px-3 py-1.5 text-xs text-muted-foreground">
+      <p className="mx-auto max-w-4xl border-t border-primary/10 px-3 py-1.5 text-xs text-muted-foreground">
         {saveTrackError ? saveTrackError : `Playing in this page. ${PREMIUM_REQUIRED_MESSAGE}`}
       </p>
     </div>
