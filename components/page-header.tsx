@@ -1,5 +1,4 @@
-import Link from "next/link"
-import { ArrowLeft } from "lucide-react"
+import { BackLink } from "@/components/back-link"
 
 export function PageHeader({
   title,
@@ -19,13 +18,11 @@ export function PageHeader({
   return (
     <div className="mb-8">
       {backHref && (
-        <Link
+        <BackLink
           href={backHref}
+          label={backLabel || "Back"}
           className="mb-5 inline-flex items-center gap-1 rounded-full px-2 py-1 text-sm font-medium text-primary hover:bg-accent"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          {backLabel || "Back"}
-        </Link>
+        />
       )}
       <div className="flex items-start gap-4">
         {portrait && (

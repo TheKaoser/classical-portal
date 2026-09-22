@@ -37,7 +37,10 @@ export function GenreWorkBrowser({
     const url = new URL(window.location.href)
     if (slug === "all") url.searchParams.delete("filter")
     else url.searchParams.set("filter", slug)
-    window.history.pushState(null, "", `${url.pathname}${url.search}`)
+    // Avoid passing Next's __NA state through: the patched history.pushState
+    // then copies internals and syncs search params into the App Router, so
+    // Back from a work restores this filtered genre URL cleanly.
+    window.history.pushState({}, "", `${url.pathname}${url.search}`)
   }
 
   return (
