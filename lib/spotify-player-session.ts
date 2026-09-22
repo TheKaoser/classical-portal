@@ -72,15 +72,13 @@ export function albumPlaybackControl(input: {
 }
 
 /**
- * Album row accent while browsing. The playing album stays highlighted even
- * after leaving its work page; a selected album on another page still accents
- * when a different recording is already playing.
+ * Album row blue/playing accent. Only the recording that owns the global
+ * play request is highlighted — expanding or selecting an album to browse
+ * movements must not reuse the playing color.
  */
 export function isAlbumRowActive(input: {
   recordingId: string
-  selected: boolean
   playRequestRecordingId: string | null
 }): boolean {
-  const playingThis = input.playRequestRecordingId === input.recordingId
-  return playingThis || (input.selected && input.playRequestRecordingId !== input.recordingId)
+  return input.playRequestRecordingId === input.recordingId
 }

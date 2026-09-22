@@ -501,7 +501,6 @@ export function SpotifyRecordings({
               const savingThis = savingRecordingId === recording.id
               const albumActive = isAlbumRowActive({
                 recordingId: recording.id,
-                selected,
                 playRequestRecordingId: playRequest?.recordingId ?? null,
               })
               return (
@@ -509,7 +508,7 @@ export function SpotifyRecordings({
                   <div
                     className={cn(
                       "flex flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4",
-                      albumActive ? "bg-accent" : ""
+                      albumActive ? "bg-accent" : selected ? "bg-muted/80" : ""
                     )}
                   >
                     <button
@@ -536,7 +535,8 @@ export function SpotifyRecordings({
                         <span
                           className={cn(
                             "block truncate text-sm text-foreground",
-                            (selected || playingThis) && "font-medium text-primary"
+                            albumActive && "font-medium text-primary",
+                            selected && !albumActive && "font-medium"
                           )}
                         >
                           {albumTitle}
