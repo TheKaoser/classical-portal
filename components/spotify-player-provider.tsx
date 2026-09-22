@@ -75,6 +75,8 @@ type SpotifyPlayerContextValue = {
   savedTrackUris: string[]
   armPlayback: () => void
   registerArm: (arm: () => void) => void
+  pausePlayback: () => void
+  resumePlayback: () => void
   beginPlayback: (recordingId: string, uris: string[], position: number) => void
   clearPlayback: () => void
   handleIssue: (issue: PlaybackIssue) => void
@@ -110,14 +112,28 @@ export function SpotifyPlayerProvider({
   const [lastIssue, setLastIssue] = useState<PlaybackIssue | null>(null)
   const generationRef = useRef(0)
   const armPlaybackRef = useRef<(() => void) | null>(null)
+  const transportRef = useRef<{ pause: () => void; resume: () => void } | null>(null)
   const mountedRef = useRef(true)
 
   const registerArm = useCallback((arm: () => void) => {
     armPlaybackRef.current = arm
   }, [])
 
+  const registerTransport = useCallback((transport: { pause: () => void; resume: () => void }) => {
+    transportRef.current = transport
+  }, [])
+
   const armPlayback = useCallback(() => {
     armPlaybackRef.current?.()
+  }, [])
+
+  const pausePlayback = useCallback(() => {
+    transportRef.current?.pause()
+  }, [])
+
+  const resumePlayback = useCallback(() => {
+    armPlaybackRef.current?.()
+    transportRef.current?.resume()
   }, [])
 
   const clearPlayback = useCallback(() => {
@@ -282,6 +298,8 @@ export function SpotifyPlayerProvider({
       savedTrackUris,
       armPlayback,
       registerArm,
+      pausePlayback,
+      resumePlayback,
       beginPlayback,
       clearPlayback,
       handleIssue,
@@ -301,6 +319,8 @@ export function SpotifyPlayerProvider({
       savedTrackUris,
       armPlayback,
       registerArm,
+      pausePlayback,
+      resumePlayback,
       beginPlayback,
       clearPlayback,
       handleIssue,
@@ -322,6 +342,7 @@ export function SpotifyPlayerProvider({
           active={isPlaybackSessionActive(playRequest)}
           visible={isPlaybackSessionActive(playRequest)}
           onArm={registerArm}
+          onRegisterTransport={registerTransport}
           onPhase={setPlayerPhase}
           onTrackUri={setActiveUri}
           onIssue={handleIssue}

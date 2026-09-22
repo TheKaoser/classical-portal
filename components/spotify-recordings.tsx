@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { ExternalLink, LogOut, Play } from "lucide-react"
+import { ExternalLink, LogOut, Pause, Play } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useSpotifyPlayer } from "@/components/spotify-player-provider"
 import { cn } from "@/lib/utils"
@@ -12,7 +12,7 @@ import {
   PREMIUM_REQUIRED_MESSAGE,
   type PendingPlayback,
 } from "@/lib/spotify-playback"
-import { isAlbumRowActive } from "@/lib/spotify-player-session"
+import { albumPlaybackControl, isAlbumRowActive } from "@/lib/spotify-player-session"
 import {
   dedupePlaylistCreate,
   nextPlaybackAction,
@@ -117,6 +117,8 @@ export function SpotifyRecordings({
     premiumBlocked,
     setPremiumBlocked,
     armPlayback,
+    pausePlayback,
+    resumePlayback,
     beginPlayback,
     clearPlayback,
     lastIssue,
@@ -341,6 +343,24 @@ export function SpotifyRecordings({
     requestPlayback(recording.id, uris, 0)
   }
 
+  function handleAlbumPlaybackControl(recording: SpotifyRecording) {
+    const control = albumPlaybackControl({
+      recordingId: recording.id,
+      playRequestRecordingId: playRequest?.recordingId ?? null,
+      playerPhase,
+    })
+    if (control.action === "pause") {
+      pausePlayback()
+      return
+    }
+    if (control.action === "resume") {
+      resumePlayback()
+      return
+    }
+    if (control.action === "none") return
+    handlePlay(recording)
+  }
+
   function playMovement(recording: SpotifyRecording, track: SpotifyTrackMatch) {
     const uris = orderedTrackUris(recording.tracks)
     const index = uris.indexOf(track.uri)
@@ -473,6 +493,11 @@ export function SpotifyRecordings({
               const movementCount = recording.tracks.length
               const canSave = movementCount > 1
               const connecting = playingThis && playerPhase === "connecting"
+              const albumControl = albumPlaybackControl({
+                recordingId: recording.id,
+                playRequestRecordingId: playRequest?.recordingId ?? null,
+                playerPhase,
+              })
               const savingThis = savingRecordingId === recording.id
               const albumActive = isAlbumRowActive({
                 recordingId: recording.id,
@@ -527,20 +552,28 @@ export function SpotifyRecordings({
                         <>
                           <Button
                             type="button"
-                            onClick={() => handlePlay(recording)}
+                            onClick={() => handleAlbumPlaybackControl(recording)}
                             disabled={connecting || movementCount === 0}
-                            aria-pressed={Boolean(playingThis && playerPhase === "playing")}
+                            aria-pressed={albumControl.pressed}
                             className="cursor-pointer"
                             title={
                               premiumBlocked
                                 ? "This Spotify account is not Premium, so this recording cannot play straight through in this page."
-                                : session.connected
-                                  ? "Plays this recording from the first movement, in order, in this page."
-                                  : "Signs you in to Spotify, then plays this recording from the first movement."
+                                : albumControl.action === "pause"
+                                  ? "Pause playback in this page."
+                                  : albumControl.action === "resume"
+                                    ? "Resume playback in this page."
+                                    : session.connected
+                                      ? "Plays this recording from the first movement, in order, in this page."
+                                      : "Signs you in to Spotify, then plays this recording from the first movement."
                             }
                           >
-                            <Play className="h-4 w-4" />
-                            {connecting ? "Connecting…" : "Play"}
+                            {albumControl.label === "Pause" ? (
+                              <Pause className="h-4 w-4" />
+                            ) : (
+                              <Play className="h-4 w-4" />
+                            )}
+                            {albumControl.label}
                           </Button>
                           {canSave &&
                             (savedPlaylist?.url ? (
