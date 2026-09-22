@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { BrandMark } from "@/components/brand-mark"
 
 const ENTRIES = [
   { href: "/periods", title: "Periods" },
@@ -10,8 +11,19 @@ export default function HomePage() {
   return (
     <div className="space-y-14">
       <section className="space-y-3 py-20 text-center sm:py-28">
-        <h1 className="title-gradient font-serif text-5xl tracking-tight sm:text-6xl">
-          Classical Portal
+        <h1 className="font-serif text-5xl tracking-tight sm:text-6xl">
+          <span className="sr-only">Classical Portal</span>
+          <span
+            className="inline-flex items-center justify-center"
+            aria-hidden="true"
+          >
+            {/* Approved mock #2: mark replaces leading C; height ≈ slightly taller than caps. */}
+            <BrandMark
+              decorative
+              className="mr-[0.06em] h-[1.05em] w-auto shrink-0"
+            />
+            <span className="title-gradient">lassical Portal</span>
+          </span>
         </h1>
         <p className="mx-auto max-w-xl text-lg text-muted-foreground">
           Explore classical music your way.
