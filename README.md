@@ -90,6 +90,7 @@ Set these in `.env.local` and in the Vercel project (Settings → Environment Va
 | `SPOTIFY_CLIENT_SECRET` | For matching recordings | Spotify app secret (server only) |
 | `SPOTIFY_MARKET` | No (default `US`) | ISO 3166-1 alpha-2 market for search |
 | `SPOTIFY_REDIRECT_URI` | For in-page play and Save playlist | Must match a Redirect URI registered in the Spotify Dashboard |
+| `NEXT_PUBLIC_DONATE_URL` | No | Stripe Payment Link for the footer Donate control. Leave unset to hide it |
 
 Create an app at [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard).
 
