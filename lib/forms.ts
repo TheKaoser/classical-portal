@@ -17,6 +17,13 @@
  * Order is match priority (specific forms before broader ones), not display
  * order. The genres page sorts forms by how many works are popular, counting
  * either the Open Opus `popular` or `recommended` flag.
+ *
+ * Trios, quartets, quintets, and sextets are one Chamber genre. Requiems,
+ * masses, oratorios, motets, and cantatas are one Choral genre. The finer
+ * form stays on the work and becomes a filter chip, the way concertos split
+ * by instrument. A sextet is recognized only when that word is the form named
+ * before any other form, so "Sextet for string quartet" is a sextet and
+ * "suite for wind sextet" stays a suite.
  */
 
 export type WorkForm = {
@@ -116,6 +123,12 @@ export const WORK_FORMS: WorkForm[] = [
     name: "Sonatas",
     blurb: "Sonatas, including trio sonatas.",
     pattern: /\bsonatas?\b/,
+  },
+  {
+    slug: "sextet",
+    name: "Sextets",
+    blurb: "Sextets.",
+    pattern: /\bsextets?\b/,
   },
   {
     slug: "quartet",
@@ -229,8 +242,75 @@ export const WORK_FORMS: WorkForm[] = [
 
 const bySlug = new Map(WORK_FORMS.map((form) => [form.slug, form]))
 
+export type FormGroup = {
+  slug: string
+  name: string
+  blurb: string
+  /** Chip order on the genre page. */
+  children: readonly string[]
+}
+
+export const FORM_GROUPS: readonly FormGroup[] = [
+  {
+    slug: "chamber",
+    name: "Chamber",
+    blurb: "Trios, quartets, quintets, and sextets.",
+    children: ["trio", "quartet", "quintet", "sextet"],
+  },
+  {
+    slug: "choral",
+    name: "Choral",
+    blurb: "Requiems, masses, oratorios, motets, and cantatas.",
+    children: ["requiem", "mass", "oratorio", "motet", "cantata"],
+  },
+]
+
+const groupBySlug = new Map(FORM_GROUPS.map((group) => [group.slug, group]))
+const groupByChild = new Map(
+  FORM_GROUPS.flatMap((group) => group.children.map((child) => [child, group] as const))
+)
+
+export type CatalogGenre = {
+  slug: string
+  name: string
+  blurb: string
+}
+
 export function formFromSlug(slug: string): WorkForm | undefined {
   return bySlug.get(slug)
+}
+
+export function groupFromSlug(slug: string): FormGroup | undefined {
+  return groupBySlug.get(slug)
+}
+
+/** Browse genre that folds this form in, when the form is not its own page. */
+export function groupForForm(formSlug: string): FormGroup | undefined {
+  return groupByChild.get(formSlug)
+}
+
+/** Top-level genre page: a group, or a form that was not folded into one. */
+export function catalogGenreFromSlug(slug: string): CatalogGenre | undefined {
+  const group = groupFromSlug(slug)
+  if (group) return group
+  const form = formFromSlug(slug)
+  if (!form || groupForForm(form.slug)) return undefined
+  return form
+}
+
+/** Form slugs listed on a top-level genre page. Empty when the slug is not one. */
+export function formsForBrowseSlug(slug: string): string[] {
+  const group = groupFromSlug(slug)
+  if (group) return [...group.children]
+  if (catalogGenreFromSlug(slug)) return [slug]
+  return []
+}
+
+/** Old fine-form URLs send the listener to the parent genre with that chip selected. */
+export function relocatedGenreHref(slug: string): string | null {
+  const group = groupForForm(slug)
+  if (!group) return null
+  return `/genres/${group.slug}?filter=${slug}`
 }
 
 export function foldFormText(value: string): string {
@@ -247,13 +327,33 @@ export function genreHrefForLabel(label: string): string | null {
   const folded = foldFormText(label.trim())
   if (!folded) return null
   const form = bySlug.get(folded) ?? byFoldedName.get(folded)
-  return form ? `/genres/${form.slug}` : null
+  if (!form) return null
+  return relocatedGenreHref(form.slug) ?? `/genres/${form.slug}`
+}
+
+const LARGER_ENSEMBLE = /\b(?:septets?|octets?|nonets?)\b/
+
+/**
+ * "Sextet for string quartet" names the sextet first. "Suite for wind sextet"
+ * names the suite first and keeps that form. An octet that merely uses a
+ * string sextet is not a sextet.
+ */
+function sextetLeads(folded: string): boolean {
+  const sextet = bySlug.get("sextet")
+  if (!sextet) return false
+  const match = new RegExp(sextet.pattern.source).exec(folded)
+  if (!match || match.index == null) return false
+  const before = folded.slice(0, match.index)
+  if (LARGER_ENSEMBLE.test(before)) return false
+  return !WORK_FORMS.some((form) => form.slug !== "sextet" && form.pattern.test(before))
 }
 
 function matchForm(text: string): string | null {
   const folded = foldFormText(text)
   if (!folded) return null
+  if (sextetLeads(folded)) return "sextet"
   for (const form of WORK_FORMS) {
+    if (form.slug === "sextet") continue
     if (form.pattern.test(folded)) return form.slug
   }
   return null

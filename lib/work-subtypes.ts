@@ -8,7 +8,7 @@
  * A form with fewer than two groups of at least eight works gets no selector.
  */
 
-import { foldFormText } from "./forms.ts"
+import { foldFormText, formFromSlug, groupForForm } from "./forms.ts"
 
 export type WorkSubtype = {
   slug: string
@@ -152,6 +152,45 @@ export function classifyWorkSubtype(work: TaggedWork): WorkSubtype | null {
     return titledInstrument(work.title, work.subtitle, [...ENSEMBLES, ...TERMS])
   }
   return null
+}
+
+/** Chip on a genre page: a folded form (Trios, Masses, …) or an instrument. */
+export function classifyListedSubtype(work: TaggedWork): WorkSubtype | null {
+  const grouped = groupedFormChip(work.form)
+  if (grouped) return grouped
+  return classifyWorkSubtype(work)
+}
+
+export function listedSubtypeFilters<T extends TaggedWork>(works: T[]): Array<WorkSubtype & { count: number }> {
+  if (works.some((work) => groupForForm(work.form))) return groupedFormFilters(works)
+  return subtypeFilters(works)
+}
+
+function groupedFormChip(formSlug: string): WorkSubtype | null {
+  if (!groupForForm(formSlug)) return null
+  const form = formFromSlug(formSlug)
+  return form ? { slug: form.slug, label: form.name } : null
+}
+
+function groupedFormFilters<T extends TaggedWork>(works: T[]): Array<WorkSubtype & { count: number }> {
+  const counts = new Map<string, WorkSubtype & { count: number }>()
+  let group: ReturnType<typeof groupForForm> | undefined
+  for (const work of works) {
+    const parent = groupForForm(work.form)
+    if (!parent) continue
+    group = parent
+    const chip = groupedFormChip(work.form)
+    if (!chip) continue
+    const row = counts.get(chip.slug) ?? { ...chip, count: 0 }
+    row.count += 1
+    counts.set(chip.slug, row)
+  }
+
+  const options = (group?.children ?? [])
+    .map((slug) => counts.get(slug))
+    .filter((row): row is WorkSubtype & { count: number } => Boolean(row && row.count >= MIN_COUNT))
+  if (options.length < MIN_GROUPS) return []
+  return options
 }
 
 export function subtypeFilters<T extends TaggedWork>(works: T[]): Array<WorkSubtype & { count: number }> {

@@ -2,8 +2,10 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import catalog from "../data/form-works.json" with { type: "json" }
 import {
+  classifyListedSubtype,
   classifyWorkSubtype,
   filterWorksBySubtype,
+  listedSubtypeFilters,
   subtypeFilters,
 } from "./work-subtypes.ts"
 
@@ -137,6 +139,29 @@ test("catalog forms that name instruments expose those chips", () => {
   assert.ok(subtypeFilters(ofForm("quintet")).some((item) => item.slug === "wind"))
   assert.ok(subtypeFilters(ofForm("trio")).some((item) => item.slug === "piano"))
   assert.ok(subtypeFilters(ofForm("suite")).some((item) => item.slug === "cello"))
+})
+
+test("chamber and choral list form chips in catalog order", () => {
+  const chamber = listedSubtypeFilters(
+    works.filter((work) => ["trio", "quartet", "quintet", "sextet"].includes(work.form))
+  ).map((item) => item.slug)
+  assert.deepEqual(chamber, ["trio", "quartet", "quintet", "sextet"])
+  const choral = listedSubtypeFilters(
+    works.filter((work) => ["requiem", "mass", "oratorio", "motet", "cantata"].includes(work.form))
+  ).map((item) => item.slug)
+  assert.deepEqual(choral, ["requiem", "mass", "oratorio", "motet", "cantata"])
+  assert.equal(
+    classifyListedSubtype({ form: "quartet", title: "String Quartet no. 14 in C sharp minor, op. 131" })?.slug,
+    "quartet"
+  )
+  assert.equal(
+    classifyListedSubtype({ form: "mass", title: "Missa solemnis in D major, op. 123" })?.slug,
+    "mass"
+  )
+  assert.equal(
+    classifyListedSubtype({ form: "concerto", title: "Piano Concerto no. 5 in E flat major, op. 73" })?.slug,
+    "piano"
+  )
 })
 
 test("filtering keeps the surrounding list order", () => {

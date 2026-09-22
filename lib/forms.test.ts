@@ -1,6 +1,14 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
-import { classifyWork, genreHrefForLabel } from "./forms.ts"
+import {
+  FORM_GROUPS,
+  catalogGenreFromSlug,
+  classifyWork,
+  formFromSlug,
+  formsForBrowseSlug,
+  genreHrefForLabel,
+  relocatedGenreHref,
+} from "./forms.ts"
 import {
   compareSpotifyThenFallback,
   compareWorksByPopularity,
@@ -53,6 +61,46 @@ test("real genre labels keep their genre route", () => {
   assert.equal(genreHrefForLabel("Opera"), "/genres/opera")
   assert.equal(genreHrefForLabel("Symphonies"), "/genres/symphony")
   assert.equal(genreHrefForLabel("Études"), "/genres/etude")
+})
+
+test("chamber and choral fold the finer forms into one genre", () => {
+  assert.deepEqual(formsForBrowseSlug("chamber"), ["trio", "quartet", "quintet", "sextet"])
+  assert.deepEqual(formsForBrowseSlug("choral"), ["requiem", "mass", "oratorio", "motet", "cantata"])
+  assert.deepEqual(formsForBrowseSlug("symphony"), ["symphony"])
+  assert.deepEqual(formsForBrowseSlug("quartet"), [])
+  assert.deepEqual(formsForBrowseSlug("mass"), [])
+  assert.equal(catalogGenreFromSlug("chamber")?.name, "Chamber")
+  assert.equal(catalogGenreFromSlug("choral")?.name, "Choral")
+  assert.equal(catalogGenreFromSlug("quartet"), undefined)
+  assert.equal(catalogGenreFromSlug("requiem"), undefined)
+  assert.equal(relocatedGenreHref("quartet"), "/genres/chamber?filter=quartet")
+  assert.equal(relocatedGenreHref("trio"), "/genres/chamber?filter=trio")
+  assert.equal(relocatedGenreHref("sextet"), "/genres/chamber?filter=sextet")
+  assert.equal(relocatedGenreHref("mass"), "/genres/choral?filter=mass")
+  assert.equal(relocatedGenreHref("oratorio"), "/genres/choral?filter=oratorio")
+  assert.equal(relocatedGenreHref("symphony"), null)
+  assert.equal(genreHrefForLabel("Quartets"), "/genres/chamber?filter=quartet")
+  assert.equal(genreHrefForLabel("Requiems"), "/genres/choral?filter=requiem")
+  assert.equal(genreHrefForLabel("Motets"), "/genres/choral?filter=motet")
+  assert.equal(genreHrefForLabel("Cantatas"), "/genres/choral?filter=cantata")
+  for (const group of FORM_GROUPS) {
+    for (const child of group.children) assert.ok(formFromSlug(child), child)
+  }
+})
+
+test("a sextet named before another form stays a sextet", () => {
+  assert.equal(classifyWork("String Sextet no. 1 in B flat major, op. 18"), "sextet")
+  assert.equal(classifyWork("Wind Sextet in E flat major, op. 71"), "sextet")
+  assert.equal(
+    classifyWork("Sextet in E flat major, for piano, string quartet, and double bass"),
+    "sextet"
+  )
+  assert.equal(classifyWork("Sextet for Piano, Clarinet, Horn, and String Trio, op. 37"), "sextet")
+  assert.equal(classifyWork("String Quartet no. 14 in C sharp minor, op. 131"), "quartet")
+  assert.equal(classifyWork("Mládí, suite for wind sextet"), "suite")
+  assert.equal(classifyWork("Fantasia, for strings or string sextet"), "fantasia")
+  assert.equal(classifyWork("Threnody and Scherzo, for bassoon, harp, and string sextet"), "scherzo")
+  assert.equal(classifyWork("Octet, for horn, piano, and string sextet"), null)
 })
 
 test("a form named in the title wins over a conflicting subtitle", () => {
