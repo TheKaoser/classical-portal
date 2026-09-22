@@ -47,18 +47,6 @@
   .text-balance {
     text-wrap: balance;
   }
-
-  .entry-card-periods {
-    background-color: var(--surface-blue);
-  }
-
-  .entry-card-genres {
-    background-color: var(--surface-green);
-  }
-
-  .entry-card-composers {
-    background-color: var(--surface-yellow);
-  }
 }
 
 :root {
