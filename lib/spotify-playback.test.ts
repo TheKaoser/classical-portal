@@ -20,7 +20,7 @@ import {
   uniqueTrackUris,
 } from "./spotify-playback.ts"
 
-test("oauth scopes are the Web Playback SDK set and do not include playlist modification", () => {
+test("oauth scopes include the Web Playback SDK set and private playlist save", () => {
   assert.deepEqual(SPOTIFY_OAUTH_SCOPES, [
     "streaming",
     "user-modify-playback-state",
@@ -28,9 +28,9 @@ test("oauth scopes are the Web Playback SDK set and do not include playlist modi
     "user-read-email",
   ])
   const scope = spotifyOAuthScopeString()
-  assert.equal(scope.includes("playlist-modify"), false)
   assert.match(scope, /streaming/)
   assert.match(scope, /user-modify-playback-state/)
+  assert.match(scope, /playlist-modify-private/)
 })
 
 test("track URIs stay in movement order and drop invalid duplicates", () => {
@@ -115,9 +115,23 @@ test("pending playback resumes only a real multi-track group", () => {
   assert.deepEqual(parsePendingPlayback(raw), {
     recordingId: "album:track",
     uris: ["spotify:track:i", "spotify:track:ii"],
+    position: 0,
+  })
+  assert.deepEqual(
+    parsePendingPlayback(JSON.stringify({ recordingId: "album:track", uris: ["spotify:track:i", "spotify:track:ii"], position: 1 })),
+    {
+      recordingId: "album:track",
+      uris: ["spotify:track:i", "spotify:track:ii"],
+      position: 1,
+    }
+  )
+  assert.deepEqual(parsePendingPlayback(JSON.stringify({ recordingId: "r", uris: ["spotify:track:only"] })), {
+    recordingId: "r",
+    uris: ["spotify:track:only"],
+    position: 0,
   })
   assert.equal(parsePendingPlayback("{"), null)
-  assert.equal(parsePendingPlayback(JSON.stringify({ recordingId: "r", uris: ["spotify:track:only"] })), null)
+  assert.equal(parsePendingPlayback(JSON.stringify({ recordingId: "r", uris: [] })), null)
 })
 
 test("a click on the seek bar maps to a position in the current track", () => {

@@ -2,6 +2,7 @@ import { createHash, randomBytes } from "crypto"
 import { cookies } from "next/headers"
 import { NextResponse } from "next/server"
 import { spotifyOAuthScopeString, spotifyPremiumState } from "@/lib/spotify-playback"
+import { spotifyPlaylistCreateBody } from "@/lib/spotify-playlist"
 
 const STATE_COOKIE = "cp_spotify_oauth_state"
 const VERIFIER_COOKIE = "cp_spotify_pkce"
@@ -11,7 +12,8 @@ const REFRESH_COOKIE = "cp_spotify_rt"
 const EXPIRY_COOKIE = "cp_spotify_exp"
 const USER_COOKIE = "cp_spotify_user"
 
-// Web Playback SDK (Concertmaster-style). Playlist-modify scopes are not requested.
+// Web Playback SDK plus private playlist save.
+// `playlist-modify-public` stays so tokens granted before private-only still refresh.
 const SCOPES = spotifyOAuthScopeString()
 
 export type SpotifyUserSession = {
@@ -291,7 +293,6 @@ export async function getSpotifyUserSession(): Promise<SpotifyUserSession> {
   } catch {
     return DISCONNECTED
   }
-
   const me = await fetchSpotifyMe(token)
   if (me) {
     const product = me.product ?? stored.product ?? null
@@ -307,6 +308,77 @@ export async function getSpotifyUserSession(): Promise<SpotifyUserSession> {
   }
 
   return sessionFromStored(stored)
+}
+
+export async function createSpotifyPlaylist(input: {
+  name: string
+  description?: string
+  trackUris: string[]
+}): Promise<{ id: string; url: string } | { error: string; status: number }> {
+  const token = await getUserAccessToken()
+  const session = await getSpotifyUserSession()
+  if (!token || !session.userId) return { error: "Not connected to Spotify", status: 401 }
+
+  const create = await fetch(`https://api.spotify.com/v1/users/${session.userId}/playlists`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(
+      spotifyPlaylistCreateBody({
+        name: input.name,
+        description: input.description,
+      })
+    ),
+    cache: "no-store",
+  })
+  if (!create.ok) {
+    return { error: "Could not create playlist", status: create.status }
+  }
+  const playlist = (await create.json()) as { id: string; external_urls?: { spotify?: string } }
+
+  if (input.trackUris.length) {
+    const add = await fetch(`https://api.spotify.com/v1/playlists/${playlist.id}/tracks`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ uris: input.trackUris.slice(0, 100) }),
+      cache: "no-store",
+    })
+    if (!add.ok) {
+      return { error: "Playlist created but tracks could not be added", status: add.status }
+    }
+  }
+
+  return {
+    id: playlist.id,
+    url: playlist.external_urls?.spotify ?? `https://open.spotify.com/playlist/${playlist.id}`,
+  }
+}
+
+export async function addTracksToSpotifyPlaylist(input: {
+  playlistId: string
+  trackUris: string[]
+}): Promise<{ ok: true } | { error: string; status: number }> {
+  const token = await getUserAccessToken()
+  if (!token) return { error: "Not connected to Spotify", status: 401 }
+  const uris = input.trackUris.slice(0, 100)
+  if (!uris.length) return { error: "A track is required", status: 400 }
+
+  const add = await fetch(`https://api.spotify.com/v1/playlists/${input.playlistId}/tracks`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ uris }),
+    cache: "no-store",
+  })
+  if (!add.ok) return { error: "Could not save the track", status: add.status }
+  return { ok: true }
 }
 
 export function authorizeUrl(input: {

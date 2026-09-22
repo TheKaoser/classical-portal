@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react"
-import { Pause, Play, SkipBack, SkipForward } from "lucide-react"
+import { Pause, Play } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   PLAYBACK_SEEK_SYNC_MS,
@@ -196,12 +196,13 @@ async function readToken(onIssue: (issue: PlaybackIssue) => void): Promise<strin
 
 async function startOnDevice(
   deviceId: string,
-  uris: string[]
+  uris: string[],
+  position: number
 ): Promise<{ code: string; message?: string } | null> {
   const res = await fetch("/api/spotify/play", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ deviceId, uris, position: 0 }),
+    body: JSON.stringify({ deviceId, uris, position }),
   })
   if (res.ok) return null
   const data = (await res.json().catch(() => ({}))) as { code?: string; error?: string }
@@ -210,6 +211,7 @@ async function startOnDevice(
 
 export function SpotifyWebPlayer({
   uris,
+  startPosition = 0,
   generation,
   active,
   visible,
@@ -217,8 +219,11 @@ export function SpotifyWebPlayer({
   onPhase,
   onTrackUri,
   onIssue,
+  savedTrackUris = [],
+  onSaveTrack,
 }: {
   uris: string[]
+  startPosition?: number
   generation: number
   active: boolean
   visible: boolean
@@ -226,6 +231,8 @@ export function SpotifyWebPlayer({
   onPhase?: (phase: Phase) => void
   onTrackUri?: (uri: string | null) => void
   onIssue: (issue: PlaybackIssue) => void
+  savedTrackUris?: string[]
+  onSaveTrack?: (uri: string) => Promise<{ ok: true } | { ok: false; message: string }>
 }) {
   const onIssueRef = useRef(onIssue)
   const onPhaseRef = useRef(onPhase)
@@ -242,7 +249,9 @@ export function SpotifyWebPlayer({
   const readyTimerRef = useRef<number | null>(null)
   const mountedRef = useRef(true)
   const urisRef = useRef(uris)
+  const startPositionRef = useRef(startPosition)
   urisRef.current = uris
+  startPositionRef.current = startPosition
   const scrubbingRef = useRef(false)
   const pendingSeekRef = useRef<{ positionMs: number; untilMs: number } | null>(null)
   const lastSeekAtRef = useRef(0)
@@ -250,7 +259,10 @@ export function SpotifyWebPlayer({
 
   const [phase, setPhase] = useState<Phase>("connecting")
   const [trackName, setTrackName] = useState("")
+  const [trackUri, setTrackUri] = useState("")
   const [artists, setArtists] = useState("")
+  const [savingTrack, setSavingTrack] = useState(false)
+  const [saveTrackError, setSaveTrackError] = useState<string | null>(null)
   const [position, setPosition] = useState(0)
   const [duration, setDuration] = useState(0)
   const [movement, setMovement] = useState<{ index: number; total: number } | null>(null)
@@ -367,6 +379,7 @@ export function SpotifyWebPlayer({
         }
         const track = state.track_window.current_track
         const index = urisRef.current.indexOf(track.uri)
+        setTrackUri(track.uri)
         setTrackName(track.name)
         setArtists(track.artists.map((artist) => artist.name).join(", "))
         acceptPositionRef.current(state.position)
@@ -440,6 +453,8 @@ export function SpotifyWebPlayer({
     pendingSeekRef.current = null
     setPlaybackPhase("connecting")
     setTrackName("")
+    setTrackUri("")
+    setSaveTrackError(null)
     setArtists("")
     setPosition(0)
     setDuration(0)
@@ -448,7 +463,7 @@ export function SpotifyWebPlayer({
     async function play(list: string[], allowDeviceRetry: boolean) {
       const deviceId = await ensurePlayer()
       if (cancelled) return
-      const issue = await startOnDevice(deviceId, list)
+      const issue = await startOnDevice(deviceId, list, startPositionRef.current)
       if (cancelled) return
       if (issue?.code === "device_not_found" && allowDeviceRetry) {
         destroyPlayer()
@@ -509,6 +524,7 @@ export function SpotifyWebPlayer({
   if (!visible) return null
 
   const paused = phase !== "playing"
+  const trackSaved = Boolean(trackUri && savedTrackUris.includes(trackUri))
   const title = trackName || (phase === "connecting" ? "Connecting the player…" : "Classical Portal")
   const movementLabel = movement ? `Movement ${movement.index + 1} of ${movement.total}` : "In this page"
 
@@ -563,28 +579,27 @@ export function SpotifyWebPlayer({
         <Button
           type="button"
           variant="outline"
-          size="icon"
+          size="sm"
           className="shrink-0"
-          aria-label="Previous movement"
-          disabled={phase === "connecting"}
-          onClick={() => void playerRef.current?.previousTrack()}
+          aria-label="Save track"
+          aria-pressed={trackSaved}
+          disabled={!trackUri || phase === "connecting" || savingTrack || trackSaved || !onSaveTrack}
+          onClick={() => {
+            if (!trackUri || !onSaveTrack) return
+            setSavingTrack(true)
+            setSaveTrackError(null)
+            void onSaveTrack(trackUri).then((result) => {
+              if (!mountedRef.current) return
+              setSavingTrack(false)
+              if (!result.ok) setSaveTrackError(result.message)
+            })
+          }}
         >
-          <SkipBack className="h-4 w-4" />
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          className="shrink-0"
-          aria-label="Next movement"
-          disabled={phase === "connecting"}
-          onClick={() => void playerRef.current?.nextTrack()}
-        >
-          <SkipForward className="h-4 w-4" />
+          {savingTrack ? "Saving…" : trackSaved ? "Saved" : "Save track"}
         </Button>
       </div>
       <p className="border-t border-primary/10 px-3 py-1.5 text-xs text-muted-foreground">
-        Playing in this page. {PREMIUM_REQUIRED_MESSAGE}
+        {saveTrackError ? saveTrackError : `Playing in this page. ${PREMIUM_REQUIRED_MESSAGE}`}
       </p>
     </div>
   )

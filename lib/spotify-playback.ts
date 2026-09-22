@@ -9,13 +9,16 @@
 const TRACK_URI = /^spotify:track:[A-Za-z0-9]+$/
 const DEVICE_ID = /^[A-Za-z0-9]{10,80}$/
 
-/** Scopes Concertmaster requests for the Web Playback SDK. No playlist scopes. */
+/** Scopes the Web Playback SDK needs. */
 export const SPOTIFY_OAUTH_SCOPES = [
   "streaming",
   "user-modify-playback-state",
   "user-read-private",
   "user-read-email",
 ] as const
+
+/** Save playlist. `playlist-modify-public` stays so older grants can still refresh. */
+export const SPOTIFY_PLAYLIST_SCOPES = ["playlist-modify-private", "playlist-modify-public"] as const
 
 export const SPOTIFY_PLAYER_NAME = "Classical Portal"
 
@@ -41,6 +44,7 @@ export type PlaybackEmbed = { kind: "track"; id: string; title: string; height: 
 export type PendingPlayback = {
   recordingId: string
   uris: string[]
+  position: number
 }
 
 export type SpotifyPlayBody = {
@@ -56,7 +60,7 @@ export type SpotifyPlayErrorCode =
   | "playback_failed"
 
 export function spotifyOAuthScopeString(): string {
-  return SPOTIFY_OAUTH_SCOPES.join(" ")
+  return [...SPOTIFY_OAUTH_SCOPES, ...SPOTIFY_PLAYLIST_SCOPES].join(" ")
 }
 
 export function isSpotifyTrackUri(uri: string): boolean {
@@ -146,8 +150,13 @@ export function parsePendingPlayback(raw: string): PendingPlayback | null {
     const value = JSON.parse(raw) as Partial<PendingPlayback> | null
     if (!value || typeof value.recordingId !== "string" || !Array.isArray(value.uris)) return null
     const uris = uniqueTrackUris(value.uris.filter((uri): uri is string => typeof uri === "string"))
-    if (!value.recordingId || uris.length < 2) return null
-    return { recordingId: value.recordingId, uris }
+    if (!value.recordingId || uris.length < 1) return null
+    const requested = value.position
+    const position =
+      typeof requested === "number" && Number.isInteger(requested) && requested >= 0 && requested < uris.length
+        ? requested
+        : 0
+    return { recordingId: value.recordingId, uris, position }
   } catch {
     return null
   }

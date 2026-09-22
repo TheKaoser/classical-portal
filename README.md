@@ -13,16 +13,16 @@ Browser
   │     ├─ Open Opus REST API (no auth) — periods, composers, works, search
   │     └─ Spotify Web API
   │           ├─ Client Credentials (server-only) — search tracks, expand albums
-  │           └─ Authorization Code + PKCE (optional) — Web Playback SDK for Play all
+  │           └─ Authorization Code + PKCE (optional) — Web Playback SDK, and a private playlist when asked
   │
   └─ Play
-        ├─ Web Playback SDK — Play all streams the movement group in order (Premium)
-        ├─ Spotify embed of one track, for browsing without in-app playback
+        ├─ Web Playback SDK — in-page player for a movement or the whole group (Premium)
+        ├─ Save playlist — separate action; private Spotify playlist, not the player
         ├─ 30s `preview_url` audio when Spotify returns one (no Premium)
         └─ “Open in Spotify” / search deep link (Free and Premium)
 ```
 
-Open Opus is unauthenticated. Spotify’s **client secret never leaves the server**. Play all uses the Web Playback SDK, which requires user OAuth and **Spotify Premium**. Embeds and deep links still work without that login.
+Open Opus is unauthenticated. Spotify’s **client secret never leaves the server**. Playback uses the Web Playback SDK, which requires user OAuth and **Spotify Premium**. Deep links and 30-second previews work without that login. The Spotify embed iframe is not the player.
 
 Open Opus work lists have no composition date. Classical Portal fills that in from [Wikidata](https://query.wikidata.org): English labels and aliases of works whose composer (P86) matches, using the inception date (P571) as the composition year. A year is shown only when the catalogue number (opus, BWV, K., Hoboken, and the same style of identifier on both sides), or otherwise a unique title, matches exactly one year. If Wikidata has no unambiguous year, the row shows an em dash — the app does not guess. The composer **All** list is chronological (undated titles A–Z at the end). Popular keeps popularity order. There is no Essential chip. Resolved indexes are stored in `data/composition-dates.json` (refresh with `node --experimental-strip-types scripts/refresh-composition-dates.ts`); composers missing from that file are looked up live and cached.
 
@@ -65,15 +65,15 @@ Set these in `.env.local` and in the Vercel project (Settings → Environment Va
 | `SPOTIFY_CLIENT_ID` | For matching recordings | Spotify app client ID |
 | `SPOTIFY_CLIENT_SECRET` | For matching recordings | Spotify app secret (server only) |
 | `SPOTIFY_MARKET` | No (default `US`) | ISO 3166-1 alpha-2 market for search |
-| `SPOTIFY_REDIRECT_URI` | For “Play all” | Must match a Redirect URI registered in the Spotify Dashboard |
+| `SPOTIFY_REDIRECT_URI` | For in-page play and Save playlist | Must match a Redirect URI registered in the Spotify Dashboard |
 
 Create an app at [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard).
 
 **Search / matching** uses Client Credentials and does not need a redirect URI.
 
-**Play all** uses Authorization Code + PKCE and the [Web Playback SDK](https://developer.spotify.com/documentation/web-playback-sdk). Scopes are `streaming`, `user-modify-playback-state`, `user-read-private`, and `user-read-email`. Playlist-modify scopes are not requested. The page loads the SDK and creates a player named Classical Portal. That player is the only device Play all starts: `PUT /v1/me/player/play?device_id=…` with `{ uris, offset: { position: 0 } }`. The `device_id` always comes from that in-page player. The app does not list other devices or transfer playback to the Spotify app. No temporary playlist is created. A bar in the page offers play/pause, progress, the current movement, and previous/next.
+**Play all** and **Save playlist** use Authorization Code + PKCE. Scopes are `streaming`, `user-modify-playback-state`, `user-read-private`, `user-read-email`, `playlist-modify-private`, and `playlist-modify-public`. The page loads the [Web Playback SDK](https://developer.spotify.com/documentation/web-playback-sdk) and creates a player named Classical Portal. That player is the only device playback starts: `PUT /v1/me/player/play?device_id=…` with `{ uris, offset: { position } }`. The `device_id` always comes from that in-page player. The app does not list other devices or transfer playback to the Spotify app. Play all does not create a playlist. Save playlist is a separate control that creates a private playlist and does not start the player. The bar offers play/pause, a seek handle, the current movement, and Save track. Save track adds only that movement to a private playlist named Classical Portal · Saved tracks. It uses the same playlist scopes as Save playlist and does not save the whole recording.
 
-**Spotify Premium** is required for that in-app player. Free (`free` / `open`) accounts get a clear message and can still use the track embed, the 30-second preview, and “Open in Spotify”.
+**Spotify Premium** is required for that in-app player. Free (`free` / `open`) accounts get a clear message and can still use the 30-second preview and “Open in Spotify”.
 
 In the Spotify Dashboard, Redirect URIs must include exactly:
 
@@ -94,21 +94,25 @@ Without `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` the work page still offers
 - `/composers/[id]` — works, filterable by popular / genre
 - `/works/[id]` — work detail and Spotify track matches
 - `/search?q=` — Open Opus omnisearch (the search box also typeaheads via `/api/search`)
-- `/api/spotify/login` — start Spotify login (Play all). `reconnect=1` shows the consent screen again
+- `/api/spotify/login` — start Spotify login (Play all or Save playlist). `reconnect=1` shows the consent screen again
 - `/api/spotify/callback` — OAuth redirect target
 - `/api/spotify/session` — whether the visitor is connected, and whether the account is Premium
 - `/api/spotify/token` — access token for the Web Playback SDK (`getOAuthToken`)
 - `/api/spotify/play` — `PUT /v1/me/player/play?device_id=…` for this page’s SDK player only, with the movement track URIs
+- `/api/spotify/playlist` — create a private playlist of two or more matched tracks, in order
+- `/api/spotify/save-track` — add the current movement to a private saved-tracks playlist
 - `/api/spotify/logout` — clear Spotify cookies
 
 Supabase and YouTube are no longer used. Old `/admin`, `/blog`, and `/piece/:id` URLs redirect home.
 
 ## Playback notes
 
-- **Play all** — for a group of two or more movements. One click starts those track URIs in the player bar on this page. Audio is the Web Playback SDK in the browser, not remote control of another Spotify device. If Spotify is not connected yet, the same click signs the listener in and starts playback when they return. Choosing one row pauses the in-page player and shows that track’s embed. A single matched track stays on the embed.
+- **Play all** — for a group of two or more movements. One click starts those track URIs in the player bar on this page, from the first movement. Audio is the Web Playback SDK in the browser, not remote control of another Spotify device. If Spotify is not connected yet, the same click signs the listener in and starts playback when they return. Choosing a movement starts at that movement in the same bar.
+- **Save playlist** — separate from Play all. Creates a private playlist of the same movements and does not replace the in-page player.
+- **Save track** — on the player bar, in place of previous/next. Adds only the current movement to Classical Portal · Saved tracks. It does not save the rest of the recording.
 - **Open in Spotify** — works for Free and Premium; each listed item is a single track.
-- **Embed** — fallback for browsing one movement. ~30s preview unless the visitor is logged into Spotify in that browser; full playback in the embed often needs Premium.
-- **Web Playback SDK** — used for Play all. It needs the `streaming` scope and **Spotify Premium**. Free accounts see that Premium is required and are not offered a temporary playlist.
+- **Preview** — 30-second `preview_url` when Spotify returns one. No Premium required. Not the main player.
+- **Web Playback SDK** — the default player. It needs the `streaming` scope and **Spotify Premium**. Free accounts see that Premium is required. The seek bar scrubs the current track in this page.
 
 ## Matching quality checks
 
