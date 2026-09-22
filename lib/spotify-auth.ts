@@ -4,10 +4,16 @@ import { NextResponse } from "next/server"
 import { spotifyOAuthScopeString, spotifyPremiumState } from "@/lib/spotify-playback"
 import {
   classifySpotifyPlaylistWriteError,
+  LIBRARY_RECONNECT_MESSAGE,
   PLAYLIST_RECONNECT_MESSAGE,
   spotifyAddPlaylistItemsUrl,
+  spotifyCheckLikedTracksUrl,
   spotifyCreatePlaylistUrl,
   spotifyPlaylistCreateBody,
+  spotifySaveLikedTracksUrl,
+  spotifyTrackIdFromUri,
+  tokenCanReadLikedTracks,
+  tokenCanSaveLikedTracks,
   tokenCanSavePrivatePlaylist,
   type PlaylistWriteCode,
 } from "@/lib/spotify-playlist"
@@ -21,7 +27,7 @@ const EXPIRY_COOKIE = "cp_spotify_exp"
 const USER_COOKIE = "cp_spotify_user"
 const SCOPE_COOKIE = "cp_spotify_scope"
 
-// Web Playback SDK plus private playlist save.
+// Web Playback SDK, private playlist save, and Liked Songs (Save track).
 // `playlist-modify-public` stays so tokens granted before private-only still refresh.
 const SCOPES = spotifyOAuthScopeString()
 
@@ -310,6 +316,20 @@ async function playlistScopeBlock(): Promise<PlaylistWriteResult | null> {
   return { error: PLAYLIST_RECONNECT_MESSAGE, status: 403, code: "insufficient_scope" }
 }
 
+/** Refuse before calling Spotify when this token cannot write Liked Songs. */
+async function libraryModifyScopeBlock(): Promise<PlaylistWriteResult | null> {
+  const scope = await readGrantedSpotifyScope()
+  if (scope == null || tokenCanSaveLikedTracks(scope)) return null
+  return { error: LIBRARY_RECONNECT_MESSAGE, status: 403, code: "insufficient_scope" }
+}
+
+/** Refuse before reading Liked Songs state when the read scope is missing. */
+async function libraryReadScopeBlock(): Promise<PlaylistWriteResult | null> {
+  const scope = await readGrantedSpotifyScope()
+  if (scope == null || tokenCanReadLikedTracks(scope)) return null
+  return { error: LIBRARY_RECONNECT_MESSAGE, status: 403, code: "insufficient_scope" }
+}
+
 const DISCONNECTED: SpotifyUserSession = {
   connected: false,
   displayName: null,
@@ -466,6 +486,73 @@ export async function addTracksToSpotifyPlaylist(input: {
     return { error: failure.message, status: failure.status, code: failure.code }
   }
   return { ok: true }
+}
+
+/**
+ * Save the current movement into Spotify Liked Songs (`PUT /v1/me/tracks`).
+ * This is not a private playlist.
+ */
+export async function saveLikedTrack(uri: string): Promise<{ ok: true } | PlaylistWriteResult> {
+  const token = await getUserAccessToken()
+  if (!token) return { error: "Not connected to Spotify", status: 401, code: "not_connected" }
+  const id = spotifyTrackIdFromUri(uri)
+  if (!id) return { error: "A Spotify track is required", status: 400, code: "save_failed" }
+  const blocked = await libraryModifyScopeBlock()
+  if (blocked) return blocked
+
+  const save = await fetch(spotifySaveLikedTracksUrl(), {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ ids: [id] }),
+    cache: "no-store",
+  })
+  if (!save.ok) {
+    const failure = classifySpotifyPlaylistWriteError(
+      save.status,
+      await readSpotifyFailure(save),
+      "Could not save this track",
+      LIBRARY_RECONNECT_MESSAGE
+    )
+    return { error: failure.message, status: failure.status, code: failure.code }
+  }
+  return { ok: true }
+}
+
+/** Whether each URI is already in Liked Songs (`GET /v1/me/tracks/contains`). */
+export async function checkLikedTracks(
+  uris: string[]
+): Promise<{ saved: boolean[] } | PlaylistWriteResult> {
+  const token = await getUserAccessToken()
+  if (!token) return { error: "Not connected to Spotify", status: 401, code: "not_connected" }
+  const ids = uris.map(spotifyTrackIdFromUri).filter((id): id is string => Boolean(id))
+  if (ids.length === 0) return { error: "A Spotify track is required", status: 400, code: "save_failed" }
+  const blocked = await libraryReadScopeBlock()
+  if (blocked) return blocked
+
+  const url = spotifyCheckLikedTracksUrl(ids)
+  if (!url) return { error: "A Spotify track is required", status: 400, code: "save_failed" }
+
+  const check = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  })
+  if (!check.ok) {
+    const failure = classifySpotifyPlaylistWriteError(
+      check.status,
+      await readSpotifyFailure(check),
+      "Could not check liked tracks",
+      LIBRARY_RECONNECT_MESSAGE
+    )
+    return { error: failure.message, status: failure.status, code: failure.code }
+  }
+  const payload = (await check.json().catch(() => null)) as unknown
+  if (!Array.isArray(payload) || payload.some((entry) => typeof entry !== "boolean")) {
+    return { error: "Could not check liked tracks", status: 502, code: "save_failed" }
+  }
+  return { saved: payload as boolean[] }
 }
 
 export function authorizeUrl(input: {

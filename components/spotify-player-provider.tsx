@@ -12,14 +12,12 @@ import {
 } from "react"
 import { loadSpotifyPlaybackSdk, SpotifyWebPlayer, type PlaybackIssue } from "@/components/spotify-web-player"
 import { isPlaybackSessionActive } from "@/lib/spotify-player-session"
-import { PLAYLIST_RECONNECT_MESSAGE } from "@/lib/spotify-playlist"
+import { LIBRARY_RECONNECT_MESSAGE } from "@/lib/spotify-playlist"
 
-const SAVED_TRACKS_KEY = "cp_saved_tracks_playlist"
+const LIKED_TRACKS_KEY = "cp_liked_tracks"
 
-type SavedTracksPlaylist = {
+type LikedTracksCache = {
   userId: string
-  id: string
-  url: string
   uris: string[]
 }
 
@@ -48,18 +46,18 @@ const EMPTY_SESSION: SpotifySession = {
   premium: null,
 }
 
-function readSavedTracks(userId: string): SavedTracksPlaylist | null {
+function readLikedTracks(userId: string): string[] {
   try {
-    const value = JSON.parse(localStorage.getItem(SAVED_TRACKS_KEY) || "null") as SavedTracksPlaylist | null
-    if (!value || value.userId !== userId || typeof value.id !== "string") return null
-    return { ...value, uris: Array.isArray(value.uris) ? value.uris.filter((uri) => typeof uri === "string") : [] }
+    const value = JSON.parse(localStorage.getItem(LIKED_TRACKS_KEY) || "null") as LikedTracksCache | null
+    if (!value || value.userId !== userId || !Array.isArray(value.uris)) return []
+    return value.uris.filter((uri) => typeof uri === "string")
   } catch {
-    return null
+    return []
   }
 }
 
-function writeSavedTracks(value: SavedTracksPlaylist) {
-  localStorage.setItem(SAVED_TRACKS_KEY, JSON.stringify(value))
+function writeLikedTracks(userId: string, uris: string[]) {
+  localStorage.setItem(LIKED_TRACKS_KEY, JSON.stringify({ userId, uris } satisfies LikedTracksCache))
 }
 
 type SpotifyPlayerContextValue = {
@@ -178,20 +176,30 @@ export function SpotifyPlayerProvider({
     }
   }, [oauthConfigured])
 
+  const markTrackSaved = useCallback(
+    (uri: string) => {
+      const userId = session.userId
+      setSavedTrackUris((current) => {
+        if (current.includes(uri)) return current
+        const next = [...current, uri]
+        if (userId) writeLikedTracks(userId, next)
+        return next
+      })
+    },
+    [session.userId]
+  )
+
   const saveTrack = useCallback(
     async (uri: string): Promise<{ ok: true } | { ok: false; message: string }> => {
-      const userId = session.userId
-      const existing = userId ? readSavedTracks(userId) : null
-      if (existing?.uris.includes(uri)) return { ok: true }
+      if (savedTrackUris.includes(uri)) return { ok: true }
       try {
         const res = await fetch("/api/spotify/save-track", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ uri, playlistId: existing?.id }),
+          body: JSON.stringify({ uri }),
         })
         const data = (await res.json().catch(() => ({}))) as {
-          id?: string
-          url?: string
+          saved?: boolean
           error?: string
           code?: string
         }
@@ -201,29 +209,20 @@ export function SpotifyPlayerProvider({
           return { ok: false, message }
         }
         if (data.code === "insufficient_scope") {
-          const message = data.error || PLAYLIST_RECONNECT_MESSAGE
+          const message = data.error || LIBRARY_RECONNECT_MESSAGE
           setLastIssue({ code: "insufficient_scope", message })
           return { ok: false, message }
         }
-        if (!res.ok || !data.id) {
+        if (!res.ok || !data.saved) {
           return { ok: false, message: data.error || "Could not save this track." }
         }
-        const uris = existing ? [...new Set([...existing.uris, uri])] : [uri]
-        if (userId) {
-          writeSavedTracks({
-            userId,
-            id: data.id,
-            url: data.url ?? `https://open.spotify.com/playlist/${data.id}`,
-            uris,
-          })
-        }
-        setSavedTrackUris(uris)
+        markTrackSaved(uri)
         return { ok: true }
       } catch {
         return { ok: false, message: "Could not save this track." }
       }
     },
-    [session.userId]
+    [markTrackSaved, savedTrackUris]
   )
 
   const logout = useCallback(async () => {
@@ -247,8 +246,26 @@ export function SpotifyPlayerProvider({
       setSavedTrackUris([])
       return
     }
-    setSavedTrackUris(readSavedTracks(session.userId)?.uris ?? [])
+    setSavedTrackUris(readLikedTracks(session.userId))
   }, [session.userId])
+
+  useEffect(() => {
+    if (!oauthConfigured || !session.connected || !activeUri) return
+    if (savedTrackUris.includes(activeUri)) return
+    let cancelled = false
+    void fetch(`/api/spotify/save-track?uri=${encodeURIComponent(activeUri)}`)
+      .then(async (res) => {
+        const data = (await res.json().catch(() => ({}))) as { saved?: boolean; code?: string }
+        if (cancelled || !mountedRef.current) return
+        if (res.ok && data.saved) markTrackSaved(activeUri)
+      })
+      .catch(() => {
+        // Local cache still drives the Saved label when the check fails.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [activeUri, markTrackSaved, oauthConfigured, savedTrackUris, session.connected])
 
   useEffect(() => {
     if (!oauthConfigured) return

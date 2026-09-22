@@ -13,11 +13,12 @@ Browser
   │     ├─ Open Opus REST API (no auth) — periods, composers, works, search
   │     └─ Spotify Web API
   │           ├─ Client Credentials (server-only) — search tracks, expand albums
-  │           └─ Authorization Code + PKCE (optional) — Web Playback SDK, and a private playlist when asked
+  │           └─ Authorization Code + PKCE (optional) — Web Playback SDK, Liked Songs, and a private playlist when asked
   │
   └─ Play
         ├─ Web Playback SDK — in-page player for a movement or the whole group (Premium)
         ├─ Save playlist — separate action; private Spotify playlist, not the player
+        ├─ Save track — Liked Songs for the current movement
         ├─ 30s `preview_url` audio when Spotify returns one (no Premium)
         └─ “Open in Spotify” / search deep link (Free and Premium)
 ```
@@ -85,7 +86,7 @@ Create an app at [developer.spotify.com/dashboard](https://developer.spotify.com
 
 **Search / matching** uses Client Credentials and does not need a redirect URI.
 
-**Play** and **Save playlist** sit on each album row. They use Authorization Code + PKCE. Scopes are `streaming`, `user-modify-playback-state`, `user-read-private`, `user-read-email`, `playlist-modify-private`, and `playlist-modify-public`. The page loads the [Web Playback SDK](https://developer.spotify.com/documentation/web-playback-sdk) and creates a player named Classical Portal. That player is the only device playback starts: `PUT /v1/me/player/play?device_id=…` with `{ uris, offset: { position } }`. The `device_id` always comes from that in-page player. The app does not list other devices or transfer playback to the Spotify app. Play does not create a playlist. Save playlist is a separate control on the same album that creates a private playlist and does not start the player. The selected album lists its movements underneath; choosing one starts at that track. The player is a bar fixed to the bottom of the page. It offers play/pause, a seek handle, the current movement, and Save track. Save track adds only that movement to a private playlist named Classical Portal · Saved tracks. It uses the same playlist scopes as Save playlist and does not save the whole recording.
+**Play** and **Save playlist** sit on each album row. They use Authorization Code + PKCE. Scopes are `streaming`, `user-modify-playback-state`, `user-read-private`, `user-read-email`, `playlist-modify-private`, `playlist-modify-public`, `user-library-modify`, and `user-library-read`. The page loads the [Web Playback SDK](https://developer.spotify.com/documentation/web-playback-sdk) and creates a player named Classical Portal. That player is the only device playback starts: `PUT /v1/me/player/play?device_id=…` with `{ uris, offset: { position } }`. The `device_id` always comes from that in-page player. The app does not list other devices or transfer playback to the Spotify app. Play does not create a playlist. Save playlist is a separate control on the same album that creates a private playlist and does not start the player. The selected album lists its movements underneath; choosing one starts at that track. The player is a bar fixed to the bottom of the page. It offers play/pause, a seek handle, the current movement, and Save track. Save track adds only that movement to Spotify Liked Songs (`PUT /v1/me/tracks`). It needs the library scopes above and does not save the whole recording. Listeners who signed in before library scopes were requested need to reconnect once.
 
 **Spotify Premium** is required for that in-app player. Free (`free` / `open`) accounts get a clear message and can still use the 30-second preview and “Open in Spotify”.
 
@@ -115,7 +116,7 @@ Without `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` the work page still offers
 - `/api/spotify/token` — access token for the Web Playback SDK (`getOAuthToken`)
 - `/api/spotify/play` — `PUT /v1/me/player/play?device_id=…` for this page’s SDK player only, with the movement track URIs
 - `/api/spotify/playlist` — create a private playlist of two or more matched tracks, in order (`POST /v1/me/playlists`, then `POST /v1/playlists/{id}/items`)
-- `/api/spotify/save-track` — add the current movement to a private saved-tracks playlist (same Spotify write path)
+- `/api/spotify/save-track` — add the current movement to Spotify Liked Songs (`PUT /v1/me/tracks`); `GET` with `?uri=` checks whether it is already liked
 - `/api/spotify/logout` — clear Spotify cookies
 
 Supabase and YouTube are no longer used. Old `/admin`, `/blog`, and `/piece/:id` URLs redirect home.
@@ -125,7 +126,7 @@ Supabase and YouTube are no longer used. Old `/admin`, `/blog`, and `/piece/:id`
 - **Play** — on the album row. One click starts that recording’s track URIs in the player bar fixed to the bottom of the page, from the first movement. Audio is the Web Playback SDK in the browser, not remote control of another Spotify device. If Spotify is not connected yet, the same click signs the listener in and starts playback when they return.
 - **Movements** — listed under the selected album, expanded. Choosing a movement starts playback at that track in the same bottom player. The row uses a pointer cursor.
 - **Save playlist** — on the album row, separate from Play, for a group of two or more movements. Creates a private playlist of those movements and does not replace the in-page player.
-- **Save track** — on the player bar, in place of previous/next. Adds only the current movement to Classical Portal · Saved tracks. It does not save the rest of the recording.
+- **Save track** — on the player bar, in place of previous/next. Adds only the current movement to Spotify Liked Songs. It does not save the rest of the recording.
 - **Search on Spotify** — works for Free and Premium and opens Spotify’s own search.
 - **Preview** — 30-second `preview_url` when Spotify returns one. No Premium required. Not the main player.
 - **Web Playback SDK** — the default player, fixed to the bottom of the viewport. It needs the `streaming` scope and **Spotify Premium**. Free accounts see that Premium is required. The seek bar scrubs the current track in this page.

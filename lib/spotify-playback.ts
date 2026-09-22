@@ -20,6 +20,9 @@ export const SPOTIFY_OAUTH_SCOPES = [
 /** Save playlist. `playlist-modify-public` stays so older grants can still refresh. */
 export const SPOTIFY_PLAYLIST_SCOPES = ["playlist-modify-private", "playlist-modify-public"] as const
 
+/** Save track → Liked Songs. Read scope shows whether the current movement is already liked. */
+export const SPOTIFY_LIBRARY_SCOPES = ["user-library-modify", "user-library-read"] as const
+
 export const SPOTIFY_PLAYER_NAME = "Classical Portal"
 
 export const PREMIUM_REQUIRED_MESSAGE = "Spotify Premium is required for in-app continuous play."
@@ -67,7 +70,7 @@ export type SpotifyPlayErrorCode =
   | "playback_failed"
 
 export function spotifyOAuthScopeString(): string {
-  return [...SPOTIFY_OAUTH_SCOPES, ...SPOTIFY_PLAYLIST_SCOPES].join(" ")
+  return [...SPOTIFY_OAUTH_SCOPES, ...SPOTIFY_PLAYLIST_SCOPES, ...SPOTIFY_LIBRARY_SCOPES].join(" ")
 }
 
 export function isSpotifyTrackUri(uri: string): boolean {
