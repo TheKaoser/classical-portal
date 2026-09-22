@@ -14,7 +14,12 @@ import {
   playlistCacheKey,
   rememberPlaylistCache,
   sanitizePlaylistCache,
+  classifySpotifyPlaylistWriteError,
+  PLAYLIST_RECONNECT_MESSAGE,
+  spotifyAddPlaylistItemsUrl,
+  spotifyCreatePlaylistUrl,
   spotifyPlaylistCreateBody,
+  tokenCanSavePrivatePlaylist,
   uniqueTrackUris,
 } from "./spotify-playlist.ts"
 
@@ -52,6 +57,44 @@ test("playlist description says the playlist is private and fits Spotify's limit
   const description = classicalPlaylistDescription(classicalPlaylistName("Brahms", "Piano Concerto no. 2"))
   assert.match(description, /Private playlist/)
   assert.ok(description.length <= 300)
+})
+
+test("playlist writes use the February 2026 endpoints, not the removed user and tracks paths", () => {
+  assert.equal(spotifyCreatePlaylistUrl(), "https://api.spotify.com/v1/me/playlists")
+  assert.equal(spotifyCreatePlaylistUrl().includes("/users/"), false)
+  assert.equal(
+    spotifyAddPlaylistItemsUrl("0123456789abcdef"),
+    "https://api.spotify.com/v1/playlists/0123456789abcdef/items"
+  )
+  assert.equal(spotifyAddPlaylistItemsUrl("0123456789abcdef")?.includes("/tracks"), false)
+  assert.equal(spotifyAddPlaylistItemsUrl("bad id"), null)
+  assert.equal(spotifyAddPlaylistItemsUrl(""), null)
+})
+
+test("private playlist save needs playlist-modify-private, and a missing grant asks to reconnect", () => {
+  assert.equal(tokenCanSavePrivatePlaylist("streaming playlist-modify-private user-read-email"), true)
+  assert.equal(tokenCanSavePrivatePlaylist("streaming playlist-modify-public"), false)
+  assert.equal(tokenCanSavePrivatePlaylist(null), false)
+  assert.equal(tokenCanSavePrivatePlaylist(""), false)
+
+  assert.deepEqual(
+    classifySpotifyPlaylistWriteError(403, { error: { status: 403, message: "Insufficient client scope" } }, "Could not create playlist"),
+    { code: "insufficient_scope", message: PLAYLIST_RECONNECT_MESSAGE, status: 403 }
+  )
+  assert.equal(PLAYLIST_RECONNECT_MESSAGE.includes("Reconnect Spotify"), true)
+  assert.deepEqual(
+    classifySpotifyPlaylistWriteError(401, { error: { message: "Invalid access token" } }, "Could not create playlist"),
+    { code: "not_connected", message: "Spotify login expired. Sign in again.", status: 401 }
+  )
+  assert.deepEqual(
+    classifySpotifyPlaylistWriteError(403, { error: { status: 403, message: "Forbidden" } }, "Could not create playlist"),
+    { code: "save_failed", message: "Could not create playlist. Spotify said: Forbidden.", status: 403 }
+  )
+  assert.deepEqual(classifySpotifyPlaylistWriteError(500, "upstream", "Could not save the track"), {
+    code: "save_failed",
+    message: "Could not save the track. Spotify said: upstream.",
+    status: 500,
+  })
 })
 
 test("create body is always a private playlist", () => {

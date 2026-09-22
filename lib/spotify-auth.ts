@@ -2,7 +2,15 @@ import { createHash, randomBytes } from "crypto"
 import { cookies } from "next/headers"
 import { NextResponse } from "next/server"
 import { spotifyOAuthScopeString, spotifyPremiumState } from "@/lib/spotify-playback"
-import { spotifyPlaylistCreateBody } from "@/lib/spotify-playlist"
+import {
+  classifySpotifyPlaylistWriteError,
+  PLAYLIST_RECONNECT_MESSAGE,
+  spotifyAddPlaylistItemsUrl,
+  spotifyCreatePlaylistUrl,
+  spotifyPlaylistCreateBody,
+  tokenCanSavePrivatePlaylist,
+  type PlaylistWriteCode,
+} from "@/lib/spotify-playlist"
 
 const STATE_COOKIE = "cp_spotify_oauth_state"
 const VERIFIER_COOKIE = "cp_spotify_pkce"
@@ -11,6 +19,7 @@ const ACCESS_COOKIE = "cp_spotify_at"
 const REFRESH_COOKIE = "cp_spotify_rt"
 const EXPIRY_COOKIE = "cp_spotify_exp"
 const USER_COOKIE = "cp_spotify_user"
+const SCOPE_COOKIE = "cp_spotify_scope"
 
 // Web Playback SDK plus private playlist save.
 // `playlist-modify-public` stays so tokens granted before private-only still refresh.
@@ -88,7 +97,16 @@ export function applyAuthCookies(
 
 export function clearAuthCookies(response: NextResponse) {
   const base = { ...cookieBase(), maxAge: 0 }
-  for (const name of [STATE_COOKIE, VERIFIER_COOKIE, RETURN_COOKIE, ACCESS_COOKIE, REFRESH_COOKIE, EXPIRY_COOKIE, USER_COOKIE]) {
+  for (const name of [
+    STATE_COOKIE,
+    VERIFIER_COOKIE,
+    RETURN_COOKIE,
+    ACCESS_COOKIE,
+    REFRESH_COOKIE,
+    EXPIRY_COOKIE,
+    USER_COOKIE,
+    SCOPE_COOKIE,
+  ]) {
     response.cookies.set(name, "", base)
   }
   return response
@@ -104,6 +122,10 @@ function userCookieValue(user: StoredSpotifyUser): string {
   )
 }
 
+function scopeCookieValue(scope: string): string {
+  return encodeURIComponent(scope.trim())
+}
+
 function applySessionCookies(
   response: NextResponse,
   session: {
@@ -113,6 +135,7 @@ function applySessionCookies(
     displayName: string
     userId: string
     product: string | null
+    scope?: string
   }
 ) {
   const base = cookieBase()
@@ -136,6 +159,12 @@ function applySessionCookies(
       maxAge: 60 * 60 * 24 * 30,
     }
   )
+  if (session.scope?.trim()) {
+    response.cookies.set(SCOPE_COOKIE, scopeCookieValue(session.scope), {
+      ...base,
+      maxAge: 60 * 60 * 24 * 30,
+    })
+  }
   response.cookies.set(STATE_COOKIE, "", { ...base, maxAge: 0 })
   response.cookies.set(VERIFIER_COOKIE, "", { ...base, maxAge: 0 })
   response.cookies.set(RETURN_COOKIE, "", { ...base, maxAge: 0 })
@@ -146,6 +175,7 @@ async function spotifyToken(body: URLSearchParams): Promise<{
   access_token: string
   refresh_token?: string
   expires_in: number
+  scope?: string
 } | null> {
   const clientId = process.env.SPOTIFY_CLIENT_ID
   const clientSecret = process.env.SPOTIFY_CLIENT_SECRET
@@ -164,7 +194,7 @@ async function spotifyToken(body: URLSearchParams): Promise<{
     console.error("Spotify user token request failed", res.status, await res.text().catch(() => ""))
     return null
   }
-  return (await res.json()) as { access_token: string; refresh_token?: string; expires_in: number }
+  return (await res.json()) as { access_token: string; refresh_token?: string; expires_in: number; scope?: string }
 }
 
 async function fetchSpotifyMe(
@@ -202,6 +232,7 @@ export async function exchangeCodeForSession(input: {
     displayName: me.display_name || me.id,
     userId: me.id,
     product: me.product ?? null,
+    scope: tokens.scope,
   })
   return true
 }
@@ -242,7 +273,41 @@ export async function getUserAccessToken(): Promise<string | null> {
   if (tokens.refresh_token) {
     store.set(REFRESH_COOKIE, tokens.refresh_token, { ...cookieBase(), maxAge: 60 * 60 * 24 * 30 })
   }
+  if (tokens.scope?.trim()) {
+    store.set(SCOPE_COOKIE, scopeCookieValue(tokens.scope), { ...cookieBase(), maxAge: 60 * 60 * 24 * 30 })
+  }
   return tokens.access_token
+}
+
+/** Scopes granted at login. `null` for sessions created before this cookie existed. */
+export async function readGrantedSpotifyScope(): Promise<string | null> {
+  const raw = (await cookies()).get(SCOPE_COOKIE)?.value
+  if (!raw) return null
+  try {
+    const scope = decodeURIComponent(raw).trim()
+    return scope || null
+  } catch {
+    return raw.trim() || null
+  }
+}
+
+type PlaylistWriteResult = { error: string; status: number; code: PlaylistWriteCode }
+
+async function readSpotifyFailure(res: Response): Promise<unknown> {
+  const text = await res.text().catch(() => "")
+  if (!text) return null
+  try {
+    return JSON.parse(text) as unknown
+  } catch {
+    return text.slice(0, 300)
+  }
+}
+
+/** Refuse before calling Spotify when we already know this token cannot save a private playlist. */
+async function playlistScopeBlock(): Promise<PlaylistWriteResult | null> {
+  const scope = await readGrantedSpotifyScope()
+  if (scope == null || tokenCanSavePrivatePlaylist(scope)) return null
+  return { error: PLAYLIST_RECONNECT_MESSAGE, status: 403, code: "insufficient_scope" }
 }
 
 const DISCONNECTED: SpotifyUserSession = {
@@ -314,12 +379,13 @@ export async function createSpotifyPlaylist(input: {
   name: string
   description?: string
   trackUris: string[]
-}): Promise<{ id: string; url: string } | { error: string; status: number }> {
+}): Promise<{ id: string; url: string } | PlaylistWriteResult> {
   const token = await getUserAccessToken()
-  const session = await getSpotifyUserSession()
-  if (!token || !session.userId) return { error: "Not connected to Spotify", status: 401 }
+  if (!token) return { error: "Not connected to Spotify", status: 401, code: "not_connected" }
+  const blocked = await playlistScopeBlock()
+  if (blocked) return blocked
 
-  const create = await fetch(`https://api.spotify.com/v1/users/${session.userId}/playlists`, {
+  const create = await fetch(spotifyCreatePlaylistUrl(), {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -334,12 +400,20 @@ export async function createSpotifyPlaylist(input: {
     cache: "no-store",
   })
   if (!create.ok) {
-    return { error: "Could not create playlist", status: create.status }
+    const failure = classifySpotifyPlaylistWriteError(
+      create.status,
+      await readSpotifyFailure(create),
+      "Could not create playlist"
+    )
+    return { error: failure.message, status: failure.status, code: failure.code }
   }
-  const playlist = (await create.json()) as { id: string; external_urls?: { spotify?: string } }
+  const playlist = (await create.json()) as { id?: string; external_urls?: { spotify?: string } }
+  if (!playlist.id) return { error: "Could not create playlist", status: 502, code: "save_failed" }
 
   if (input.trackUris.length) {
-    const add = await fetch(`https://api.spotify.com/v1/playlists/${playlist.id}/tracks`, {
+    const itemsUrl = spotifyAddPlaylistItemsUrl(playlist.id)
+    if (!itemsUrl) return { error: "Could not add tracks to the playlist", status: 502, code: "save_failed" }
+    const add = await fetch(itemsUrl, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -349,7 +423,12 @@ export async function createSpotifyPlaylist(input: {
       cache: "no-store",
     })
     if (!add.ok) {
-      return { error: "Playlist created but tracks could not be added", status: add.status }
+      const failure = classifySpotifyPlaylistWriteError(
+        add.status,
+        await readSpotifyFailure(add),
+        "Playlist created but tracks could not be added"
+      )
+      return { error: failure.message, status: failure.status, code: failure.code }
     }
   }
 
@@ -362,13 +441,18 @@ export async function createSpotifyPlaylist(input: {
 export async function addTracksToSpotifyPlaylist(input: {
   playlistId: string
   trackUris: string[]
-}): Promise<{ ok: true } | { error: string; status: number }> {
+}): Promise<{ ok: true } | PlaylistWriteResult> {
   const token = await getUserAccessToken()
-  if (!token) return { error: "Not connected to Spotify", status: 401 }
+  if (!token) return { error: "Not connected to Spotify", status: 401, code: "not_connected" }
   const uris = input.trackUris.slice(0, 100)
-  if (!uris.length) return { error: "A track is required", status: 400 }
+  if (!uris.length) return { error: "A track is required", status: 400, code: "save_failed" }
+  const blocked = await playlistScopeBlock()
+  if (blocked) return blocked
 
-  const add = await fetch(`https://api.spotify.com/v1/playlists/${input.playlistId}/tracks`, {
+  const itemsUrl = spotifyAddPlaylistItemsUrl(input.playlistId)
+  if (!itemsUrl) return { error: "Could not save the track", status: 400, code: "save_failed" }
+
+  const add = await fetch(itemsUrl, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -377,7 +461,10 @@ export async function addTracksToSpotifyPlaylist(input: {
     body: JSON.stringify({ uris }),
     cache: "no-store",
   })
-  if (!add.ok) return { error: "Could not save the track", status: add.status }
+  if (!add.ok) {
+    const failure = classifySpotifyPlaylistWriteError(add.status, await readSpotifyFailure(add), "Could not save the track")
+    return { error: failure.message, status: failure.status, code: failure.code }
+  }
   return { ok: true }
 }
 

@@ -31,6 +31,7 @@ test("oauth scopes include the Web Playback SDK set and private playlist save", 
   assert.match(scope, /streaming/)
   assert.match(scope, /user-modify-playback-state/)
   assert.match(scope, /playlist-modify-private/)
+  assert.match(scope, /playlist-modify-public/)
 })
 
 test("track URIs stay in movement order and drop invalid duplicates", () => {

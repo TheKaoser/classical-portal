@@ -99,8 +99,8 @@ Without `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` the work page still offers
 - `/api/spotify/session` — whether the visitor is connected, and whether the account is Premium
 - `/api/spotify/token` — access token for the Web Playback SDK (`getOAuthToken`)
 - `/api/spotify/play` — `PUT /v1/me/player/play?device_id=…` for this page’s SDK player only, with the movement track URIs
-- `/api/spotify/playlist` — create a private playlist of two or more matched tracks, in order
-- `/api/spotify/save-track` — add the current movement to a private saved-tracks playlist
+- `/api/spotify/playlist` — create a private playlist of two or more matched tracks, in order (`POST /v1/me/playlists`, then `POST /v1/playlists/{id}/items`)
+- `/api/spotify/save-track` — add the current movement to a private saved-tracks playlist (same Spotify write path)
 - `/api/spotify/logout` — clear Spotify cookies
 
 Supabase and YouTube are no longer used. Old `/admin`, `/blog`, and `/piece/:id` URLs redirect home.
