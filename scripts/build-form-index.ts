@@ -8,7 +8,7 @@
  *   node --experimental-strip-types scripts/build-form-index.ts
  */
 import { writeFileSync } from "node:fs"
-import { EPOCHS } from "../lib/epochs.ts"
+import { openOpusEpochNames } from "../lib/epochs.ts"
 import { classifyWork, WORK_FORMS } from "../lib/forms.ts"
 
 const BASE = "https://api.openopus.org"
@@ -59,9 +59,9 @@ async function mapPool<T, R>(items: T[], limit: number, fn: (item: T) => Promise
 }
 
 const composers: Composer[] = []
-for (const epoch of EPOCHS) {
+for (const name of openOpusEpochNames()) {
   const data = await getJson<{ composers?: Composer[] }>(
-    `/composer/list/epoch/${encodeURIComponent(epoch.name)}.json`
+    `/composer/list/epoch/${encodeURIComponent(name)}.json`
   )
   composers.push(...(data.composers ?? []))
 }

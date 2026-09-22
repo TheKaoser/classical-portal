@@ -33,7 +33,16 @@ Open Opus work detail currently has **no movements/parts** field. If `parts` or 
 
 ## Genres
 
-Open Opus does not publish a form field. Each work’s `genre` is one of **Chamber, Keyboard, Orchestral, Stage, Vocal**. The Genres pages use a shorter set of important forms (symphony, concerto, sonata, chamber, choral, opera, and others) derived from title text, falling back to the subtitle when the title names no form. Chamber gathers trios, quartets, quintets, and sextets. Choral gathers requiems, masses, oratorios, motets, and cantatas. Those finer forms stay on the work and show up as filter chips, not as their own genres. Patterns live in `lib/forms.ts` and were checked against the public dump at `https://api.openopus.org/work/dump.json`.
+Open Opus does not publish a form field. Each work’s `genre` is one of **Chamber, Keyboard, Orchestral, Stage, Vocal**. The Genres pages use a shorter set of important forms derived from title text, falling back to the subtitle when the title names no form. Several of those forms share one page and stay available as filter chips:
+
+- Chamber — trios, quartets, quintets, and sextets
+- Choral — requiems, masses, oratorios, motets, and cantatas
+- Keyboard — nocturnes, etudes, mazurkas, waltzes, polonaises, impromptus, ballades, rhapsodies, and scherzos
+- Stage — operas, ballets, and overtures
+- Orchestral — symphonies, suites, serenades, and divertimenti
+- Baroque keyboard — preludes, fugues, toccatas, partitas, fantasias, and variations
+
+Concertos, sonatas, and songs stay their own pages. Patterns live in `lib/forms.ts` and were checked against the public dump at `https://api.openopus.org/work/dump.json`.
 
 That dump has no work ids, so `data/form-works.json` is built from each composer’s work list (`/work/list/composer/{id}/genre/all.json`), which does. Rebuild it with:
 
@@ -43,7 +52,7 @@ node --experimental-strip-types scripts/build-form-index.ts
 
 A work is listed under one form. The title wins over the subtitle. Suites taken from an opera stay suites. Stage works with an empty subtitle and no other form (Carmen, Il barbiere di Siviglia) are listed as operas; Open Opus usually labels ballets and film scores in the subtitle, and a few unlabeled ones are still filed with operas.
 
-Open Opus also has no instrument field. Where titles follow its style guide (`Piano Concerto`, `String Quartet`, `Trio Sonata`) or a subtitle says `for violin, viola and orchestra`, the genre page adds chips in the same style as the composer filters. **All** is the default. Choosing a chip filters the list in place and keeps Spotify popularity order. Concertos split by solo instrument, plus Concerto grosso, Chamber, String, and Multiple when more than one soloist is named. Sonatas split by instrument; a keyboard sonata whose title never names one uses the Open Opus Keyboard genre. Chamber splits into Trios, Quartets, Quintets, and Sextets. Choral splits into Requiems, Masses, Oratorios, Motets, and Cantatas. Suites split when the title names an instrument. A form needs at least two of those groups, each with eight or more works, or the page stays a single list. Symphonies, operas, songs, and the smaller keyboard forms do not get a selector.
+Open Opus also has no instrument field. Where titles follow its style guide (`Piano Concerto`, `String Quartet`, `Trio Sonata`) or a subtitle says `for violin, viola and orchestra`, the genre page adds chips in the same style as the composer filters. **All** is the default. Choosing a chip filters the list in place and keeps Spotify popularity order, and the chip is written with `history.replaceState`, so Back leaves the page instead of stepping through chips. Concertos split by solo instrument, plus Concerto grosso, Chamber, String, and Multiple when more than one soloist is named. Sonatas split by instrument; a keyboard sonata whose title never names one uses the Open Opus Keyboard genre. The folded genres above split into their forms (Trios, Symphonies, Nocturnes, and so on). A form needs at least two of those groups, each with eight or more works, or the page stays a single list. Songs do not get a selector.
 
 Open Opus stores two flags, `popular` and `recommended`. Classical Portal treats either flag as **Popular**. There is no separate Essential filter or badge. A work that carries both flags is listed once. The star on a work row is that flag. List order is separate from the flag.
 
@@ -102,10 +111,10 @@ Without `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` the work page still offers
 ## Routes
 
 - `/` — title, and banners for periods and genres (search stays in the header)
-- `/periods` — Open Opus epochs
-- `/periods/[epoch]` — composers in that period, by Spotify popularity (`baroque`, `early-romantic`, …)
-- `/genres` — genres such as symphonies, chamber music, choral works, and operas
-- `/genres/[slug]` — works of that genre, by Spotify popularity. Concertos, sonatas, chamber, choral, and suites also filter in place with `?filter=` (piano, violin, quartet, mass, …). `/genres/quartet`, `/genres/trio`, `/genres/mass`, `/genres/requiem`, and the other folded forms redirect to the parent genre with that chip selected
+- `/periods` — eight periods. Romantic covers Open Opus Early Romantic, Romantic, and Late Romantic
+- `/periods/[epoch]` — composers in that period, by Spotify popularity (`baroque`, `romantic`, …). `/periods/romantic` adds Early / Romantic / Late chips. `/periods/early-romantic` and `/periods/late-romantic` redirect to that page with the matching chip
+- `/genres` — concertos, sonatas, songs, and the folded genres (chamber, choral, keyboard, stage, orchestral, baroque keyboard)
+- `/genres/[slug]` — works of that genre, by Spotify popularity. Concertos, sonatas, and the folded genres filter in place with `?filter=` (piano, violin, quartet, mass, nocturne, opera, symphony, prelude, …). Old fine-form URLs such as `/genres/quartet`, `/genres/opera`, `/genres/symphony`, and `/genres/prelude` redirect to the parent genre with that chip selected. Changing a chip replaces the current history entry
 - `/composers` — the Open Opus popular composers, by Spotify popularity
 - `/composers/[id]` — works; All is chronological, Popular and genre filters are by Spotify popularity
 - `/works/[id]` — work detail and Spotify track matches

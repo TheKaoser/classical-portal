@@ -1,9 +1,16 @@
 import type { Metadata } from "next"
-import { notFound } from "next/navigation"
-import { PageHeader } from "@/components/page-header"
+import { notFound, permanentRedirect } from "next/navigation"
 import { ComposerList } from "@/components/composer-list"
-import { EPOCHS, epochFromSlug } from "@/lib/epochs"
-import { listComposersByEpoch } from "@/lib/openopus"
+import { PageHeader } from "@/components/page-header"
+import { PeriodComposerBrowser } from "@/components/period-composer-browser"
+import {
+  EPOCHS,
+  epochFromSlug,
+  legacyEpochName,
+  openOpusEpochNamesFor,
+  relocatedEpochHref,
+} from "@/lib/epochs"
+import { listComposersByEpochs } from "@/lib/openopus"
 
 export const revalidate = 3600
 
@@ -18,7 +25,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { epoch: slug } = await params
   const epoch = epochFromSlug(slug)
-  return { title: epoch?.name ?? "Period" }
+  return { title: epoch?.name ?? legacyEpochName(slug) ?? "Period" }
 }
 
 export default async function EpochPage({
@@ -27,10 +34,22 @@ export default async function EpochPage({
   params: Promise<{ epoch: string }>
 }) {
   const { epoch: slug } = await params
+  const moved = relocatedEpochHref(slug)
+  if (moved) permanentRedirect(moved)
+
   const epoch = epochFromSlug(slug)
   if (!epoch) notFound()
 
-  const composers = await listComposersByEpoch(epoch.name)
+  const composers = await listComposersByEpochs(openOpusEpochNamesFor(epoch))
+  const filters =
+    epoch.sources && epoch.sources.length > 1
+      ? epoch.sources.map((source) => ({
+          slug: source.slug,
+          label: source.label,
+          epoch: source.name,
+          count: composers.filter((composer) => composer.epoch === source.name).length,
+        }))
+      : []
 
   return (
     <div>
@@ -41,7 +60,11 @@ export default async function EpochPage({
         backHref="/periods"
         backLabel="Periods"
       />
-      <ComposerList composers={composers} />
+      {filters.length ? (
+        <PeriodComposerBrowser composers={composers} filters={filters} />
+      ) : (
+        <ComposerList composers={composers} />
+      )}
     </div>
   )
 }

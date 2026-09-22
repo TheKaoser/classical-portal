@@ -19,11 +19,15 @@
  * either the Open Opus `popular` or `recommended` flag.
  *
  * Trios, quartets, quintets, and sextets are one Chamber genre. Requiems,
- * masses, oratorios, motets, and cantatas are one Choral genre. The finer
- * form stays on the work and becomes a filter chip, the way concertos split
- * by instrument. A sextet is recognized only when that word is the form named
- * before any other form, so "Sextet for string quartet" is a sextet and
- * "suite for wind sextet" stays a suite.
+ * masses, oratorios, motets, and cantatas are one Choral genre. Nocturnes,
+ * etudes, and the other character pieces are Keyboard. Operas, ballets, and
+ * overtures are Stage. Symphonies, suites, serenades, and divertimenti are
+ * Orchestral. Preludes, fugues, toccatas, partitas, fantasias, and variations
+ * are Baroque keyboard. Concertos, sonatas, and songs stay their own pages.
+ * The finer form stays on the work and becomes a filter chip, the way
+ * concertos split by instrument. A sextet is recognized only when that word
+ * is the form named before any other form, so "Sextet for string quartet" is
+ * a sextet and "suite for wind sextet" stays a suite.
  */
 
 export type WorkForm = {
@@ -262,6 +266,40 @@ export const FORM_GROUPS: readonly FormGroup[] = [
     name: "Choral",
     blurb: "Requiems, masses, oratorios, motets, and cantatas.",
     children: ["requiem", "mass", "oratorio", "motet", "cantata"],
+  },
+  {
+    slug: "keyboard",
+    name: "Keyboard",
+    blurb: "Character pieces for piano and keyboard.",
+    children: [
+      "nocturne",
+      "etude",
+      "mazurka",
+      "waltz",
+      "polonaise",
+      "impromptu",
+      "ballade",
+      "rhapsody",
+      "scherzo",
+    ],
+  },
+  {
+    slug: "stage",
+    name: "Stage",
+    blurb: "Operas, ballets, and overtures.",
+    children: ["opera", "ballet", "overture"],
+  },
+  {
+    slug: "orchestral",
+    name: "Orchestral",
+    blurb: "Symphonies, suites, serenades, and divertimenti.",
+    children: ["symphony", "suite", "serenade", "divertimento"],
+  },
+  {
+    slug: "baroque-keyboard",
+    name: "Baroque keyboard",
+    blurb: "Preludes, fugues, toccatas, partitas, fantasias, and variations.",
+    children: ["prelude", "fugue", "toccata", "partita", "fantasia", "variations"],
   },
 ]
 

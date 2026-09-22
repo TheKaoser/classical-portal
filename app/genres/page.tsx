@@ -7,7 +7,7 @@ import { formSummaries } from "@/lib/form-catalog"
 
 export const metadata: Metadata = {
   title: "Genres",
-  description: "Browse classical works by genre, from symphonies, concertos, and chamber music to choral works and operas.",
+  description: "Browse classical works by genre, from orchestral and chamber music to keyboard, stage, and choral works.",
 }
 
 export default function GenresPage() {
