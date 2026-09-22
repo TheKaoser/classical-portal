@@ -4,7 +4,8 @@ import { notFound } from "next/navigation"
 import { PageHeader } from "@/components/page-header"
 import { SpotifyRecordings } from "@/components/spotify-recordings"
 import { Badge } from "@/components/ui/badge"
-import { genreHref, getWork, workParts, workSearchTerms } from "@/lib/openopus"
+import { genreHrefForLabel } from "@/lib/forms"
+import { getWork, workParts, workSearchTerms } from "@/lib/openopus"
 import { searchSpotifyForWork } from "@/lib/spotify"
 import { classicalPlaylistName } from "@/lib/spotify-playlist"
 
@@ -57,11 +58,7 @@ export default async function WorkPage({
           backLabel={composer.name}
         />
         <div className="flex flex-wrap gap-2">
-          {work.genre ? (
-            <Badge variant="outline" className="border-transparent bg-surface-blue text-primary" asChild>
-              <Link href={genreHref(work.genre)}>{work.genre}</Link>
-            </Badge>
-          ) : null}
+          {work.genre ? <WorkTag label={work.genre} /> : null}
           {composer.epoch && (
             <Badge variant="secondary" className="bg-surface-green text-brand-green">
               {composer.epoch}
@@ -88,5 +85,22 @@ export default async function WorkPage({
         playlistName={playlistName}
       />
     </div>
+  )
+}
+
+function WorkTag({ label }: { label: string }) {
+  const href = genreHrefForLabel(label)
+  const className = "border-transparent bg-surface-blue text-primary"
+  if (!href) {
+    return (
+      <Badge variant="outline" className={className}>
+        {label}
+      </Badge>
+    )
+  }
+  return (
+    <Badge variant="outline" className={className} asChild>
+      <Link href={href}>{label}</Link>
+    </Badge>
   )
 }

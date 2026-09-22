@@ -289,10 +289,6 @@ export function genreFromSlug(slug: string): WorkGenre | undefined {
   return WORK_GENRES.find((genre) => genreSlug(genre) === decoded)
 }
 
-export function genreHref(name: string): string {
-  return `/genres/${genreSlug(name)}`
-}
-
 export type GenreSummary = {
   name: WorkGenre
   slug: string
