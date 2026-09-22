@@ -42,6 +42,8 @@ node --experimental-strip-types scripts/build-form-index.ts
 
 A work is listed under one form. The title wins over the subtitle. Suites taken from an opera stay suites. Stage works with an empty subtitle and no other form (Carmen, Il barbiere di Siviglia) are listed as operas; Open Opus usually labels ballets and film scores in the subtitle, and a few unlabeled ones are still filed with operas.
 
+Open Opus also has no instrument field. Where titles follow its style guide (`Piano Concerto`, `String Quartet`, `Trio Sonata`) or a subtitle says `for violin, viola and orchestra`, the genre page adds chips in the same style as the composer filters. **All** is the default. Choosing a chip filters the list in place and keeps Spotify popularity order. Concertos split by solo instrument, plus Concerto grosso, Chamber, String, and Multiple when more than one soloist is named. Sonatas split by instrument; a keyboard sonata whose title never names one uses the Open Opus Keyboard genre. Quartets, quintets, and trios split by ensemble (String, Piano, Wind, and a featured instrument such as flute or clarinet). Suites split when the title names an instrument. A form needs at least two of those groups, each with eight or more works, or the page stays a single list. Symphonies, operas, songs, and the smaller keyboard forms do not get a selector.
+
 Open Opus stores two flags, `popular` and `recommended`. Classical Portal treats either flag as **Popular**. There is no separate Essential filter or badge. A work that carries both flags is listed once. The star on a work row is that flag. List order is separate from the flag.
 
 Genre pages, and a composer's Popular and genre filters, are ordered by Spotify popularity (highest first, then name). The composer **All** filter stays chronological. The popular-composers page and each period page order composers the same way. Spotify's own 0–100 popularity is cached in `data/spotify-popularity.json`, so those pages do not call Spotify.
@@ -102,7 +104,7 @@ Without `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` the work page still offers
 - `/periods` — Open Opus epochs
 - `/periods/[epoch]` — composers in that period, by Spotify popularity (`baroque`, `early-romantic`, …)
 - `/genres` — forms such as symphonies, sonatas, and operas
-- `/genres/[slug]` — works of that form, by Spotify popularity
+- `/genres/[slug]` — works of that form, by Spotify popularity. Concertos, sonatas, quartets, quintets, trios, and suites also filter in place with `?filter=` (piano, violin, string, …)
 - `/composers` — the Open Opus popular composers, by Spotify popularity
 - `/composers/[id]` — works; All is chronological, Popular and genre filters are by Spotify popularity
 - `/works/[id]` — work detail and Spotify track matches
