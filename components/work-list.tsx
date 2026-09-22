@@ -1,12 +1,12 @@
 import { Star } from "lucide-react"
 import { ListLink } from "@/components/list-link"
-import { isPopular, type GenreWork, type OpenOpusWork } from "@/lib/openopus"
+import { isPopular, type OpenOpusWork } from "@/lib/openopus"
 
-type ListedWork = OpenOpusWork &
-  Partial<Pick<GenreWork, "composer">> & {
-    composerLabel?: string
-    compositionYear?: number | null
-  }
+type ListedWork = OpenOpusWork & {
+  composer?: { name: string; complete_name?: string }
+  composerLabel?: string
+  compositionYear?: number | null
+}
 
 export function WorkList({
   works,

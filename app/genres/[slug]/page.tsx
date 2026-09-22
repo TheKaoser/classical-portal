@@ -1,10 +1,12 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
+import { GenreWorkBrowser } from "@/components/genre-work-browser"
 import { PageHeader } from "@/components/page-header"
 import { WorkList } from "@/components/work-list"
 import { attachCompositionYearsByComposer } from "@/lib/composition-years"
 import { formSummaries, worksForForm } from "@/lib/form-catalog"
 import { formFromSlug } from "@/lib/forms"
+import { classifyWorkSubtype, subtypeFilters } from "@/lib/work-subtypes"
 
 export function generateStaticParams() {
   return formSummaries().map((form) => ({ slug: form.slug }))
@@ -27,6 +29,7 @@ export default async function GenrePage({ params }: { params: Promise<{ slug: st
 
   const listed = worksForForm(slug)
   if (!listed.length) notFound()
+  const filters = subtypeFilters(listed)
   const works = await attachCompositionYearsByComposer(
     listed.map((work) => ({
       id: work.id,
@@ -36,6 +39,7 @@ export default async function GenrePage({ params }: { params: Promise<{ slug: st
       popular: work.popular,
       recommended: work.recommended,
       composerLabel: work.composerName,
+      subtype: classifyWorkSubtype(work)?.slug ?? null,
       composer: {
         id: work.composerId,
         name: work.composerName,
@@ -53,7 +57,7 @@ export default async function GenrePage({ params }: { params: Promise<{ slug: st
         backHref="/genres"
         backLabel="Genres"
       />
-      <WorkList works={works} />
+      {filters.length ? <GenreWorkBrowser works={works} filters={filters} /> : <WorkList works={works} />}
     </div>
   )
 }
