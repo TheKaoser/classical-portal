@@ -14,8 +14,8 @@ export function BrandMark({ className, decorative = false }: BrandMarkProps) {
       alt={decorative ? "" : "Classical Portal"}
       aria-hidden={decorative || undefined}
       className={cn("h-auto w-auto object-contain", className)}
-      width={254}
-      height={471}
+      width={284}
+      height={515}
       decoding="async"
     />
   )
