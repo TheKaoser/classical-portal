@@ -5,8 +5,11 @@ import { Pause, Play } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
   PLAYBACK_SEEK_SYNC_MS,
+  PLAYER_TRY_AGAIN_MESSAGE,
   PREMIUM_REQUIRED_MESSAGE,
   SPOTIFY_PLAYER_NAME,
+  isPlayerNotReadyCode,
+  playbackDeviceRetryDelay,
   seekByKeyboard,
   seekPositionMs,
   seekRatioFromPointer,
@@ -205,7 +208,8 @@ async function startOnDevice(
   })
   if (res.ok) return null
   const data = (await res.json().catch(() => ({}))) as { code?: string; error?: string }
-  return { code: data.code || "playback_failed", message: data.error }
+  const code = data.code || (res.status === 404 ? "player_not_ready" : "playback_failed")
+  return { code, message: data.error }
 }
 
 export function SpotifyWebPlayer({
@@ -409,12 +413,33 @@ export function SpotifyWebPlayer({
   const attachRef = useRef(attachPlayer)
   attachRef.current = attachPlayer
 
-  function ensurePlayer(): Promise<string> {
-    return loadSpotifyPlaybackSdk().then(() => {
+  function ensurePlayer(isActive: () => boolean = () => true): Promise<string> {
+    return loadSpotifyPlaybackSdk().then(async () => {
       attachPlayer()
+      if (!isActive()) throw Object.assign(new Error("cancelled"), { code: "cancelled" })
+      if (!deviceIdRef.current && !connectingRef.current) throw browserError("missing")
+
+      const pending = connectingRef.current
+      if (pending && !deviceIdRef.current) {
+        try {
+          await pending
+        } catch (error) {
+          if (deviceIdRef.current) return deviceIdRef.current
+          throw error
+        }
+      }
+
+      // ready can fire before Spotify lists the device, and not_ready can clear the id.
+      // Hold the play request here until the SDK reports a device_id again.
+      const deadline = Date.now() + 12_000
+      while (isActive()) {
+        if (deviceIdRef.current) return deviceIdRef.current
+        if (Date.now() >= deadline) break
+        await new Promise((resolve) => window.setTimeout(resolve, 100))
+      }
+      if (!isActive()) throw Object.assign(new Error("cancelled"), { code: "cancelled" })
       if (deviceIdRef.current) return deviceIdRef.current
-      if (connectingRef.current) return connectingRef.current
-      return Promise.reject(browserError("missing"))
+      throw Object.assign(new Error(PLAYER_TRY_AGAIN_MESSAGE), { code: "player_not_ready" })
     })
   }
 
@@ -459,37 +484,49 @@ export function SpotifyWebPlayer({
     setDuration(0)
     setMovement(null)
 
-    async function play(list: string[], allowDeviceRetry: boolean) {
-      const deviceId = await ensurePlayer()
-      if (cancelled) return
-      const issue = await startOnDevice(deviceId, list, startPositionRef.current)
-      if (cancelled) return
-      if (issue?.code === "device_not_found" && allowDeviceRetry) {
-        destroyPlayer()
-        await play(list, false)
-        return
-      }
-      if (issue) {
-        const code = issue.code
-        if (
-          code === "premium_required" ||
-          code === "insufficient_scope" ||
-          code === "not_connected" ||
-          code === "playback_failed"
-        ) {
-          onIssueRef.current({ code, message: issue.message })
-        } else {
-          onIssueRef.current({ code: "playback_failed", message: issue.message })
+    async function play(list: string[]) {
+      let attempt = 0
+      for (;;) {
+        const deviceId = await ensurePlayer(() => !cancelled && mountedRef.current)
+        if (cancelled || !mountedRef.current) return
+        const issue = await startOnDevice(deviceId, list, startPositionRef.current)
+        if (cancelled || !mountedRef.current) return
+        if (!issue) {
+          setPlaybackPhase("playing")
+          return
         }
-        return
+        const retryMs = isPlayerNotReadyCode(issue.code) ? playbackDeviceRetryDelay(attempt) : null
+        if (retryMs == null) {
+          const code = issue.code
+          if (isPlayerNotReadyCode(code)) {
+            onIssueRef.current({ code: "playback_failed", message: issue.message || PLAYER_TRY_AGAIN_MESSAGE })
+            return
+          }
+          if (
+            code === "premium_required" ||
+            code === "insufficient_scope" ||
+            code === "not_connected" ||
+            code === "playback_failed"
+          ) {
+            onIssueRef.current({ code, message: issue.message })
+          } else {
+            onIssueRef.current({ code: "playback_failed", message: issue.message || "Spotify could not start playback." })
+          }
+          return
+        }
+        attempt += 1
+        await new Promise((resolve) => window.setTimeout(resolve, retryMs))
       }
-      if (mountedRef.current) setPlaybackPhase("playing")
     }
 
-    void play(uris, true).catch((error: unknown) => {
+    void play(uris).catch((error: unknown) => {
       if (cancelled || !mountedRef.current) return
       const code = error && typeof error === "object" && "code" in error ? String((error as { code?: string }).code) : ""
-      if (code === "premium_required" || code === "not_connected") return
+      if (code === "cancelled" || code === "premium_required" || code === "not_connected") return
+      if (isPlayerNotReadyCode(code)) {
+        onIssueRef.current({ code: "playback_failed", message: PLAYER_TRY_AGAIN_MESSAGE })
+        return
+      }
       if (code === "browser") {
         onIssueRef.current({
           code: "browser",

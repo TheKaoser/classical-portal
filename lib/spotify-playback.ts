@@ -1,8 +1,8 @@
 /**
  * In-page sequential playback, modeled on Concertmaster.
  * The browser creates a Web Playback SDK player and audio stays in this page.
- * PUT /me/player/play always includes that player's device_id.
- * Playback is not transferred to the Spotify app or any other device.
+ * Playback is transferred onto that player's device_id, then started with track URIs.
+ * It is not sent to the Spotify app or any other device.
  * No temporary playlist is created.
  */
 
@@ -23,6 +23,12 @@ export const SPOTIFY_PLAYLIST_SCOPES = ["playlist-modify-private", "playlist-mod
 export const SPOTIFY_PLAYER_NAME = "Classical Portal"
 
 export const PREMIUM_REQUIRED_MESSAGE = "Spotify Premium is required for in-app continuous play."
+
+/** Shown while the Web Playback SDK device is not registered with Spotify yet. */
+export const PLAYER_NOT_READY_MESSAGE = "The in-app player is still connecting."
+
+/** Shown after play has waited and the SDK device is still not registered. */
+export const PLAYER_TRY_AGAIN_MESSAGE = "The in-app player is still connecting. Try Play again."
 
 /** Arrow keys move the playhead by this many milliseconds. */
 export const SEEK_STEP_MS = 5_000
@@ -56,6 +62,7 @@ export type SpotifyPlayErrorCode =
   | "premium_required"
   | "insufficient_scope"
   | "device_not_found"
+  | "player_not_ready"
   | "not_connected"
   | "playback_failed"
 
@@ -105,6 +112,21 @@ export function spotifyPlayRequest(input: { uris: string[]; position?: number })
   return { uris, offset: { position } }
 }
 
+/** The SDK can report ready before Spotify will accept playback on that device. */
+export function isPlayerNotReadyCode(code: string | undefined): boolean {
+  return code === "device_not_found" || code === "player_not_ready"
+}
+
+/**
+ * Wait before another PUT /api/spotify/play while the page stays on "Connecting…".
+ * Null means the listener should press Play again instead of looping forever.
+ */
+export function playbackDeviceRetryDelay(attempt: number): number | null {
+  const delays = [800, 1600]
+  if (!Number.isInteger(attempt) || attempt < 0 || attempt >= delays.length) return null
+  return delays[attempt]
+}
+
 /**
  * `null` when Spotify did not say (missing `user-read-private`).
  * Only `"premium"` can drive the Web Playback SDK. `"free"` and `"open"` cannot.
@@ -138,8 +160,14 @@ export function classifySpotifyPlayError(
       status: 403,
     }
   }
-  if (status === 404 || /device not found/i.test(message)) {
-    return { code: "device_not_found", message: "The in-app player is not ready yet.", status: 404 }
+  if (
+    status === 404 ||
+    reason === "NO_ACTIVE_DEVICE" ||
+    /device not found/i.test(message) ||
+    /no active device/i.test(message)
+  ) {
+    // 409, not 404: a 404 on our own /api/spotify/play looks like a missing route.
+    return { code: "device_not_found", message: PLAYER_NOT_READY_MESSAGE, status: 409 }
   }
   const http = status >= 400 && status < 600 ? status : 502
   return { code: "playback_failed", message: "Spotify could not start playback.", status: http }
