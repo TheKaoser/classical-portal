@@ -1,14 +1,17 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 import {
+  PLAYER_NOT_READY_MESSAGE,
   PREMIUM_REQUIRED_MESSAGE,
   SPOTIFY_OAUTH_SCOPES,
   PLAYBACK_SEEK_SYNC_TOLERANCE_MS,
   chooseTrackEmbed,
   classifySpotifyPlayError,
   inPagePlayerPlayUrl,
+  isPlayerNotReadyCode,
   isSpotifyDeviceId,
   orderedTrackUris,
+  playbackDeviceRetryDelay,
   parsePendingPlayback,
   seekByKeyboard,
   seekPositionMs,
@@ -89,9 +92,27 @@ test("Spotify play errors map to premium, scope, device, and login", () => {
     { code: "premium_required", message: PREMIUM_REQUIRED_MESSAGE, status: 403 }
   )
   assert.equal(classifySpotifyPlayError(403, { error: { message: "Insufficient client scope" } }).code, "insufficient_scope")
-  assert.equal(classifySpotifyPlayError(404, { error: { message: "Device not found" } }).code, "device_not_found")
+  const device = classifySpotifyPlayError(404, { error: { message: "Device not found" } })
+  assert.equal(device.code, "device_not_found")
+  assert.equal(device.status, 409)
+  assert.equal(device.message, PLAYER_NOT_READY_MESSAGE)
+  assert.equal(
+    classifySpotifyPlayError(404, { error: { message: "Player command failed: No active device found", reason: "NO_ACTIVE_DEVICE" } }).code,
+    "device_not_found"
+  )
   assert.equal(classifySpotifyPlayError(401, { error: { message: "Invalid access token" } }).code, "not_connected")
   assert.equal(classifySpotifyPlayError(500, {}).code, "playback_failed")
+})
+
+test("a player that is still connecting is retried, then the listener can press Play again", () => {
+  assert.equal(isPlayerNotReadyCode("device_not_found"), true)
+  assert.equal(isPlayerNotReadyCode("player_not_ready"), true)
+  assert.equal(isPlayerNotReadyCode("premium_required"), false)
+  assert.equal(isPlayerNotReadyCode(undefined), false)
+  assert.equal(playbackDeviceRetryDelay(0), 800)
+  assert.equal(playbackDeviceRetryDelay(1), 1600)
+  assert.equal(playbackDeviceRetryDelay(2), null)
+  assert.equal(playbackDeviceRetryDelay(-1), null)
 })
 
 test("device ids are the Spotify player id shape", () => {
