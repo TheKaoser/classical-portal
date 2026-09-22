@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next"
 import type { ReactNode } from "react"
 import { Newsreader, Inter } from "next/font/google"
 import "./globals.css"
+import { AppNavigationMarker } from "@/components/app-navigation-marker"
 import { SiteHeader } from "@/components/site-header"
 import { SpotifyPlayerProvider } from "@/components/spotify-player-provider"
 import { isSpotifyOAuthConfigured } from "@/lib/spotify"
@@ -44,6 +45,7 @@ export default function RootLayout({
         className={`${inter.variable} ${newsreader.variable} flex min-h-dvh flex-col font-sans antialiased`}
       >
         <SpotifyPlayerProvider oauthConfigured={oauthConfigured}>
+          <AppNavigationMarker />
           <SiteHeader />
           <main className="relative mx-auto w-full max-w-4xl flex-1 px-4 py-10 sm:px-6">
             {children}
