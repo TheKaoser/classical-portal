@@ -51,28 +51,12 @@
     color: transparent;
   }
 
-  .entry-card::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    border-radius: inherit;
-  }
-
   .entry-card-periods {
     background-color: #c5daf4;
     background-image:
       radial-gradient(ellipse 75% 80% at 0% 0%, color-mix(in srgb, var(--navy) 22%, white), transparent 58%),
       radial-gradient(ellipse 70% 75% at 100% 100%, color-mix(in srgb, var(--blue) 42%, white), transparent 62%),
       linear-gradient(148deg, #f4f8fd 0%, #d3e4f8 46%, #b7d2f2 100%);
-  }
-
-  .entry-card-periods::after {
-    background-image: repeating-linear-gradient(
-      -32deg,
-      transparent 0 13px,
-      color-mix(in srgb, var(--navy) 9%, transparent) 13px 14px
-    );
   }
 
   .entry-card-genres {
@@ -83,28 +67,12 @@
       linear-gradient(162deg, #f5f9ff 0%, #d4e6ff 48%, #bdd6fb 100%);
   }
 
-  .entry-card-genres::after {
-    background-image: radial-gradient(color-mix(in srgb, var(--blue-bright) 22%, transparent) 0.85px, transparent 0.95px);
-    background-size: 15px 15px;
-    -webkit-mask-image: linear-gradient(to bottom left, transparent 8%, black 55%);
-    mask-image: linear-gradient(to bottom left, transparent 8%, black 55%);
-  }
-
   .entry-card-composers {
     background-color: #c7d9f3;
     background-image:
       radial-gradient(ellipse 42% 140% at 0% 50%, color-mix(in srgb, var(--navy) 18%, white), transparent 70%),
       radial-gradient(ellipse 48% 140% at 100% 50%, color-mix(in srgb, var(--blue-bright) 32%, white), transparent 72%),
       linear-gradient(100deg, #e7f0fa 0%, #d5e5f7 42%, #c5daf6 100%);
-  }
-
-  .entry-card-composers::after {
-    background-image: repeating-linear-gradient(
-      to bottom,
-      transparent 0 10px,
-      color-mix(in srgb, var(--blue) 13%, transparent) 10px 11px
-    );
-    opacity: 0.85;
   }
 }
 

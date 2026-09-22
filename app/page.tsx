@@ -54,7 +54,7 @@ function EntryCard({
     <Link
       href={href}
       className={cn(
-        "entry-card group relative overflow-hidden rounded-2xl border border-primary/20 shadow-sm transition-[border-color,box-shadow] hover:border-primary/45 hover:shadow-md",
+        "group relative overflow-hidden rounded-2xl border border-primary/20 shadow-sm transition-[border-color,box-shadow] hover:border-primary/45 hover:shadow-md",
         wash,
         layout === "row"
           ? "flex items-center gap-5 px-6 py-8 sm:px-8 sm:py-10"
