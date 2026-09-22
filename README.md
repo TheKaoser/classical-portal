@@ -56,7 +56,7 @@ node --experimental-strip-types scripts/refresh-spotify-popularity.ts
 
 The script skips composers already marked complete, so it is safe to interrupt and run again. Pass `--refresh` to recompute every score. `--composer=<open-opus-id>` refreshes one composer. `--limit=20` processes that many composers who are not yet complete. Commit the updated `data/spotify-popularity.json`.
 
-`data/spotify-popularity.json` in the repo has empty `composers` and `works` maps until that script has been run with credentials and the JSON is committed. Pages do not invent scores. Until the file has numbers, every row is unmatched and lists keep the previous Open Opus order.
+The committed `data/spotify-popularity.json` is filled from a Spotify client-credentials pass over the Open Opus catalog. Pages do not invent scores. A composer or work missing from the file is unmatched and sorts after every scored row.
 
 ## Local setup
 
