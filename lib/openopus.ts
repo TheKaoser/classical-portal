@@ -1,19 +1,31 @@
 import { unstable_cache } from "next/cache"
 import {
-  compareWorksByPopularity,
+  compareSpotifyThenFallback,
+  compareWorksByPopularity as compareWorksByScore,
   dedupeWorks,
   isFlagged,
   isPopular,
   popularityRank,
-  sortComposersByImportance,
+  sortComposersBySpotify,
 } from "@/lib/popularity"
+import { composerSpotifyScore, workSpotifyScore } from "@/lib/spotify-popularity"
 
 export {
-  compareWorksByPopularity,
   dedupeWorks,
   isFlagged,
   isPopular,
   popularityRank,
+}
+
+/**
+ * Work lists: Spotify popularity, then title.
+ * A work with no cached score sorts after every scored work and, among
+ * those, keeps the Open Opus Popular flag order.
+ */
+export function compareWorksByPopularity<
+  T extends { id?: string; title: string; popular?: string | number; recommended?: string | number },
+>(a: T, b: T): number {
+  return compareWorksByScore(a, b, (work) => (work.id ? workSpotifyScore(work.id) : null))
 }
 
 const OPEN_OPUS_BASE = "https://api.openopus.org"
@@ -117,23 +129,24 @@ function composerSortName(composer: OpenOpusComposer): string {
 }
 
 /**
- * Open Opus list payloads have no composer `popular` flag or numeric rank.
- * Period (and other) composer lists use three importance tiers:
- * 1. `/composer/list/pop.json`
- * 2. `/composer/list/rec.json` but not pop
- * 3. everyone else
- * Alphabetical by `complete_name` within each tier.
- * Work lists stay on the unified Popular flag; this sorter is composers only.
+ * Composer lists sort by cached Spotify popularity, highest first, then name.
+ * Composers the cache has not matched keep Open Opus list order after them:
+ * `/composer/list/pop.json`, then `/composer/list/rec.json`, then everyone else.
  */
 export function sortComposersByPopularity(
   composers: OpenOpusComposer[],
   popularIds: Set<string>,
   essentialIds: Set<string>
 ): OpenOpusComposer[] {
-  return sortComposersByImportance(composers, popularIds, essentialIds)
+  return sortComposersBySpotify(
+    composers,
+    (composer) => composerSpotifyScore(composer.id),
+    popularIds,
+    essentialIds
+  )
 }
 
-/** `/composer/list/pop.json`, ranked with the same importance tiers as period lists. */
+/** `/composer/list/pop.json`, in the same Spotify popularity order as period lists. */
 export async function listRankedPopularComposers(): Promise<OpenOpusComposer[]> {
   const [popular, essential] = await Promise.all([listPopularComposers(), listEssentialComposers()])
   return sortComposersByPopularity(
@@ -420,9 +433,9 @@ async function mapInBatches<T, R>(items: T[], batchSize: number, fn: (item: T) =
 
 /**
  * Works Open Opus flags as popular or essential in this genre, with IDs from
- * `/work/list/composer/{id}/genre/{Genre}.json`. Sort: popular+essential,
- * popular, essential; then composer name, then title. Unflagged works are
- * omitted (thousands per genre, no rank).
+ * `/work/list/composer/{id}/genre/{Genre}.json`. Sort: Spotify popularity,
+ * then composer name, then title. Unmatched works keep the Popular flag
+ * order after every scored work. Unflagged works are omitted.
  */
 export async function listWorksByGenre(genre: WorkGenre): Promise<GenreWork[]> {
   const [summary, composers] = await Promise.all([getDumpSummary(), listAllComposers()])
@@ -450,10 +463,14 @@ export async function listWorksByGenre(genre: WorkGenre): Promise<GenreWork[]> {
     }
   }
 
-  return works.sort(
-    (a, b) =>
-      workPopularityRank(a) - workPopularityRank(b) ||
-      composerSortName(a.composer).localeCompare(composerSortName(b.composer)) ||
-      a.title.localeCompare(b.title)
+  return works.sort((a, b) =>
+    compareSpotifyThenFallback(
+      workSpotifyScore(a.id),
+      workSpotifyScore(b.id),
+      `${composerSortName(a.composer)}\u0000${a.title}`,
+      `${composerSortName(b.composer)}\u0000${b.title}`,
+      workPopularityRank(a),
+      workPopularityRank(b)
+    )
   )
 }

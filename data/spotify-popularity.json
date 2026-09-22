@@ -1,0 +1,8 @@
+{
+  "source": "Spotify Web API client credentials. Composer score is the max of the matched artist's popularity and the highest popularity of tracks matched to that composer's works. Work score is the max popularity (0-100) of Spotify tracks assigned to the work; album popularity is included when the search payload has it. Ids missing from composers or works were not matched and sort after every scored row. Refresh with: node --experimental-strip-types scripts/refresh-spotify-popularity.ts",
+  "generatedAt": null,
+  "market": "US",
+  "completedComposers": [],
+  "composers": {},
+  "works": {}
+}

@@ -5,7 +5,7 @@ import { listRankedPopularComposers } from "@/lib/openopus"
 
 export const metadata: Metadata = {
   title: "Composers",
-  description: "The most popular composers in the Open Opus catalog.",
+  description: "The most popular composers in the Open Opus catalog, ordered by Spotify popularity.",
 }
 
 export const revalidate = 3600
@@ -17,7 +17,7 @@ export default async function ComposersPage() {
     <div>
       <PageHeader
         title="Composers"
-        description="The most popular composers in Open Opus, in the same importance order as the period lists."
+        description="The most popular composers in Open Opus, ordered by Spotify popularity."
         backHref="/"
         backLabel="Home"
       />
