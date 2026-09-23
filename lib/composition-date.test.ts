@@ -2,13 +2,26 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import {
   buildDateIndex,
+  dateFromWikidataPrecision,
+  dateWithinLife,
   extractCatalogueKeys,
   extractFormKey,
+  mergeExactYears,
+  formatCompositionDate,
+  labelsForCatalogueCode,
   matchCompositionYear,
+  normalizeDateIndex,
+  parseCompositionDateText,
+  prefixFromCatalogueLabels,
   selectComposerQid,
   sortWorksChronologically,
+  type DateIndex,
   type DatedWorkLabels,
 } from "./composition-date.ts"
+
+function year(title: string, index: DateIndex, extra?: string | string[] | null) {
+  return matchCompositionYear(title, index, extra)?.start ?? null
+}
 
 const beethoven: DatedWorkLabels[] = [
   {
@@ -51,6 +64,9 @@ test("catalogue keys normalize common numbering systems", () => {
   assert.deepEqual(extractCatalogueKeys("K.550").sort(), extractCatalogueKeys("KV 550").sort())
   assert.ok(extractCatalogueKeys("Symphony no. 94, Hob.I:94").includes("hob:i:94"))
   assert.ok(extractCatalogueKeys("Keyboard Concerto, Hob.XVIII:11").includes("hob:xviii:11"))
+  assert.ok(extractCatalogueKeys("Cello Concerto no. 1, Hob.VIIb:1").includes("hob:viib:1"))
+  assert.ok(extractCatalogueKeys("2 Marches, Hob.VIII:1-2").includes("hob:viii:1-2"))
+  assert.equal(extractCatalogueKeys("2 Marches, Hob.VIII:1-2").includes("hob:viii:1"), false)
   assert.ok(extractCatalogueKeys('Bagatelle, WoO 59').includes("woo:59"))
   assert.ok(extractCatalogueKeys("Gloria, RV.589").includes("rv:589"))
   assert.ok(extractCatalogueKeys("3 Minuets, BWV.841-843").includes("bwv:841-843"))
@@ -67,21 +83,21 @@ test("form keys keep the ensemble so sonata 8 does not match every sonata 8", ()
 
 test("matches a unique catalogue year and ignores movement rows", () => {
   const index = buildDateIndex(beethoven)
-  assert.equal(matchCompositionYear("Symphony no. 5 in C minor, op. 67", index), 1807)
-  assert.equal(matchCompositionYear('Piano Concerto no. 5 in E flat major, op. 73, "Emperor"', index), 1809)
-  assert.equal(matchCompositionYear('Bagatelle in A minor, WoO 59, "Für Elise"', index), 1810)
-  assert.equal(matchCompositionYear("Piano Sonata no. 1 in F minor, op. 2, no. 1", index), 1795)
-  assert.equal(matchCompositionYear("Piano Sonata no. 2 in A major, op. 2, no. 2", index), 1796)
-  assert.equal(matchCompositionYear("3 Piano Sonatas, op. 2", index), null)
+  assert.equal(year("Symphony no. 5 in C minor, op. 67", index), 1807)
+  assert.equal(year('Piano Concerto no. 5 in E flat major, op. 73, "Emperor"', index), 1809)
+  assert.equal(year('Bagatelle in A minor, WoO 59, "Für Elise"', index), 1810)
+  assert.equal(year("Piano Sonata no. 1 in F minor, op. 2, no. 1", index), 1795)
+  assert.equal(year("Piano Sonata no. 2 in A major, op. 2, no. 2", index), 1796)
+  assert.equal(year("3 Piano Sonatas, op. 2", index), null)
 })
 
 test("does not treat a nickname or a different number as the same work", () => {
   const index = buildDateIndex(beethoven)
-  assert.equal(matchCompositionYear("Ode to Joy", index), null)
-  assert.equal(matchCompositionYear("Für Elise", index), null)
-  assert.equal(matchCompositionYear("Symphony no. 50 in C major, op. 500", index), null)
-  assert.equal(matchCompositionYear("Symphony no. 15", index), null)
-  assert.equal(matchCompositionYear("Symphony no. 9 in D minor, op. 125, \"Choral\"", index), 1824)
+  assert.equal(year("Ode to Joy", index), null)
+  assert.equal(year("Für Elise", index), null)
+  assert.equal(year("Symphony no. 50 in C major, op. 500", index), null)
+  assert.equal(year("Symphony no. 15", index), null)
+  assert.equal(year("Symphony no. 9 in D minor, op. 125, \"Choral\"", index), 1824)
 })
 
 test("uses form or the full title only when that year is unique", () => {
@@ -89,19 +105,19 @@ test("uses form or the full title only when that year is unique", () => {
     { year: 1902, labels: ["Symphony No. 5", "Symphony No. 5 in C-sharp minor"] },
     { year: 1888, labels: ["Symphony No. 1", 'Symphony No. 1 in D major, "Titan"'] },
   ])
-  assert.equal(matchCompositionYear("Symphony no. 5 in C sharp minor", mahler), 1902)
-  assert.equal(matchCompositionYear('Symphony no. 1 in D major, "Titan"', mahler), 1888)
+  assert.equal(year("Symphony no. 5 in C sharp minor", mahler), 1902)
+  assert.equal(year('Symphony no. 1 in D major, "Titan"', mahler), 1888)
 
   const ambiguous = buildDateIndex([
     { year: 1807, labels: ["Symphony No. 5", "Symphony No. 5 in C Minor, Op. 67"] },
     { year: 1902, labels: ["Symphony No. 5"] },
   ])
-  assert.equal(matchCompositionYear("Symphony no. 5", ambiguous), null)
-  assert.equal(matchCompositionYear("Symphony no. 5 in C minor, op. 67", ambiguous), 1807)
+  assert.equal(year("Symphony no. 5", ambiguous), null)
+  assert.equal(year("Symphony no. 5 in C minor, op. 67", ambiguous), 1807)
 
   const index = buildDateIndex(beethoven)
-  assert.equal(matchCompositionYear("The Four Seasons", index), 1725)
-  assert.equal(matchCompositionYear("Concerto", index, "Le quattro stagioni"), 1725)
+  assert.equal(year("The Four Seasons", index), 1725)
+  assert.equal(year("Concerto", index, "Le quattro stagioni"), 1725)
 })
 
 test("a movement with its own year does not hide the parent work", () => {
@@ -109,22 +125,24 @@ test("a movement with its own year does not hide the parent work", () => {
     { year: 1839, labels: ["Piano Sonata No. 2 in B-flat minor, Op. 35"] },
     { year: 1837, labels: ["Sonatas, piano, no. 2, op. 35, B-flat minor. Marche funèbre"] },
   ])
-  assert.equal(matchCompositionYear("Sonata no. 2 in B flat minor, op. 35", index), 1839)
+  assert.equal(year("Sonata no. 2 in B flat minor, op. 35", index), 1839)
 })
 
 test("titles match a unique Wikidata label used as a prefix, suffix, or nickname", () => {
   const mozart = buildDateIndex([
-    { year: 1791, labels: ["The Magic Flute", "Magic Flute"] },
+    { year: 1791, labels: ["The Magic Flute", "Magic Flute", "K. 620"] },
     { year: 1795, labels: ["The Magic Flute Part Two"] },
-    { year: 1787, labels: ["Eine kleine Nachtmusik"] },
+    { year: 1787, labels: ["Eine kleine Nachtmusik", "K. 525"] },
   ])
-  assert.equal(matchCompositionYear("The Magic Flute, K.620", mozart), 1791)
-  assert.equal(matchCompositionYear('Serenade in G major, K.525, "Eine Kleine Nachtmusik"', mozart), 1787)
+  assert.equal(year("The Magic Flute, K.620", mozart), 1791)
+  assert.equal(year('Serenade in G major, "Eine Kleine Nachtmusik"', mozart), 1787)
+  assert.equal(year('Serenade in G major, K.525, "Eine Kleine Nachtmusik"', mozart), 1787)
+  assert.equal(year("The Magic Flute Part Two", mozart), 1795)
 
   const mahler = buildDateIndex([{ year: 1888, labels: ["Symphony No. 1"] }])
-  assert.equal(matchCompositionYear('Symphony no. 1 in D major, "Titan"', mahler), 1888)
-  assert.equal(matchCompositionYear("Symphony no. 15 in D minor", mahler), null)
-  assert.equal(matchCompositionYear("Symphony no. 10", mahler), null)
+  assert.equal(year('Symphony no. 1 in D major, "Titan"', mahler), 1888)
+  assert.equal(year("Symphony no. 15 in D minor", mahler), null)
+  assert.equal(year("Symphony no. 10", mahler), null)
 })
 
 test("disagreement between catalogue numbers yields no year", () => {
@@ -132,7 +150,7 @@ test("disagreement between catalogue numbers yields no year", () => {
     { year: 1815, labels: ["Erlkönig, D.328"] },
     { year: 1821, labels: ["A different piece, Op. 1"] },
   ])
-  assert.equal(matchCompositionYear("Erlkönig, D.328, op. 1", index), null)
+  assert.equal(year("Erlkönig, D.328, op. 1", index), null)
 })
 
 test("All-list sort is chronological, then undated titles A–Z", () => {
@@ -310,4 +328,135 @@ test("composer resolution prefers the person with a matching birth year", () => 
     ]),
     "Q181885"
   )
+})
+
+test("a catalogue suffix still dates the distinctive title", () => {
+  const index = buildDateIndex([{ year: 1997, labels: ["Asyla, Op. 17"] }])
+  assert.equal(year("Asyla", index), 1997)
+  assert.equal(year("Asyla, op. 18", index), null)
+  assert.equal(year("Symphony no. 5", buildDateIndex([{ year: 1808, labels: ["Symphony No. 5, Op. 67"] }])), 1808)
+})
+
+test("a catalogue span is dated only when every number in it is dated", () => {
+  const index = buildDateIndex([
+    { year: 1720, labels: ["Minuet, BWV 841"] },
+    { year: 1720, labels: ["Minuet, BWV 842"] },
+    { year: 1722, labels: ["Minuet, BWV 843"] },
+    { year: 1725, labels: ["Prelude, BWV 933"] },
+    { year: 1725, labels: ["Prelude, BWV 934"] },
+  ])
+  assert.deepEqual(matchCompositionYear("3 Minuets, BWV.841-843", index), {
+    start: 1720,
+    end: 1722,
+    circa: false,
+  })
+  assert.equal(year("6 Preludes, BWV.933-38", index), null)
+  const complete = buildDateIndex([933, 934, 935, 936, 937, 938].map((number) => ({
+    year: 1720,
+    labels: [`Prelude, BWV ${number}`],
+  })))
+  assert.equal(year("6 Preludes, BWV.933-38", complete), 1720)
+})
+
+test("Bach cantata numbers use BWV when the title omits the catalogue", () => {
+  const index = buildDateIndex([{ year: 1723, labels: ["Herz und Mund und Tat und Leben, BWV 147"] }])
+  assert.equal(year("Cantata no. 147: Herz und Mund und Tat und Leben", index), 1723)
+  assert.equal(year("Cantata no. 565", index), null)
+  assert.equal(year("Violin Sonata no. 1 in G minor", buildDateIndex([
+    { year: 1720, labels: ["Cantata, BWV 1"] },
+  ])), null)
+})
+
+test("close inception years become one range and distant ones do not", () => {
+  assert.deepEqual(mergeExactYears([
+    { start: 1831, end: null, circa: false },
+    { start: 1835, end: null, circa: false },
+  ]), { start: 1831, end: 1835, circa: false })
+  assert.equal(mergeExactYears([
+    { start: 1700, end: 1709, circa: false },
+    { start: 1705, end: null, circa: false },
+  ]), null)
+  assert.equal(mergeExactYears([
+    { start: 1600, end: null, circa: false },
+    { start: 1720, end: null, circa: false },
+  ]), null)
+})
+
+test("an unmatched catalogue number does not borrow another work's year", () => {
+  const index = buildDateIndex(beethoven)
+  assert.equal(year("Symphony no. 5 in C minor, op. 500", index), null)
+  assert.equal(year("Symphony no. 5 in C minor", index), 1807)
+})
+
+test("a shorter title does not date a later book or part", () => {
+  const index = buildDateIndex([
+    { year: 1722, labels: ["The Well-Tempered Clavier"] },
+    { year: 1742, labels: ["The Well-Tempered Clavier, Book 2"] },
+  ])
+  assert.equal(year("The Well-Tempered Clavier", index), 1722)
+  assert.equal(year("The Well-Tempered Clavier, Book 2", index), 1742)
+  assert.equal(year("The Well-Tempered Clavier, Book 1", index), null)
+  assert.equal(year("The Magic Flute Part Two", index), null)
+})
+
+test("parses IMSLP composition phrases without guessing", () => {
+  assert.deepEqual(parseCompositionDateText("1731 in Leipzig"), { start: 1731, end: null, circa: false })
+  assert.deepEqual(parseCompositionDateText("1740 ca."), { start: 1740, end: null, circa: true })
+  assert.deepEqual(parseCompositionDateText("c. 1720"), { start: 1720, end: null, circa: true })
+  assert.deepEqual(parseCompositionDateText("1724-25"), { start: 1724, end: 1725, circa: false })
+  assert.deepEqual(parseCompositionDateText("1724/1725"), { start: 1724, end: 1725, circa: false })
+  assert.deepEqual(parseCompositionDateText("1698-02"), { start: 1698, end: 1702, circa: false })
+  assert.deepEqual(parseCompositionDateText("1720s"), { start: 1720, end: 1729, circa: false })
+  assert.deepEqual(parseCompositionDateText("1731-11-14"), { start: 1731, end: null, circa: false })
+  assert.deepEqual(parseCompositionDateText("1731, revised 1735"), { start: 1731, end: 1735, circa: false })
+  assert.deepEqual(parseCompositionDateText("1733, rev.1748-49 (August to October)"), {
+    start: 1733,
+    end: 1749,
+    circa: false,
+  })
+  assert.deepEqual(parseCompositionDateText("1736, revised 1742, 1743-46"), { start: 1736, end: 1746, circa: false })
+  assert.deepEqual(parseCompositionDateText("1742-46; rev. 1748–50"), { start: 1742, end: 1750, circa: false })
+  assert.equal(parseCompositionDateText("1708 ?"), null)
+  assert.equal(parseCompositionDateText("1723, published 1850"), null)
+  assert.deepEqual(
+    parseCompositionDateText(
+      "1721 in [[6 Brandenburg Concertos (Bach, Johann Sebastian)|''Six Concerts avec plusieurs Instruments'']] (No.1)"
+    ),
+    { start: 1721, end: null, circa: false }
+  )
+  assert.equal(parseCompositionDateText("early 1720s"), null)
+  assert.equal(parseCompositionDateText("before 1740"), null)
+  assert.equal(parseCompositionDateText("1723?"), null)
+  assert.equal(parseCompositionDateText("18th century"), null)
+  assert.equal(parseCompositionDateText("1800s"), null)
+  assert.equal(parseCompositionDateText("BWV 1046"), null)
+  assert.equal(parseCompositionDateText(""), null)
+  assert.equal(formatCompositionDate({ start: 1724, end: 1725, circa: false }), "1724–25")
+  assert.equal(formatCompositionDate({ start: 1798, end: 1802, circa: false }), "1798–1802")
+  assert.equal(formatCompositionDate({ start: 1740, end: null, circa: true }), "c. 1740")
+})
+
+test("catalogue codes become the same keys Open Opus titles use", () => {
+  assert.deepEqual(labelsForCatalogueCode("bwv", "140"), ["BWV 140"])
+  assert.ok(labelsForCatalogueCode("bwv", "Anh 16").some((label) => extractCatalogueKeys(label).includes("bwv.anh:16")))
+  assert.ok(extractCatalogueKeys(labelsForCatalogueCode("op", "59 no. 1")[0]).includes("op:59:1"))
+  assert.ok(extractCatalogueKeys(labelsForCatalogueCode("hob", "XVIII:11")[0]).includes("hob:xviii:11"))
+  assert.ok(extractCatalogueKeys(labelsForCatalogueCode("k", "550")[0]).includes("k:550"))
+  assert.deepEqual(labelsForCatalogueCode(null, "3732626501"), [])
+  assert.deepEqual(labelsForCatalogueCode("op", "3732626501"), [])
+  assert.equal(prefixFromCatalogueLabels("Bach-Werke-Verzeichnis", ["BWV"]), "bwv")
+  assert.equal(prefixFromCatalogueLabels("Köchel catalogue", ["K", "KV"]), "k")
+  assert.equal(prefixFromCatalogueLabels("Werke ohne Opuszahl", ["WoO"]), "woo")
+  assert.equal(prefixFromCatalogueLabels("Brown catalogue", ["BI", "B"]), "b")
+})
+
+test("wikidata precision and life span stay conservative", () => {
+  assert.deepEqual(dateFromWikidataPrecision("+1808-00-00T00:00:00Z", 9), { start: 1808, end: null, circa: false })
+  assert.deepEqual(dateFromWikidataPrecision("+1720-00-00T00:00:00Z", 8), { start: 1720, end: 1729, circa: false })
+  assert.equal(dateFromWikidataPrecision("+1800-00-00T00:00:00Z", 8), null)
+  assert.equal(dateFromWikidataPrecision("+1700-00-00T00:00:00Z", 7), null)
+  assert.equal(dateWithinLife({ start: 1731, end: null, circa: false }, 1685, 1750), true)
+  assert.equal(dateWithinLife({ start: 1881, end: null, circa: false }, 1685, 1750), false)
+  const index = normalizeDateIndex({ catalogue: { "op:67": 1808 }, form: {}, title: {} })
+  assert.equal(year("Symphony no. 5, op. 67", index!), 1808)
 })

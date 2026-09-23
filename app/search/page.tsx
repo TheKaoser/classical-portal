@@ -2,6 +2,8 @@ import type { Metadata } from "next"
 import { ListLink } from "@/components/list-link"
 import { PageHeader } from "@/components/page-header"
 import { SearchForm } from "@/components/search-form"
+import { CompositionYear } from "@/components/work-list"
+import { attachCompositionYearsByComposer } from "@/lib/composition-years"
 import { omniSearch } from "@/lib/openopus"
 
 export async function generateMetadata({
@@ -23,7 +25,13 @@ export default async function SearchPage({
   const results = query.length >= 2 ? await omniSearch(query) : []
 
   const composers = results.filter((hit) => !hit.work)
-  const works = results.filter((hit) => hit.work)
+  const workHits = results.filter((hit) => hit.work)
+  const works = await attachCompositionYearsByComposer(
+    workHits.map((hit) => ({
+      ...hit.work!,
+      composer: hit.composer,
+    }))
+  )
 
   return (
     <div>
@@ -58,14 +66,17 @@ export default async function SearchPage({
         <section>
           <h2 className="mb-2 px-3 text-sm font-medium text-primary">Works</h2>
           <ul className="space-y-0.5">
-            {works.map((hit) => (
-              <li key={hit.work!.id}>
-                <ListLink href={`/works/${hit.work!.id}`} className="block">
-                  <div className="text-sm text-foreground group-hover:text-primary">{hit.work!.title}</div>
-                  <div className="text-sm text-muted-foreground">
-                    {hit.composer.complete_name}
-                    {hit.work!.genre ? ` · ${hit.work!.genre}` : ""}
-                  </div>
+            {works.map((work) => (
+              <li key={work.id}>
+                <ListLink href={`/works/${work.id}`}>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm text-foreground group-hover:text-primary">{work.title}</span>
+                    <span className="block text-sm text-muted-foreground">
+                      {work.composer.complete_name}
+                      {work.genre ? ` · ${work.genre}` : ""}
+                    </span>
+                  </span>
+                  <CompositionYear date={work.compositionDate} />
                 </ListLink>
               </li>
             ))}

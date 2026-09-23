@@ -52,7 +52,14 @@ export function SearchForm({
         }
         const data = (await res.json()) as {
           composers: { id: string; complete_name: string; epoch: string }[]
-          works: { id: string; title: string; genre: string; composerId: string; composerName: string }[]
+          works: {
+            id: string
+            title: string
+            genre: string
+            composerId: string
+            composerName: string
+            compositionLabel?: string | null
+          }[]
         }
         const next: Suggestion[] = [
           ...data.composers.map((composer) => ({
@@ -67,7 +74,7 @@ export function SearchForm({
             id: `w-${work.id}`,
             href: `/works/${work.id}`,
             label: work.title,
-            meta: [work.composerName, work.genre].filter(Boolean).join(" · "),
+            meta: [work.composerName, work.compositionLabel, work.genre].filter(Boolean).join(" · "),
           })),
         ]
         setSuggestions(next)

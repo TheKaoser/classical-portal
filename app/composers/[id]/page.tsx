@@ -49,6 +49,7 @@ export default async function ComposerPage({
     name: composer.name,
     complete_name: composer.complete_name,
     birth: composer.birth ?? worksResult.composer?.birth ?? null,
+    death: composer.death ?? worksResult.composer?.death ?? null,
   })
   const popularCount = works.filter((work) => isPopular(work)).length
   const genreCounts = Object.fromEntries(

@@ -4,6 +4,8 @@ import { notFound } from "next/navigation"
 import { PageHeader } from "@/components/page-header"
 import { SpotifyRecordings } from "@/components/spotify-recordings"
 import { Badge } from "@/components/ui/badge"
+import { attachCompositionYears } from "@/lib/composition-years"
+import { formatCompositionDate } from "@/lib/composition-label"
 import { genreHrefForLabel } from "@/lib/forms"
 import { getWork, workParts, workSearchTerms } from "@/lib/openopus"
 import { searchSpotifyForWork } from "@/lib/spotify"
@@ -32,19 +34,28 @@ export default async function WorkPage({
   if (!work || !composer) notFound()
 
   const parts = workParts(work)
-  const spotify = await searchSpotifyForWork({
-    composerName: composer.name,
-    composerCompleteName: composer.complete_name,
-    title: work.title,
-    subtitle: work.subtitle,
-    genre: work.genre,
-    catalogue: work.catalogue,
-    catalogueNumber: work.catalogue_number,
-    additionalNumber: work.additional_number,
-    searchterms: workSearchTerms(work),
-    parts,
-  })
-  const subtitle = [work.genre, composer.complete_name].filter(Boolean).join(" · ")
+  const [datedList, spotify] = await Promise.all([
+    attachCompositionYears([work], {
+      id: composer.id,
+      name: composer.name,
+      complete_name: composer.complete_name,
+    }),
+    searchSpotifyForWork({
+      composerName: composer.name,
+      composerCompleteName: composer.complete_name,
+      title: work.title,
+      subtitle: work.subtitle,
+      genre: work.genre,
+      catalogue: work.catalogue,
+      catalogueNumber: work.catalogue_number,
+      additionalNumber: work.additional_number,
+      searchterms: workSearchTerms(work),
+      parts,
+    }),
+  ])
+  const subtitle = [formatCompositionDate(datedList[0]?.compositionDate), work.genre, composer.complete_name]
+    .filter(Boolean)
+    .join(" · ")
   const playlistName = classicalPlaylistName(composer.name, work.title)
 
   return (

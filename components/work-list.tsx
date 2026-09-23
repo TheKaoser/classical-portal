@@ -1,10 +1,12 @@
 import { Star } from "lucide-react"
 import { ListLink } from "@/components/list-link"
+import { formatCompositionDate, type CompositionDate } from "@/lib/composition-label"
 import { isPopular, type OpenOpusWork } from "@/lib/openopus"
 
 type ListedWork = OpenOpusWork & {
   composer?: { name: string; complete_name?: string }
   composerLabel?: string
+  compositionDate?: CompositionDate | null
   compositionYear?: number | null
 }
 
@@ -47,7 +49,7 @@ export function WorkList({
                 <span className="block text-xs text-muted-foreground">{work.genre}</span>
               ) : null}
             </span>
-            <WorkYear year={work.compositionYear} />
+            <CompositionYear date={work.compositionDate} year={work.compositionYear} />
           </ListLink>
         </li>
       ))}
@@ -55,22 +57,37 @@ export function WorkList({
   )
 }
 
-function WorkYear({ year }: { year?: number | null }) {
-  if (year == null) {
+export function CompositionYear({
+  date,
+  year,
+}: {
+  date?: CompositionDate | null
+  year?: number | null
+}) {
+  const resolved =
+    date ?? (year != null ? { start: year, end: null, circa: false } : null)
+  const label = formatCompositionDate(resolved)
+  if (!resolved || !label) {
     return (
-      <span className="mt-0.5 w-12 shrink-0 text-right text-xs text-muted-foreground/50" aria-hidden>
+      <span className="mt-0.5 w-[7rem] shrink-0 text-right text-xs text-muted-foreground/50" aria-hidden>
         —
       </span>
     )
   }
 
+  const title = resolved.circa
+    ? "Approximate composition year"
+    : resolved.end != null
+      ? "Composition years"
+      : "Composition year"
+
   return (
     <time
-      dateTime={String(year)}
-      title="Composition year"
-      className="mt-0.5 w-12 shrink-0 text-right text-xs tabular-nums text-muted-foreground"
+      dateTime={String(resolved.start)}
+      title={title}
+      className="mt-0.5 w-[7rem] shrink-0 whitespace-nowrap text-right text-xs tabular-nums text-muted-foreground"
     >
-      {year}
+      {label}
     </time>
   )
 }
