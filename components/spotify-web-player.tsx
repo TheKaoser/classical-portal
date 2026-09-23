@@ -12,12 +12,15 @@ import {
   playerBarPaddingCss,
 } from "@/lib/player-bar-layout"
 import {
+  PLAYBACK_LOGIN_EXPIRED_MESSAGE,
+  PLAYBACK_RECONNECT_MESSAGE,
   PLAYBACK_SEEK_SYNC_MS,
   PLAYER_TRY_AGAIN_MESSAGE,
   PREMIUM_REQUIRED_MESSAGE,
   SPOTIFY_PLAYER_NAME,
   isPlayerNotReadyCode,
-  playbackDeviceRetryDelay,
+  playIssueRetryDelay,
+  replacePlayAttempt,
   seekByKeyboard,
   seekPositionMs,
   seekRatioFromPointer,
@@ -197,11 +200,20 @@ function unlockBrowserAudio(player: SpotifyPlayer | null) {
   void player.activateElement()
 }
 
-async function readToken(onIssue: (issue: PlaybackIssue) => void): Promise<string> {
-  const res = await fetch("/api/spotify/token", { cache: "no-store" })
-  const data = (await res.json().catch(() => ({}))) as { accessToken?: string; premium?: boolean | null }
+async function readToken(onIssue: (issue: PlaybackIssue) => void, refresh = false): Promise<string> {
+  const res = await fetch(refresh ? "/api/spotify/token?refresh=1" : "/api/spotify/token", { cache: "no-store" })
+  const data = (await res.json().catch(() => ({}))) as {
+    accessToken?: string
+    premium?: boolean | null
+    code?: string
+    error?: string
+  }
+  if (data.code === "insufficient_scope" || res.status === 403) {
+    onIssue({ code: "insufficient_scope", message: data.error || PLAYBACK_RECONNECT_MESSAGE })
+    return ""
+  }
   if (res.status === 401 || typeof data.accessToken !== "string" || !data.accessToken) {
-    onIssue({ code: "not_connected", message: "Spotify login expired. Sign in again." })
+    onIssue({ code: "not_connected", message: data.error || PLAYBACK_LOGIN_EXPIRED_MESSAGE })
     return ""
   }
   if (data.premium === false) {
@@ -213,12 +225,14 @@ async function readToken(onIssue: (issue: PlaybackIssue) => void): Promise<strin
 async function startOnDevice(
   deviceId: string,
   uris: string[],
-  position: number
+  position: number,
+  signal: AbortSignal
 ): Promise<{ code: string; message?: string } | null> {
   const res = await fetch("/api/spotify/play", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ deviceId, uris, position }),
+    signal,
   })
   if (res.ok) return null
   const data = (await res.json().catch(() => ({}))) as { code?: string; error?: string }
@@ -269,6 +283,10 @@ export function SpotifyWebPlayer({
   const connectingRef = useRef<Promise<string> | null>(null)
   const readyTimerRef = useRef<number | null>(null)
   const mountedRef = useRef(true)
+  const playAbortRef = useRef<AbortController | null>(null)
+  const forceTokenRefreshRef = useRef(false)
+  /** `closed` means Spotify already shut the dealer socket; disconnect() would log "Close received after close". */
+  const socketRef = useRef<"idle" | "connecting" | "ready" | "closed">("idle")
   const urisRef = useRef(uris)
   const startPositionRef = useRef(startPosition)
   urisRef.current = uris
@@ -330,8 +348,11 @@ export function SpotifyWebPlayer({
     deviceIdRef.current = null
     const player = playerRef.current
     playerRef.current = null
+    const socket = socketRef.current
+    socketRef.current = "closed"
+    if (!player || socket === "idle" || socket === "closed") return
     try {
-      player?.disconnect()
+      player.disconnect()
     } catch {
       // The SDK can reject disconnect after the device is already gone.
     }
@@ -343,21 +364,66 @@ export function SpotifyWebPlayer({
     if (!SpotifySdk) return null
 
     let settled = false
+    let authRetried = false
+    let authReported = false
     let player!: SpotifyPlayer
     const pending = new Promise<string>((resolve, reject) => {
+      let readyWait = 0
+      const failAuth = () => {
+        // Spotify has already closed the dealer socket. disconnect() would log
+        // "Close received after close".
+        socketRef.current = "closed"
+        if (!authReported) {
+          authReported = true
+          onIssueRef.current({ code: "not_connected", message: PLAYBACK_LOGIN_EXPIRED_MESSAGE })
+        }
+        if (settled) return
+        settled = true
+        window.clearTimeout(readyWait)
+        reject(Object.assign(new Error("auth"), { code: "not_connected" }))
+      }
+
       player = new SpotifySdk.Player({
         name: SPOTIFY_PLAYER_NAME,
         volume: 0.8,
         getOAuthToken: (callback) => {
-          void readToken((issue) => onIssueRef.current(issue))
-            .then((token) => callback(token))
-            .catch(() => callback(""))
+          const refresh = forceTokenRefreshRef.current
+          forceTokenRefreshRef.current = false
+          void readToken((issue) => onIssueRef.current(issue), refresh)
+            .then((token) => {
+              if (playerRef.current !== player) return
+              // An empty bearer token is what makes player-state return 401 and
+              // the dealer WebSocket close with "Close received after close".
+              // readToken already told the listener to reconnect or sign in.
+              if (!token) {
+                // readToken already asked the listener to reconnect or sign in.
+                // Do not open the dealer socket, and do not replace that message.
+                authReported = true
+                authRetried = true
+                socketRef.current = "closed"
+                if (!settled) {
+                  settled = true
+                  window.clearTimeout(readyWait)
+                  reject(Object.assign(new Error("auth"), { code: "not_connected" }))
+                }
+                try {
+                  player.disconnect()
+                } catch {
+                  // No dealer socket was opened.
+                }
+                return
+              }
+              callback(token)
+            })
+            .catch(() => {
+              if (playerRef.current === player) failAuth()
+            })
         },
       })
 
-      let readyWait = 0
       player.addListener("ready", ({ device_id }) => {
         if (playerRef.current !== player) return
+        socketRef.current = "ready"
         parkSdkIframe()
         deviceIdRef.current = device_id
         if (settled) return
@@ -376,11 +442,16 @@ export function SpotifyWebPlayer({
         reject(browserError("initialization"))
       })
       player.addListener("authentication_error", () => {
-        onIssueRef.current({ code: "not_connected", message: "Spotify login expired. Sign in again." })
-        if (settled) return
-        settled = true
-        window.clearTimeout(readyWait)
-        reject(Object.assign(new Error("auth"), { code: "not_connected" }))
+        if (playerRef.current !== player) return
+        socketRef.current = "closed"
+        if (!authRetried) {
+          authRetried = true
+          forceTokenRefreshRef.current = true
+          socketRef.current = "connecting"
+          void player.connect()
+          return
+        }
+        failAuth()
       })
       player.addListener("account_error", () => {
         onIssueRef.current({ code: "premium_required", message: PREMIUM_REQUIRED_MESSAGE })
@@ -417,6 +488,7 @@ export function SpotifyWebPlayer({
         reject(browserError("timeout"))
       }, 12_000)
       readyTimerRef.current = readyWait
+      socketRef.current = "connecting"
       void player.connect()
     })
 
@@ -511,18 +583,22 @@ export function SpotifyWebPlayer({
     setDuration(0)
     setMovement(null)
 
+    const playAbort = replacePlayAttempt(playAbortRef.current)
+    playAbortRef.current = playAbort
+
     async function play(list: string[]) {
       let attempt = 0
       for (;;) {
-        const deviceId = await ensurePlayer(() => !cancelled && mountedRef.current)
-        if (cancelled || !mountedRef.current) return
-        const issue = await startOnDevice(deviceId, list, startPositionRef.current)
-        if (cancelled || !mountedRef.current) return
+        if (playAbort.signal.aborted) return
+        const deviceId = await ensurePlayer(() => !cancelled && mountedRef.current && !playAbort.signal.aborted)
+        if (cancelled || !mountedRef.current || playAbort.signal.aborted) return
+        const issue = await startOnDevice(deviceId, list, startPositionRef.current, playAbort.signal)
+        if (cancelled || !mountedRef.current || playAbort.signal.aborted) return
         if (!issue) {
           setPlaybackPhase("playing")
           return
         }
-        const retryMs = isPlayerNotReadyCode(issue.code) ? playbackDeviceRetryDelay(attempt) : null
+        const retryMs = playIssueRetryDelay(issue, attempt)
         if (retryMs == null) {
           const code = issue.code
           if (isPlayerNotReadyCode(code)) {
@@ -542,12 +618,23 @@ export function SpotifyWebPlayer({
           return
         }
         attempt += 1
-        await new Promise((resolve) => window.setTimeout(resolve, retryMs))
+        await new Promise<void>((resolve, reject) => {
+          const timer = window.setTimeout(resolve, retryMs)
+          const onAbort = () => {
+            window.clearTimeout(timer)
+            reject(Object.assign(new Error("cancelled"), { code: "cancelled" }))
+          }
+          if (playAbort.signal.aborted) {
+            onAbort()
+            return
+          }
+          playAbort.signal.addEventListener("abort", onAbort, { once: true })
+        })
       }
     }
 
     void play(uris).catch((error: unknown) => {
-      if (cancelled || !mountedRef.current) return
+      if (cancelled || !mountedRef.current || playAbort.signal.aborted) return
       const code = error && typeof error === "object" && "code" in error ? String((error as { code?: string }).code) : ""
       if (code === "cancelled" || code === "premium_required" || code === "not_connected") return
       if (isPlayerNotReadyCode(code)) {
@@ -566,6 +653,7 @@ export function SpotifyWebPlayer({
 
     return () => {
       cancelled = true
+      playAbort.abort()
     }
     // ensurePlayer closes over refs. Re-run only when the requested group changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps

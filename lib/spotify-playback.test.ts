@@ -8,11 +8,18 @@ import {
   chooseTrackEmbed,
   classifySpotifyPlayError,
   inPagePlayerPlayUrl,
+  ACCESS_TOKEN_REFRESH_SKEW_MS,
+  PLAYBACK_RECONNECT_MESSAGE,
+  PLAYBACK_UPSTREAM_MESSAGE,
+  PLAYER_TRY_AGAIN_MESSAGE,
+  accessTokenNeedsRefresh,
   isPlayerNotReadyCode,
   isSpotifyDeviceId,
   orderedTrackUris,
+  playIssueRetryDelay,
   playbackDeviceRetryDelay,
   parsePendingPlayback,
+  replacePlayAttempt,
   seekByKeyboard,
   seekPositionMs,
   seekRatioFromPointer,
@@ -20,12 +27,14 @@ import {
   spotifyOAuthScopeString,
   spotifyPlayRequest,
   spotifyPremiumState,
+  tokenCanControlPlayback,
   uniqueTrackUris,
 } from "./spotify-playback.ts"
 
 test("oauth scopes include the Web Playback SDK set, private playlist save, and Liked Songs", () => {
   assert.deepEqual(SPOTIFY_OAUTH_SCOPES, [
     "streaming",
+    "user-read-playback-state",
     "user-modify-playback-state",
     "user-read-private",
     "user-read-email",
@@ -91,19 +100,80 @@ test("Spotify play errors map to premium, scope, device, and login", () => {
     classifySpotifyPlayError(403, {
       error: { status: 403, message: "Player command failed: Premium required", reason: "PREMIUM_REQUIRED" },
     }),
-    { code: "premium_required", message: PREMIUM_REQUIRED_MESSAGE, status: 403 }
+    { code: "premium_required", message: PREMIUM_REQUIRED_MESSAGE, status: 403, retryable: false }
   )
   assert.equal(classifySpotifyPlayError(403, { error: { message: "Insufficient client scope" } }).code, "insufficient_scope")
   const device = classifySpotifyPlayError(404, { error: { message: "Device not found" } })
   assert.equal(device.code, "device_not_found")
   assert.equal(device.status, 409)
+  assert.equal(device.retryable, true)
   assert.equal(device.message, PLAYER_NOT_READY_MESSAGE)
   assert.equal(
     classifySpotifyPlayError(404, { error: { message: "Player command failed: No active device found", reason: "NO_ACTIVE_DEVICE" } }).code,
     "device_not_found"
   )
   assert.equal(classifySpotifyPlayError(401, { error: { message: "Invalid access token" } }).code, "not_connected")
-  assert.equal(classifySpotifyPlayError(500, {}).code, "playback_failed")
+  assert.equal(classifySpotifyPlayError(401, { error: { message: "Permissions missing" } }).code, "insufficient_scope")
+  const upstream = classifySpotifyPlayError(500, { error: { status: 500, message: "Internal Server Error" } })
+  assert.equal(upstream.code, "playback_failed")
+  assert.equal(upstream.status, 502)
+  assert.equal(upstream.retryable, true)
+  assert.equal(upstream.message, PLAYBACK_UPSTREAM_MESSAGE)
+  const conflict = classifySpotifyPlayError(409, { error: { status: 409, message: "Conflict" } })
+  assert.equal(conflict.code, "player_not_ready")
+  assert.equal(conflict.retryable, true)
+  const restricted = classifySpotifyPlayError(403, { error: { status: 403, message: "Restriction violated" } })
+  assert.equal(restricted.code, "player_not_ready")
+  assert.equal(restricted.retryable, true)
+})
+
+test("playback control needs the Web Playback scopes, and a nearly expired token is refreshed", () => {
+  const full = "streaming user-read-playback-state user-modify-playback-state user-read-email"
+  assert.equal(tokenCanControlPlayback(full), true)
+  assert.equal(tokenCanControlPlayback("streaming user-modify-playback-state user-read-email"), false)
+  assert.equal(tokenCanControlPlayback(null), false)
+  assert.equal(tokenCanControlPlayback(""), false)
+  assert.equal(
+    classifySpotifyPlayError(403, { error: { message: "Insufficient client scope" } }).message,
+    PLAYBACK_RECONNECT_MESSAGE
+  )
+
+  const now = 1_000_000
+  assert.equal(
+    accessTokenNeedsRefresh({ hasAccessToken: true, expiresAtMs: now + ACCESS_TOKEN_REFRESH_SKEW_MS + 1, nowMs: now }),
+    false
+  )
+  assert.equal(
+    accessTokenNeedsRefresh({ hasAccessToken: true, expiresAtMs: now + ACCESS_TOKEN_REFRESH_SKEW_MS, nowMs: now }),
+    true
+  )
+  assert.equal(
+    accessTokenNeedsRefresh({
+      hasAccessToken: true,
+      expiresAtMs: now + 60 * 60 * 1000,
+      nowMs: now,
+      force: true,
+    }),
+    true
+  )
+  assert.equal(accessTokenNeedsRefresh({ hasAccessToken: false, expiresAtMs: now + 60_000, nowMs: now }), true)
+})
+
+test("the page retries a connecting player once, and a newer play cancels the previous request", () => {
+  assert.equal(playIssueRetryDelay({ code: "player_not_ready", message: "The in-app player is still connecting." }, 0), 800)
+  assert.equal(playIssueRetryDelay({ code: "player_not_ready", message: PLAYER_TRY_AGAIN_MESSAGE }, 0), null)
+  assert.equal(playIssueRetryDelay({ code: "playback_failed", message: PLAYBACK_UPSTREAM_MESSAGE }, 0), null)
+  assert.equal(playIssueRetryDelay({ code: "premium_required" }, 0), null)
+
+  let aborted = false
+  const first = new AbortController()
+  first.signal.addEventListener("abort", () => {
+    aborted = true
+  })
+  const second = replacePlayAttempt(first)
+  assert.equal(aborted, true)
+  assert.equal(second.signal.aborted, false)
+  assert.equal(first === second, false)
 })
 
 test("a player that is still connecting is retried, then the listener can press Play again", () => {
