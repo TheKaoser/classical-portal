@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "crypto"
 import { cookies } from "next/headers"
 import { NextResponse } from "next/server"
-import { spotifyOAuthScopeString, spotifyPremiumState } from "@/lib/spotify-playback"
+import { accessTokenNeedsRefresh, spotifyOAuthScopeString, spotifyPremiumState } from "@/lib/spotify-playback"
 import {
   classifySpotifyPlaylistWriteError,
   LIBRARY_RECONNECT_MESSAGE,
@@ -27,7 +27,8 @@ const EXPIRY_COOKIE = "cp_spotify_exp"
 const USER_COOKIE = "cp_spotify_user"
 const SCOPE_COOKIE = "cp_spotify_scope"
 
-// Web Playback SDK, private playlist save, and Liked Songs (Save track).
+// Web Playback SDK (including user-read-playback-state), private playlist save,
+// and Liked Songs (Save track).
 // `playlist-modify-public` stays so tokens granted before private-only still refresh.
 const SCOPES = spotifyOAuthScopeString()
 
@@ -177,12 +178,17 @@ function applySessionCookies(
   return response
 }
 
-async function spotifyToken(body: URLSearchParams): Promise<{
+type SpotifyTokenResponse = {
   access_token: string
   refresh_token?: string
   expires_in: number
   scope?: string
-} | null> {
+}
+
+/** One refresh at a time per instance, so play and the SDK do not rotate the same refresh token. */
+let refreshInFlight: { refreshToken: string; promise: Promise<SpotifyTokenResponse | null> } | null = null
+
+async function spotifyToken(body: URLSearchParams): Promise<SpotifyTokenResponse | null> {
   const clientId = process.env.SPOTIFY_CLIENT_ID
   const clientSecret = process.env.SPOTIFY_CLIENT_SECRET
   if (!clientId || !clientSecret) return null
@@ -200,7 +206,38 @@ async function spotifyToken(body: URLSearchParams): Promise<{
     console.error("Spotify user token request failed", res.status, await res.text().catch(() => ""))
     return null
   }
-  return (await res.json()) as { access_token: string; refresh_token?: string; expires_in: number; scope?: string }
+  return (await res.json()) as SpotifyTokenResponse
+}
+
+async function refreshUserTokens(refreshToken: string): Promise<SpotifyTokenResponse | null> {
+  if (refreshInFlight?.refreshToken === refreshToken) return refreshInFlight.promise
+  const promise = spotifyToken(
+    new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+    })
+  )
+  refreshInFlight = { refreshToken, promise }
+  try {
+    return await promise
+  } finally {
+    if (refreshInFlight?.promise === promise) refreshInFlight = null
+  }
+}
+
+function rememberCookie(
+  store: Awaited<ReturnType<typeof cookies>>,
+  name: string,
+  value: string,
+  maxAge: number
+) {
+  try {
+    store.set(name, value, { ...cookieBase(), maxAge })
+  } catch (error) {
+    // A sealed cookie store must not turn Play into an HTML 500.
+    // The caller still uses the fresh access token for this request.
+    console.error("Could not persist Spotify session cookie", name, error)
+  }
 }
 
 async function fetchSpotifyMe(
@@ -256,31 +293,34 @@ export async function readOAuthHandshake(): Promise<{
   }
 }
 
-export async function getUserAccessToken(): Promise<string | null> {
+export async function getUserAccessToken(options?: { forceRefresh?: boolean }): Promise<string | null> {
   const store = await cookies()
-  const access = store.get(ACCESS_COOKIE)?.value
+  const access = store.get(ACCESS_COOKIE)?.value ?? null
   const expiry = Number(store.get(EXPIRY_COOKIE)?.value || 0)
-  if (access && Date.now() < expiry - 30_000) return access
+  if (
+    !accessTokenNeedsRefresh({
+      hasAccessToken: Boolean(access),
+      expiresAtMs: expiry,
+      nowMs: Date.now(),
+      force: options?.forceRefresh,
+    })
+  ) {
+    return access
+  }
 
   const refresh = store.get(REFRESH_COOKIE)?.value
   if (!refresh) return null
-  const tokens = await spotifyToken(
-    new URLSearchParams({
-      grant_type: "refresh_token",
-      refresh_token: refresh,
-    })
-  )
+  const tokens = await refreshUserTokens(refresh)
   if (!tokens) return null
-  store.set(ACCESS_COOKIE, tokens.access_token, { ...cookieBase(), maxAge: tokens.expires_in })
-  store.set(EXPIRY_COOKIE, String(Date.now() + tokens.expires_in * 1000), {
-    ...cookieBase(),
-    maxAge: 60 * 60 * 24 * 30,
-  })
+  const expiresIn = Number(tokens.expires_in)
+  const maxAge = Number.isFinite(expiresIn) && expiresIn > 0 ? Math.floor(expiresIn) : 3600
+  rememberCookie(store, ACCESS_COOKIE, tokens.access_token, maxAge)
+  rememberCookie(store, EXPIRY_COOKIE, String(Date.now() + maxAge * 1000), 60 * 60 * 24 * 30)
   if (tokens.refresh_token) {
-    store.set(REFRESH_COOKIE, tokens.refresh_token, { ...cookieBase(), maxAge: 60 * 60 * 24 * 30 })
+    rememberCookie(store, REFRESH_COOKIE, tokens.refresh_token, 60 * 60 * 24 * 30)
   }
   if (tokens.scope?.trim()) {
-    store.set(SCOPE_COOKIE, scopeCookieValue(tokens.scope), { ...cookieBase(), maxAge: 60 * 60 * 24 * 30 })
+    rememberCookie(store, SCOPE_COOKIE, scopeCookieValue(tokens.scope), 60 * 60 * 24 * 30)
   }
   return tokens.access_token
 }
@@ -353,8 +393,10 @@ function sessionFromStored(stored: StoredSpotifyUser): SpotifyUserSession {
  * Access token plus the stored profile, with one token read.
  * The Web Playback SDK calls this often, so it does not hit /me.
  */
-export async function readSdkAccess(): Promise<{ accessToken: string; session: SpotifyUserSession } | null> {
-  const accessToken = await getUserAccessToken()
+export async function readSdkAccess(options?: {
+  forceRefresh?: boolean
+}): Promise<{ accessToken: string; session: SpotifyUserSession } | null> {
+  const accessToken = await getUserAccessToken({ forceRefresh: options?.forceRefresh })
   if (!accessToken) return null
   const raw = (await cookies()).get(USER_COOKIE)?.value
   if (!raw) return null
