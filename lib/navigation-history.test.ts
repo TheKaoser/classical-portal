@@ -3,10 +3,16 @@ import test from "node:test"
 import {
   APP_NAV_SESSION_KEY,
   isSameOriginReferrer,
+  previousScreen,
   readAppHistoryMarker,
   readHistoryIndex,
+  readScreenStack,
+  recordScreen,
+  screenLabel,
   shouldUseHistoryBack,
   writeAppHistoryMarker,
+  writeScreenStack,
+  type ScreenRecord,
 } from "./navigation-history.ts"
 
 test("readHistoryIndex reads Next-style history.state.idx", () => {
@@ -116,6 +122,61 @@ test("deep link with no history falls back", () => {
     }),
     false
   )
+})
+
+test("screen labels prefer the page heading, and home stays Home", () => {
+  assert.equal(screenLabel("/", "Classical Portal assical Portal"), "Home")
+  assert.equal(screenLabel("/genres/piano", " Piano "), "Piano")
+  assert.equal(screenLabel("/genres/chamber", "Chamber"), "Chamber")
+  assert.equal(screenLabel("/periods/romantic", "Romantic"), "Romantic")
+  assert.equal(screenLabel("/works/1", ""), "Back")
+})
+
+test("screen stack follows pages and lets a chip replace the current URL", () => {
+  const home: ScreenRecord = { path: "/", href: "/", label: "Home" }
+  const genres: ScreenRecord = { path: "/genres", href: "/genres", label: "Genres" }
+  const piano: ScreenRecord = { path: "/genres/piano", href: "/genres/piano", label: "Piano" }
+  const filtered: ScreenRecord = {
+    path: "/genres/piano",
+    href: "/genres/piano?filter=nocturne",
+    label: "Piano",
+  }
+  const work: ScreenRecord = { path: "/works/1", href: "/works/1", label: "Nocturne" }
+
+  let stack = recordScreen([], home)
+  stack = recordScreen(stack, genres)
+  stack = recordScreen(stack, piano)
+  stack = recordScreen(stack, filtered)
+  assert.deepEqual(stack.map((entry) => entry.href), ["/", "/genres", "/genres/piano?filter=nocturne"])
+  assert.equal(previousScreen(stack, "/genres/piano")?.label, "Genres")
+
+  stack = recordScreen(stack, work)
+  assert.equal(previousScreen(stack, "/works/1")?.label, "Piano")
+  assert.equal(previousScreen(stack, "/works/1")?.href, "/genres/piano?filter=nocturne")
+  assert.equal(previousScreen(stack, "/works/2")?.label, "Nocturne")
+
+  stack = recordScreen(stack, filtered)
+  assert.deepEqual(stack.map((entry) => entry.path), ["/", "/genres", "/genres/piano"])
+  assert.equal(previousScreen(stack, "/genres/piano")?.label, "Genres")
+  assert.equal(previousScreen([], "/works/1"), null)
+  assert.equal(previousScreen([home], "/") , null)
+})
+
+test("screen stack survives a storage round trip", () => {
+  const store = new Map<string, string>()
+  const storage = {
+    getItem: (key: string) => store.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      store.set(key, value)
+    },
+  }
+  writeScreenStack(storage, [{ path: "/genres/chamber", href: "/genres/chamber?filter=trio", label: "Chamber" }])
+  assert.deepEqual(readScreenStack(storage), [
+    { path: "/genres/chamber", href: "/genres/chamber?filter=trio", label: "Chamber" },
+  ])
+  store.set("cp_screen_stack", "not-json")
+  assert.deepEqual(readScreenStack(storage), [])
+  assert.deepEqual(readScreenStack(null), [])
 })
 
 test("session marker read/write", () => {

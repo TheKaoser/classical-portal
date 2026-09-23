@@ -1,16 +1,15 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
+import { ComposerWorkBrowser } from "@/components/composer-work-browser"
 import { PageHeader } from "@/components/page-header"
-import { FilterChips } from "@/components/filter-chips"
-import { WorkList } from "@/components/work-list"
 import { sortWorksChronologically } from "@/lib/composition-date"
 import { attachCompositionYears } from "@/lib/composition-years"
 import { epochHref } from "@/lib/epochs"
+import { readFilterSlug } from "@/lib/filter-history"
 import {
   compareWorksByPopularity,
   dedupeWorks,
   getComposer,
-  groupWorksByGenre,
   isPopular,
   listWorksByComposer,
   lifeSpan,
@@ -19,7 +18,7 @@ import {
 
 export const revalidate = 3600
 
-type Filter = "all" | "popular" | string
+const FILTER_ALIASES = { recommended: "popular" }
 
 export async function generateMetadata({
   params,
@@ -50,56 +49,33 @@ export default async function ComposerPage({
     complete_name: composer.complete_name,
     birth: composer.birth ?? worksResult.composer?.birth ?? null,
   })
-  const popularCount = works.filter((work) => isPopular(work)).length
-  const genreCounts = Object.fromEntries(
-    WORK_GENRES.map((genre) => [genre, works.filter((work) => work.genre === genre).length])
+  const genreCounts = new Map<string, number>()
+  let popularCount = 0
+  for (const work of works) {
+    if (isPopular(work)) popularCount += 1
+    genreCounts.set(work.genre, (genreCounts.get(work.genre) ?? 0) + 1)
+  }
+  const genreFilters = WORK_GENRES.flatMap((genre) => {
+    const count = genreCounts.get(genre) ?? 0
+    return count ? [{ slug: genre, label: genre, count }] : []
+  })
+  const filters = [
+    { slug: "all", label: "All", count: works.length },
+    ...(popularCount ? [{ slug: "popular", label: "Popular", count: popularCount }] : []),
+    ...genreFilters,
+  ]
+  const defaultFilter = popularCount ? "popular" : "all"
+  const initialFilter = readFilterSlug(
+    rawFilter ? `?filter=${rawFilter.trim()}` : "",
+    new Set(filters.map((item) => item.slug)),
+    defaultFilter,
+    FILTER_ALIASES
   )
-
-  const available: Filter[] = [
-    "all",
-    ...(popularCount ? (["popular"] as const) : []),
-    ...WORK_GENRES.filter((genre) => genreCounts[genre] > 0),
-  ]
-
-  const requestedRaw = (rawFilter || "").trim()
-  const requested = requestedRaw === "recommended" ? "popular" : requestedRaw
-  const filter: Filter =
-    requested && available.includes(requested)
-      ? requested
-      : popularCount
-        ? "popular"
-        : "all"
-
-  const filtered =
-    filter === "all"
-      ? works
-      : filter === "popular"
-        ? works.filter((work) => isPopular(work))
-        : works.filter((work) => work.genre === filter)
-
-  const grouped =
-    filter === "all" || filter === "popular"
-      ? groupWorksByGenre(filtered)
-      : [{ genre: filter, works: [...filtered].sort(compareWorksByPopularity) }]
-
+  const popularityOrder = new Map(
+    [...works].sort(compareWorksByPopularity).map((work, index) => [work.id, index])
+  )
+  const chronoOrder = new Map(sortWorksChronologically(works).map((work, index) => [work.id, index]))
   const years = lifeSpan(composer)
-  const hrefFor = (value: Filter) =>
-    value === (popularCount ? "popular" : "all")
-      ? `/composers/${composer.id}`
-      : `/composers/${composer.id}?filter=${encodeURIComponent(value)}`
-
-  const chips = [
-    { href: hrefFor("all"), label: "All", active: filter === "all", count: works.length },
-    ...(popularCount
-      ? [{ href: hrefFor("popular"), label: "Popular", active: filter === "popular", count: popularCount }]
-      : []),
-    ...WORK_GENRES.filter((genre) => genreCounts[genre] > 0).map((genre) => ({
-      href: hrefFor(genre),
-      label: genre,
-      active: filter === genre,
-      count: genreCounts[genre],
-    })),
-  ]
 
   return (
     <div>
@@ -110,23 +86,22 @@ export default async function ComposerPage({
         backHref={epochHref(composer.epoch)}
         backLabel={composer.epoch}
       />
-
-      <FilterChips items={chips} />
-
-      {filter === "all" ? (
-        <WorkList works={sortWorksChronologically(filtered)} showGenre />
-      ) : (
-        <div className="space-y-8">
-          {grouped.map((group) => (
-            <section key={group.genre}>
-              {grouped.length > 1 && (
-                <h2 className="mb-2 px-3 text-sm font-medium text-primary">{group.genre}</h2>
-              )}
-              <WorkList works={group.works} />
-            </section>
-          ))}
-        </div>
-      )}
+      <ComposerWorkBrowser
+        works={works.map((work) => ({
+          id: work.id,
+          title: work.title,
+          subtitle: work.subtitle,
+          genre: work.genre,
+          popular: work.popular,
+          recommended: work.recommended,
+          compositionYear: work.compositionYear,
+          popularityOrder: popularityOrder.get(work.id) ?? 0,
+          chronoOrder: chronoOrder.get(work.id) ?? 0,
+        }))}
+        filters={filters}
+        defaultFilter={defaultFilter}
+        initialFilter={initialFilter}
+      />
     </div>
   )
 }
