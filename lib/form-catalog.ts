@@ -1,6 +1,7 @@
 import composerEpochs from "@/data/composer-epochs.json"
 import catalog from "@/data/form-works.json"
 import {
+  CHARACTER_PIECES,
   classifyKeyboardInstrument,
   FORM_GROUPS,
   WORK_FORMS,
@@ -8,6 +9,7 @@ import {
   groupForForm,
   groupFromSlug,
   type CatalogGenre,
+  type KeyboardInstrument,
 } from "@/lib/forms"
 import { compareWorksByPopularity, dedupeWorks, isPopular } from "@/lib/openopus"
 
@@ -41,11 +43,15 @@ function bump(counts: Map<string, { total: number; popular: number }>, slug: str
   counts.set(slug, row)
 }
 
-/** Browse slug for one catalog work: its form, its group, or its keyboard instrument. */
+/** Genre that owns this form. Piano, Harpsichord, and Organ are counted beside Keyboard. */
 export function browseSlugForWork(work: FormWork): string {
   const group = groupForForm(work.form)
   if (!group) return work.form
-  if (!group.instrument) return group.slug
+  return group.slug
+}
+
+function instrumentPageForWork(work: FormWork): KeyboardInstrument | null {
+  if (!CHARACTER_PIECES.includes(work.form as (typeof CHARACTER_PIECES)[number])) return null
   return classifyKeyboardInstrument(work.title, work.subtitle, epochs[work.composerId] ?? null)
 }
 
@@ -53,7 +59,10 @@ export function formSummaries(): FormSummary[] {
   const counts = new Map<string, { total: number; popular: number }>()
 
   for (const work of loadFormWorks()) {
-    bump(counts, browseSlugForWork(work), isPopular(work))
+    const popular = isPopular(work)
+    bump(counts, browseSlugForWork(work), popular)
+    const instrument = instrumentPageForWork(work)
+    if (instrument) bump(counts, instrument, popular)
   }
 
   const summaries: FormSummary[] = []
@@ -82,7 +91,10 @@ export function worksForForm(slug: string): FormWork[] {
     loadFormWorks().filter((work) => {
       if (!forms.has(work.form)) return false
       if (!group?.instrument) return true
-      return browseSlugForWork(work) === slug
+      return (
+        classifyKeyboardInstrument(work.title, work.subtitle, epochs[work.composerId] ?? null) ===
+        group.instrument
+      )
     })
   ).sort(compareWorksByPopularity)
 }

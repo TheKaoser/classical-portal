@@ -37,12 +37,12 @@ Open Opus does not publish a form field. Each work’s `genre` is one of **Chamb
 
 - Chamber — trios, quartets, quintets, and sextets. Trio sonatas are trios, not sonatas
 - Choral — requiems, masses, oratorios, motets, and cantatas
-- Piano — nocturnes, etudes, mazurkas, waltzes, polonaises, impromptus, ballades, rhapsodies, and scherzos for piano
+- Keyboard — nocturnes, etudes, mazurkas, waltzes, polonaises, impromptus, ballades, rhapsodies, scherzos, preludes, fugues, toccatas, partitas, fantasias, and variations
+- Piano — the character pieces (nocturnes through scherzos) whose title or era is piano
 - Harpsichord — the same character pieces when the title or the composer's era names the harpsichord
 - Organ — character pieces whose title names the organ
 - Stage — operas, ballets, and overtures
 - Orchestral — symphonies, suites, serenades, and divertimenti
-- Baroque keyboard — preludes, fugues, toccatas, partitas, fantasias, and variations
 
 Concertos, sonatas, and songs stay their own pages. Patterns live in `lib/forms.ts` and were checked against the public dump at `https://api.openopus.org/work/dump.json`.
 
@@ -54,7 +54,7 @@ node --experimental-strip-types scripts/build-form-index.ts
 
 A work is listed under one form. The title wins over the subtitle. Suites taken from an opera stay suites. Stage works with an empty subtitle and no other form (Carmen, Il barbiere di Siviglia) are listed as operas; Open Opus usually labels ballets and film scores in the subtitle, and a few unlabeled ones are still filed with operas.
 
-Open Opus also has no instrument field. Where titles follow its style guide (`Piano Concerto`, `String Quartet`, `Trio Sonata`) or a subtitle says `for violin, viola and orchestra`, the genre page adds chips in the same style as the composer filters. **All** is the default. Choosing a chip filters the list in place and keeps Spotify popularity order, and the chip is written with `history.replaceState`, so Back leaves the page instead of stepping through chips. Concertos split by solo instrument, plus Concerto grosso, Chamber, String, and Multiple when more than one soloist is named. Sonatas split by instrument; a keyboard sonata whose title never names one uses the Open Opus Keyboard genre. Trio sonatas, including “sonata en trio” and “sonata a 3”, are Chamber trios. The folded genres above split into their forms (Trios, Symphonies, Nocturnes, and so on). Piano, Harpsichord, and Organ share those character-piece chips and list only the works for that instrument. A form needs at least two of those groups, each with eight or more works, or the page stays a single list. Songs do not get a selector. Composer eras used for unlabeled keyboard pieces are in `data/composer-epochs.json`.
+Open Opus also has no instrument field. Where titles follow its style guide (`Piano Concerto`, `String Quartet`, `Trio Sonata`) or a subtitle says `for violin, viola and orchestra`, the genre page adds chips in the same style as the composer filters. **All** is the default. Choosing a chip filters the list in place and keeps Spotify popularity order, and the chip is written with `history.replaceState`, so Back leaves the page instead of stepping through chips. Concertos split by solo instrument, plus Concerto grosso, Chamber, String, and Multiple when more than one soloist is named. Sonatas split by instrument. A title that only says keyboard or clavier, and a sonata with no instrument whose Open Opus genre is Keyboard, use the same era split as the instrument pages: organ when the title names the organ, harpsichord for Medieval, Renaissance, and Baroque, and piano after that. Those pages do not show a Keyboard chip. Open Opus still stores Keyboard on the work itself. Trio sonatas, including “sonata en trio” and “sonata a 3”, are Chamber trios. The folded genres above split into their forms (Trios, Symphonies, Nocturnes, Preludes, and so on). Piano, Harpsichord, and Organ share the character-piece chips and list only the works for that instrument. Keyboard lists those chips and the prelude, fugue, toccata, partita, fantasia, and variations chips. A form needs at least two of those groups, each with eight or more works, or the page stays a single list. Songs do not get a selector. Composer eras used for unlabeled keyboard pieces are in `data/composer-epochs.json`.
 
 Open Opus stores two flags, `popular` and `recommended`. Classical Portal treats either flag as **Popular**. There is no separate Essential filter or badge. A work that carries both flags is listed once. The star on a work row is that flag. List order is separate from the flag.
 
@@ -116,8 +116,8 @@ Without `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` the work page still offers
 - `/` — title, and banners for periods and genres (search stays in the header)
 - `/periods` — six periods. Romantic covers Open Opus Early Romantic, Romantic, and Late Romantic. Modern covers 20th Century, Post-War, and 21st Century
 - `/periods/[epoch]` — composers in that period, by Spotify popularity (`baroque`, `romantic`, `modern`, …). `/periods/romantic` adds Early / Romantic / Late chips. `/periods/modern` adds 20th / Post-War / 21st chips. `/periods/early-romantic`, `/periods/late-romantic`, `/periods/20th-century`, `/periods/post-war`, and `/periods/21st-century` redirect to the unified page with the matching chip
-- `/genres` — concertos, sonatas, songs, and the folded genres (chamber, choral, piano, harpsichord, organ, stage, orchestral, baroque keyboard)
-- `/genres/[slug]` — works of that genre, by Spotify popularity. Concertos, sonatas, and the folded genres filter in place with `?filter=` (piano, violin, quartet, mass, nocturne, opera, symphony, prelude, …). Old fine-form URLs such as `/genres/quartet`, `/genres/opera`, `/genres/symphony`, and `/genres/prelude` redirect to the parent genre with that chip selected. `/genres/keyboard` redirects to `/genres/piano` and keeps a `filter` query. Changing a chip replaces the current history entry
+- `/genres` — concertos, sonatas, songs, and the folded genres (keyboard, chamber, choral, piano, harpsichord, organ, stage, orchestral)
+- `/genres/[slug]` — works of that genre, by Spotify popularity. Concertos, sonatas, and the folded genres filter in place with `?filter=` (piano, violin, quartet, mass, nocturne, opera, symphony, prelude, …). Old fine-form URLs such as `/genres/quartet`, `/genres/opera`, `/genres/symphony`, `/genres/nocturne`, and `/genres/prelude` redirect to the parent genre with that chip selected. `/genres/baroque-keyboard` redirects to `/genres/keyboard` and keeps a `filter` query. Changing a chip replaces the current history entry
 - `/composers` — the Open Opus popular composers, by Spotify popularity
 - `/composers/[id]` — works; All is chronological, Popular and genre filters are by Spotify popularity
 - `/works/[id]` — work detail and Spotify track matches

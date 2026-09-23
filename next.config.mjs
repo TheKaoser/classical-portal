@@ -14,7 +14,7 @@ const nextConfig = {
       { source: "/admin", destination: "/", permanent: false },
       { source: "/blog", destination: "/", permanent: false },
       { source: "/piece/:id", destination: "/", permanent: false },
-      { source: "/genres/keyboard", destination: "/genres/piano", permanent: true },
+      { source: "/genres/baroque-keyboard", destination: "/genres/keyboard", permanent: true },
     ]
   },
 }

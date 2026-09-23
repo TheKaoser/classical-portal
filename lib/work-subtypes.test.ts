@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 import catalog from "../data/form-works.json" with { type: "json" }
+import { KEYBOARD_FORMS } from "./forms.ts"
 import {
   classifyListedSubtype,
   classifyWorkSubtype,
@@ -22,7 +23,18 @@ test("concertos use the solo instrument named in the Open Opus title", () => {
   assert.equal(classifyWorkSubtype({ form: "concerto", title: "Double Violin Concerto in A minor, RV.522" })?.slug, "violin")
   assert.equal(classifyWorkSubtype({ form: "concerto", title: "Double Bass Concerto in E flat major" })?.slug, "double-bass")
   assert.equal(classifyWorkSubtype({ form: "concerto", title: "Oboe d'amore Concerto in A major, BWV.1055R" })?.slug, "oboe")
-  assert.equal(classifyWorkSubtype({ form: "concerto", title: "Keyboard Concerto in D minor, BWV.1052" })?.slug, "keyboard")
+  assert.equal(
+    classifyWorkSubtype({ form: "concerto", title: "Keyboard Concerto in D minor, BWV.1052", epoch: "Baroque" })?.slug,
+    "harpsichord"
+  )
+  assert.equal(
+    classifyWorkSubtype({ form: "concerto", title: "Keyboard Concerto in D major, Hob.XVIII:11", epoch: "Classical" })?.slug,
+    "piano"
+  )
+  assert.equal(
+    classifyWorkSubtype({ form: "concerto", title: "Concerto for organ in B flat major", epoch: "Baroque" })?.slug,
+    "organ"
+  )
   assert.equal(classifyWorkSubtype({ form: "concerto", title: "Concerto Grosso in G minor, op. 6, no. 8" })?.slug, "grosso")
   assert.equal(
     classifyWorkSubtype({
@@ -81,7 +93,7 @@ test("several soloists, including a subtitle for-line, are multiple", () => {
   )
 })
 
-test("sonatas use the title instrument, and unlabeled keyboard sonatas use the Open Opus genre", () => {
+test("sonatas use the title instrument, and unlabeled keyboard sonatas use the composer's era", () => {
   assert.equal(
     classifyWorkSubtype({ form: "sonata", title: "Piano Sonata no. 14 in C sharp minor, op. 27 no. 2", genre: "Keyboard" })?.slug,
     "piano"
@@ -90,9 +102,22 @@ test("sonatas use the title instrument, and unlabeled keyboard sonatas use the O
   assert.equal(classifyWorkSubtype({ form: "sonata", title: "Sonata no. 1 for Solo Violin in G minor, BWV.1001" })?.slug, "violin")
   assert.equal(classifyWorkSubtype({ form: "sonata", title: "Trio Sonata in C major" })?.slug, "trio")
   assert.equal(
-    classifyWorkSubtype({ form: "sonata", title: "Sonata in A major, K.322", genre: "Keyboard" })?.slug,
-    "keyboard"
+    classifyWorkSubtype({ form: "sonata", title: "Sonata in A major, K.322", genre: "Keyboard", epoch: "Baroque" })?.slug,
+    "harpsichord"
   )
+  assert.equal(
+    classifyWorkSubtype({ form: "sonata", title: "Sonata for clavier in D", genre: "Keyboard", epoch: "Baroque" })?.slug,
+    "harpsichord"
+  )
+  assert.equal(
+    classifyWorkSubtype({ form: "sonata", title: "Sonata in C major", genre: "Keyboard", epoch: "Classical" })?.slug,
+    "piano"
+  )
+  assert.equal(
+    classifyWorkSubtype({ form: "sonata", title: "Sonata for organ in D minor", genre: "Keyboard", epoch: "Baroque" })?.slug,
+    "organ"
+  )
+  assert.equal(classifyWorkSubtype({ form: "sonata", title: "Sonata in G", genre: "Keyboard" })?.slug, "piano")
   assert.equal(classifyWorkSubtype({ form: "sonata", title: "Sonata in G", genre: "Chamber" }), null)
 })
 
@@ -134,8 +159,17 @@ test("catalog forms that name instruments expose those chips", () => {
     assert.ok(concertos.includes(slug), slug)
   }
   const sonatas = subtypeFilters(ofForm("sonata")).map((item) => item.slug)
-  for (const slug of ["piano", "violin", "cello", "keyboard"]) assert.ok(sonatas.includes(slug), slug)
+  for (const slug of ["piano", "violin", "cello", "harpsichord"]) assert.ok(sonatas.includes(slug), slug)
+  assert.equal(sonatas.includes("keyboard"), false)
   assert.equal(sonatas.includes("trio"), false)
+  assert.equal(concertos.includes("keyboard"), false)
+  for (const form of ["concerto", "sonata", "quartet", "quintet", "trio", "suite"]) {
+    assert.equal(
+      subtypeFilters(ofForm(form)).some((item) => item.label === "Keyboard" || item.slug === "keyboard"),
+      false,
+      form
+    )
+  }
   assert.ok(subtypeFilters(ofForm("quartet")).some((item) => item.slug === "string"))
   assert.ok(subtypeFilters(ofForm("quintet")).some((item) => item.slug === "wind"))
   assert.ok(subtypeFilters(ofForm("trio")).some((item) => item.slug === "piano"))
@@ -182,6 +216,7 @@ test("grouped genres list form chips in catalog order", () => {
     "fantasia",
     "variations",
   ])
+  assert.deepEqual(chips([...KEYBOARD_FORMS]), [...KEYBOARD_FORMS])
   assert.equal(
     classifyListedSubtype({ form: "quartet", title: "String Quartet no. 14 in C sharp minor, op. 131" })?.slug,
     "quartet"

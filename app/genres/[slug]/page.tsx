@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/page-header"
 import { WorkList } from "@/components/work-list"
 import { attachCompositionYearsByComposer } from "@/lib/composition-years"
 import { formSummaries, worksForForm } from "@/lib/form-catalog"
-import { catalogGenreFromSlug, formFromSlug, legacyKeyboardHref, relocatedGenreHref } from "@/lib/forms"
+import { catalogGenreFromSlug, formFromSlug, legacyBaroqueKeyboardHref, relocatedGenreHref } from "@/lib/forms"
 import { classifyListedSubtype, listedSubtypeFilters } from "@/lib/work-subtypes"
 
 export function generateStaticParams() {
@@ -30,9 +30,9 @@ export default async function GenrePage({
   searchParams: Promise<{ filter?: string }>
 }) {
   const { slug } = await params
-  if (slug === "keyboard") {
+  if (slug === "baroque-keyboard") {
     const { filter } = await searchParams
-    permanentRedirect(legacyKeyboardHref(filter))
+    permanentRedirect(legacyBaroqueKeyboardHref(filter))
   }
 
   const moved = relocatedGenreHref(slug)
