@@ -59,12 +59,20 @@ async function mapPool<T, R>(items: T[], limit: number, fn: (item: T) => Promise
 }
 
 const composers: Composer[] = []
+const epochsByComposer: Record<string, string> = {}
 for (const name of openOpusEpochNames()) {
   const data = await getJson<{ composers?: Composer[] }>(
     `/composer/list/epoch/${encodeURIComponent(name)}.json`
   )
-  composers.push(...(data.composers ?? []))
+  for (const composer of data.composers ?? []) {
+    composers.push(composer)
+    if (!epochsByComposer[composer.id]) epochsByComposer[composer.id] = name
+  }
 }
+
+const epochIds = Object.keys(epochsByComposer).sort((a, b) => Number(a) - Number(b))
+const epochPayload = Object.fromEntries(epochIds.map((id) => [id, epochsByComposer[id]]))
+writeFileSync(new URL("../data/composer-epochs.json", import.meta.url), `${JSON.stringify(epochPayload, null, 2)}\n`)
 
 const unique = [...new Map(composers.map((composer) => [composer.id, composer])).values()]
 console.log(`Fetching works for ${unique.length} composers`)

@@ -134,7 +134,8 @@ test("catalog forms that name instruments expose those chips", () => {
     assert.ok(concertos.includes(slug), slug)
   }
   const sonatas = subtypeFilters(ofForm("sonata")).map((item) => item.slug)
-  for (const slug of ["piano", "violin", "cello", "keyboard", "trio"]) assert.ok(sonatas.includes(slug), slug)
+  for (const slug of ["piano", "violin", "cello", "keyboard"]) assert.ok(sonatas.includes(slug), slug)
+  assert.equal(sonatas.includes("trio"), false)
   assert.ok(subtypeFilters(ofForm("quartet")).some((item) => item.slug === "string"))
   assert.ok(subtypeFilters(ofForm("quintet")).some((item) => item.slug === "wind"))
   assert.ok(subtypeFilters(ofForm("trio")).some((item) => item.slug === "piano"))

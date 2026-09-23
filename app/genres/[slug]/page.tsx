@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/page-header"
 import { WorkList } from "@/components/work-list"
 import { attachCompositionYearsByComposer } from "@/lib/composition-years"
 import { formSummaries, worksForForm } from "@/lib/form-catalog"
-import { catalogGenreFromSlug, formFromSlug, relocatedGenreHref } from "@/lib/forms"
+import { catalogGenreFromSlug, formFromSlug, legacyKeyboardHref, relocatedGenreHref } from "@/lib/forms"
 import { classifyListedSubtype, listedSubtypeFilters } from "@/lib/work-subtypes"
 
 export function generateStaticParams() {
@@ -22,8 +22,19 @@ export async function generateMetadata({
   return { title: form?.name ?? "Genre" }
 }
 
-export default async function GenrePage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function GenrePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>
+  searchParams: Promise<{ filter?: string }>
+}) {
   const { slug } = await params
+  if (slug === "keyboard") {
+    const { filter } = await searchParams
+    permanentRedirect(legacyKeyboardHref(filter))
+  }
+
   const moved = relocatedGenreHref(slug)
   if (moved) permanentRedirect(moved)
 
