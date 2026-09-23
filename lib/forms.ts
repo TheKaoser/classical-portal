@@ -22,18 +22,18 @@
  * (including "sonata en trio" and "sonata a 3") is a trio, not a sonata, so
  * it is not listed under Sonatas. Requiems, masses, oratorios, motets, and
  * cantatas are one Choral genre. Nocturnes, etudes, and the other character
- * pieces are split by keyboard instrument into Piano, Harpsichord, and Organ.
- * The title's instrument wins (piano, pianoforte, harpsichord, cembalo,
- * clavier, organ). Clavier or Klavier is harpsichord for Medieval,
- * Renaissance, and Baroque composers and piano after that. A title with no
- * keyboard instrument uses that same era split. Operas, ballets, and
- * overtures are Stage. Symphonies, suites, serenades, and divertimenti are
- * Orchestral. Preludes, fugues, toccatas, partitas, fantasias, and variations
- * are Baroque keyboard. Concertos, sonatas, and songs stay their own pages.
- * The finer form stays on the work and becomes a filter chip, the way
- * concertos split by instrument. A sextet is recognized only when that word
- * is the form named before any other form, so "Sextet for string quartet" is
- * a sextet and "suite for wind sextet" stays a suite.
+ * pieces, together with preludes, fugues, toccatas, partitas, fantasias, and
+ * variations, are one Keyboard genre. Piano, Harpsichord, and Organ stay
+ * instrument pages for the character pieces. The title's instrument wins
+ * (piano, pianoforte, harpsichord, cembalo, clavier, organ). Clavier or
+ * Klavier is harpsichord for Medieval, Renaissance, and Baroque composers and
+ * piano after that. A title with no keyboard instrument uses that same era
+ * split. Operas, ballets, and overtures are Stage. Symphonies, suites,
+ * serenades, and divertimenti are Orchestral. Concertos, sonatas, and songs
+ * stay their own pages. The finer form stays on the work and becomes a filter
+ * chip, the way concertos split by instrument. A sextet is recognized only
+ * when that word is the form named before any other form, so "Sextet for
+ * string quartet" is a sextet and "suite for wind sextet" stays a suite.
  */
 
 export type WorkForm = {
@@ -254,7 +254,7 @@ const bySlug = new Map(WORK_FORMS.map((form) => [form.slug, form]))
 
 export type KeyboardInstrument = "piano" | "harpsichord" | "organ"
 
-/** Character pieces that used to share the Keyboard genre. */
+/** Character pieces listed on Keyboard and on the instrument pages. */
 export const CHARACTER_PIECES = [
   "nocturne",
   "etude",
@@ -266,6 +266,19 @@ export const CHARACTER_PIECES = [
   "rhapsody",
   "scherzo",
 ] as const
+
+/** Forms that used to be the separate Baroque keyboard genre. */
+export const BAROQUE_KEYBOARD_FORMS = [
+  "prelude",
+  "fugue",
+  "toccata",
+  "partita",
+  "fantasia",
+  "variations",
+] as const
+
+/** Chip order on Keyboard: character pieces, then the former Baroque keyboard forms. */
+export const KEYBOARD_FORMS = [...CHARACTER_PIECES, ...BAROQUE_KEYBOARD_FORMS] as const
 
 export type FormGroup = {
   slug: string
@@ -292,6 +305,12 @@ export const FORM_GROUPS: readonly FormGroup[] = [
     name: "Choral",
     blurb: "Requiems, masses, oratorios, motets, and cantatas.",
     children: ["requiem", "mass", "oratorio", "motet", "cantata"],
+  },
+  {
+    slug: "keyboard",
+    name: "Keyboard",
+    blurb: "Nocturnes, etudes, preludes, fugues, toccatas, partitas, fantasias, and variations.",
+    children: KEYBOARD_FORMS,
   },
   {
     slug: "piano",
@@ -326,20 +345,14 @@ export const FORM_GROUPS: readonly FormGroup[] = [
     blurb: "Symphonies, suites, serenades, and divertimenti.",
     children: ["symphony", "suite", "serenade", "divertimento"],
   },
-  {
-    slug: "baroque-keyboard",
-    name: "Baroque keyboard",
-    blurb: "Preludes, fugues, toccatas, partitas, fantasias, and variations.",
-    children: ["prelude", "fugue", "toccata", "partita", "fantasia", "variations"],
-  },
 ]
 
 const groupBySlug = new Map(FORM_GROUPS.map((group) => [group.slug, group]))
 const groupByChild = new Map<string, FormGroup>()
 for (const group of FORM_GROUPS) {
-  // Piano is the redirect parent for a shared character piece. Harpsichord
-  // and Organ list the same forms but only their own works.
-  if (group.instrument && group.instrument !== "piano") continue
+  // Piano, Harpsichord, and Organ list a subset of Keyboard. The shared form
+  // redirects to Keyboard, which owns the chip.
+  if (group.instrument) continue
   for (const child of group.children) {
     if (!groupByChild.has(child)) groupByChild.set(child, group)
   }
@@ -388,11 +401,11 @@ export function relocatedGenreHref(slug: string): string | null {
   return `/genres/${group.slug}?filter=${slug}`
 }
 
-/** `/genres/keyboard` and its chips now open Piano. The query filter is kept when it is a chip slug. */
-export function legacyKeyboardHref(filter?: string | null): string {
+/** `/genres/baroque-keyboard` now opens Keyboard. A slug-shaped chip query is kept. */
+export function legacyBaroqueKeyboardHref(filter?: string | null): string {
   const chip = (filter ?? "").trim()
-  if (chip && /^[a-z0-9-]+$/.test(chip)) return `/genres/piano?filter=${chip}`
-  return "/genres/piano"
+  if (chip && /^[a-z0-9-]+$/.test(chip)) return `/genres/keyboard?filter=${chip}`
+  return "/genres/keyboard"
 }
 
 export function foldFormText(value: string): string {

@@ -264,7 +264,7 @@ export const GENRE_ICONS: Record<string, IconMark[]> = {
     { kind: "path", d: "M10.2 16.2h3.6v4.4h-3.6Z" },
     { kind: "path", d: "M8.4 20.6h7.2" },
   ],
-  "baroque-keyboard": [
+  keyboard: [
     { kind: "path", d: "M7.2 3.8C5.2 4.2 4.4 5.6 5.2 6.8" },
     { kind: "path", d: "M5.6 6.6h13.2" },
     { kind: "rect", x: 3.6, y: 7.4, width: 16.8, height: 4.4, rx: 0.7 },

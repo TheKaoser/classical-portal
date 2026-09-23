@@ -8,7 +8,8 @@
  * A form with fewer than two groups of at least eight works gets no selector.
  */
 
-import { foldFormText, formFromSlug, groupForForm } from "./forms.ts"
+import composerEpochs from "../data/composer-epochs.json" with { type: "json" }
+import { classifyKeyboardInstrument, foldFormText, formFromSlug, groupForForm } from "./forms.ts"
 
 export type WorkSubtype = {
   slug: string
@@ -91,7 +92,6 @@ const SONATA_ACCOMPANIMENT = new Set(["piano", "harpsichord", "keyboard"])
 
 const DISPLAY_ORDER = [
   "piano",
-  "keyboard",
   "harpsichord",
   "organ",
   "violin",
@@ -140,9 +140,34 @@ type TaggedWork = {
   title: string
   subtitle?: string | null
   genre?: string | null
+  composerId?: string | null
+  epoch?: string | null
 }
 
+const epochs = composerEpochs as Record<string, string>
+
+const PIANO: WorkSubtype = { slug: "piano", label: "Piano" }
+const HARPSICHORD: WorkSubtype = { slug: "harpsichord", label: "Harpsichord" }
+const ORGAN: WorkSubtype = { slug: "organ", label: "Organ" }
+
 export function classifyWorkSubtype(work: TaggedWork): WorkSubtype | null {
+  return concreteKeyboard(unmappedSubtype(work), work)
+}
+
+/**
+ * "Keyboard" and "clavier" are not chips next to Piano and Harpsichord.
+ * The same era split used for character pieces picks Piano, Harpsichord, or Organ.
+ */
+function concreteKeyboard(subtype: WorkSubtype | null, work: TaggedWork): WorkSubtype | null {
+  if (subtype?.slug !== "keyboard") return subtype
+  const epoch = work.epoch?.trim() || (work.composerId ? epochs[work.composerId] : null) || null
+  const instrument = classifyKeyboardInstrument(work.title, work.subtitle, epoch)
+  if (instrument === "organ") return ORGAN
+  if (instrument === "harpsichord") return HARPSICHORD
+  return PIANO
+}
+
+function unmappedSubtype(work: TaggedWork): WorkSubtype | null {
   if (work.form === "concerto") return concertoSubtype(work.title, work.subtitle)
   if (work.form === "sonata") return sonataSubtype(work.title, work.subtitle, work.genre)
   if (work.form === "quartet" || work.form === "quintet" || work.form === "trio") {
