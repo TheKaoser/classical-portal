@@ -113,14 +113,15 @@ Without `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` the work page still offers
 
 ## Routes
 
-- `/` — title, and banners for periods and genres (search stays in the header)
+- `/` — title, Periods / Genres / Composers as text links, and a separate **Discovery of the day** button (search stays in the header)
+- `/discover` — redirects to one Spotify-matched work (`/works/[id]`). The pool is every Open Opus work id in `data/spotify-popularity.json` with a Spotify score of at least 1. A hash of the UTC date (`YYYY-MM-DD`) picks the index, so every visitor gets the same work until the next UTC day
 - `/periods` — six periods. Romantic covers Open Opus Early Romantic, Romantic, and Late Romantic. Modern covers 20th Century, Post-War, and 21st Century
 - `/periods/[epoch]` — composers in that period, by Spotify popularity (`baroque`, `romantic`, `modern`, …). `/periods/romantic` adds Early / Romantic / Late chips. `/periods/modern` adds 20th / Post-War / 21st chips. `/periods/early-romantic`, `/periods/late-romantic`, `/periods/20th-century`, `/periods/post-war`, and `/periods/21st-century` redirect to the unified page with the matching chip
 - `/genres` — concertos, sonatas, songs, and the folded genres (chamber, choral, piano, harpsichord, organ, stage, orchestral, baroque keyboard)
 - `/genres/[slug]` — works of that genre, by Spotify popularity. Concertos, sonatas, and the folded genres filter in place with `?filter=` (piano, violin, quartet, mass, nocturne, opera, symphony, prelude, …). Old fine-form URLs such as `/genres/quartet`, `/genres/opera`, `/genres/symphony`, and `/genres/prelude` redirect to the parent genre with that chip selected. `/genres/keyboard` redirects to `/genres/piano` and keeps a `filter` query. Changing a chip replaces the current history entry
 - `/composers` — the Open Opus popular composers, by Spotify popularity
 - `/composers/[id]` — works; All is chronological, Popular and genre filters are by Spotify popularity
-- `/works/[id]` — work detail and Spotify track matches
+- `/works/[id]` — work detail and Spotify track matches, including the destination of Discovery of the day
 - `/search?q=` — Open Opus omnisearch (the search box also typeaheads via `/api/search`)
 - `/api/spotify/login` — start Spotify login (Play or Save playlist). `reconnect=1` shows the consent screen again
 - `/api/spotify/callback` — OAuth redirect target

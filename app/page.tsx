@@ -1,5 +1,7 @@
 import Link from "next/link"
+import { Sparkles } from "lucide-react"
 import { BrandMark } from "@/components/brand-mark"
+import { Button } from "@/components/ui/button"
 
 const ENTRIES = [
   { href: "/periods", title: "Periods" },
@@ -31,18 +33,26 @@ export default function HomePage() {
       </section>
 
       <nav
-        className="mt-40 flex flex-nowrap items-center justify-center gap-8 sm:mt-48 sm:gap-16 md:mt-52 md:gap-24"
+        className="mt-40 flex flex-col items-center gap-10 sm:mt-48 sm:gap-12 md:mt-52"
         aria-label="Browse catalog"
       >
-        {ENTRIES.map(({ href, title }) => (
-          <Link
-            key={href}
-            href={href}
-            className="shrink-0 text-xl font-medium tracking-tight text-primary outline-none transition-colors hover:text-primary-hover focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:text-2xl md:text-3xl"
-          >
-            {title}
+        <div className="flex flex-nowrap items-center justify-center gap-8 sm:gap-16 md:gap-24">
+          {ENTRIES.map(({ href, title }) => (
+            <Link
+              key={href}
+              href={href}
+              className="shrink-0 text-xl font-medium tracking-tight text-primary outline-none transition-colors hover:text-primary-hover focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:text-2xl md:text-3xl"
+            >
+              {title}
+            </Link>
+          ))}
+        </div>
+        <Button asChild className="h-11 px-6 text-base shadow-raised has-[>svg]:px-6 sm:h-12 sm:px-7 sm:has-[>svg]:px-7">
+          <Link href="/discover">
+            <Sparkles aria-hidden="true" />
+            Discovery of the day
           </Link>
-        ))}
+        </Button>
       </nav>
     </div>
   )
