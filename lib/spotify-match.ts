@@ -1,3 +1,5 @@
+import { cleanSpotifySearchTitle, spotifyTitleQueryVariants } from "./spotify-title.ts"
+
 export type WorkQuery = {
   composerName: string
   composerCompleteName?: string
@@ -255,7 +257,9 @@ export function parseWork(work: WorkQuery): ParsedWork {
     catalogueLabel: preferredLabel,
     catalogueNumber,
     nickname: nickname ? normalize(nickname) : null,
-    titleNorm: normalize(title),
+    // Overlap uses the search title, so "for soloists, chorus, and orchestra"
+    // does not drown out "Stabat mater".
+    titleNorm: normalize(cleanSpotifySearchTitle(title)),
     parts,
     partsNorm: parts.map(normalize),
   }
@@ -277,14 +281,16 @@ export function buildSearchQueries(work: WorkQuery, parsed = parseWork(work)): s
     queries.push(`${composer} "${work.title.match(/"([^"]+)"/)?.[1] ?? parsed.nickname}"`)
   }
   for (const term of work.searchterms ?? []) {
-    if (term.trim()) queries.push(`${composer} ${term.trim()}`)
+    const cleaned = cleanSpotifySearchTitle(term).replace(/[,:;]+/g, " ").replace(/\s+/g, " ").trim()
+    if (cleaned) queries.push(`${composer} ${cleaned}`)
   }
   if (parsed.parts[0]) {
     queries.push(`${composer} ${parsed.parts[0]}`)
   }
 
-  const cleanedTitle = work.title.replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim()
-  queries.push(`${composer} ${cleanedTitle}`)
+  for (const title of spotifyTitleQueryVariants(work.title)) {
+    queries.push(`${composer} ${title}`)
+  }
 
   const seen = new Set<string>()
   return queries
@@ -419,7 +425,9 @@ export function scoreTrack(track: TrackLike, parsed: ParsedWork): number {
     }
   }
 
-  if (parsed.composerLast && normalize(artists).includes(parsed.composerLast)) score += 8
+  // "Rossini: Stabat Mater" puts the composer on the track. A recording titled
+  // just "Stabat Mater" often puts the composer on the album instead.
+  if (composerOnTrack || composerPresent(parsed, soften(track.album || ""))) score += 8
 
   const required =
     hasCatalogue ||
@@ -429,7 +437,14 @@ export function scoreTrack(track: TrackLike, parsed: ParsedWork): number {
     parsed.partsNorm.some((part) => part && normalize(trackName).includes(part))
 
   if (!required) return -1
-  if (!composerOnTrack && !hasCatalogue && !(parsed.nickname && identityNorm.includes(parsed.nickname))) {
+  // Catalogue and nickname can identify a track whose composer is only on the
+  // album. A title-only work (Stabat mater) needs the cleaned title to match.
+  if (
+    !composerOnTrack &&
+    !hasCatalogue &&
+    !(parsed.nickname && identityNorm.includes(parsed.nickname)) &&
+    overlap < 0.55
+  ) {
     return -1
   }
   if (score < MATCH_THRESHOLD) return -1

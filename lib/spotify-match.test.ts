@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 import {
+  buildSearchQueries,
   clusterTracks,
   fillAlbumGaps,
   parseWork,
@@ -373,4 +374,68 @@ test("Brahms piano concerto op. 83 keeps only that concerto on a mixed album", (
     groups[0].tracks.map((item) => item.id),
     ["pc2-1", "pc2-2", "pc2-3", "pc2-4"]
   )
+})
+
+test("Rossini Stabat Mater searches and matches without the scoring list", () => {
+  const rossini = work({
+    composerName: "Rossini",
+    composerCompleteName: "Gioachino Rossini",
+    title: "Stabat mater, for soloists, chorus, and orchestra",
+    searchterms: ["stabat mater"],
+  })
+  const queries = buildSearchQueries(rossini)
+  assert.ok(queries.length > 0)
+  assert.match(queries[0], /Gioachino Rossini stabat mater/i)
+  assert.ok(
+    queries.every((query) => !/\b(soloists?|chorus|orchestra)\b/i.test(query)),
+    `scoring words leaked into ${queries.join(" | ")}`
+  )
+
+  const parsed = parseWork(rossini)
+  const onAlbum = scoreTrack(
+    track({
+      id: "intro",
+      name: "Stabat Mater: I. Introduzione",
+      artists: "London Symphony Orchestra, London Symphony Chorus",
+      album: "Rossini: Stabat Mater",
+    }),
+    parsed
+  )
+  const prefixed = scoreTrack(
+    track({
+      id: "prefixed",
+      name: "Rossini: Stabat Mater: Introduzione",
+      artists: "Coro dell'Accademia Nazionale di Santa Cecilia",
+      album: "Rossini: Stabat Mater",
+    }),
+    parsed
+  )
+  const overture = scoreTrack(
+    track({
+      id: "tell",
+      name: "William Tell: Overture",
+      artists: "London Symphony Orchestra",
+      album: "Rossini: Stabat Mater",
+    }),
+    parsed
+  )
+
+  assert.ok(onAlbum > 0, `album-credited Stabat Mater should match, got ${onAlbum}`)
+  assert.ok(prefixed > 0, `composer-prefixed Stabat Mater should match, got ${prefixed}`)
+  assert.equal(overture, -1)
+})
+
+test("catalogue searches stay ahead of the cleaned title", () => {
+  const queries = buildSearchQueries(
+    work({
+      composerName: "Beethoven",
+      composerCompleteName: "Ludwig van Beethoven",
+      title: "Symphony no. 5 in C minor, op. 67",
+      catalogue: "op",
+      catalogueNumber: "67",
+      additionalNumber: "5",
+    })
+  )
+  assert.match(queries[0], /op 67/i)
+  assert.match(queries[1], /symphony 5/i)
 })
