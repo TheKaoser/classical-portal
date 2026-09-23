@@ -1,12 +1,15 @@
+import composerEpochs from "@/data/composer-epochs.json"
 import catalog from "@/data/form-works.json"
-import { compareWorksByPopularity, dedupeWorks, isPopular } from "@/lib/openopus"
 import {
+  classifyKeyboardInstrument,
   FORM_GROUPS,
   WORK_FORMS,
   formsForBrowseSlug,
   groupForForm,
+  groupFromSlug,
   type CatalogGenre,
 } from "@/lib/forms"
+import { compareWorksByPopularity, dedupeWorks, isPopular } from "@/lib/openopus"
 
 export type FormWork = {
   id: string
@@ -25,18 +28,32 @@ export type FormSummary = CatalogGenre & {
   popular: number
 }
 
+const epochs = composerEpochs as Record<string, string>
+
 export function loadFormWorks(): FormWork[] {
   return catalog.works
+}
+
+function bump(counts: Map<string, { total: number; popular: number }>, slug: string, popular: boolean) {
+  const row = counts.get(slug) ?? { total: 0, popular: 0 }
+  row.total += 1
+  if (popular) row.popular += 1
+  counts.set(slug, row)
+}
+
+/** Browse slug for one catalog work: its form, its group, or its keyboard instrument. */
+export function browseSlugForWork(work: FormWork): string {
+  const group = groupForForm(work.form)
+  if (!group) return work.form
+  if (!group.instrument) return group.slug
+  return classifyKeyboardInstrument(work.title, work.subtitle, epochs[work.composerId] ?? null)
 }
 
 export function formSummaries(): FormSummary[] {
   const counts = new Map<string, { total: number; popular: number }>()
 
   for (const work of loadFormWorks()) {
-    const row = counts.get(work.form) ?? { total: 0, popular: 0 }
-    row.total += 1
-    if (isPopular(work)) row.popular += 1
-    counts.set(work.form, row)
+    bump(counts, browseSlugForWork(work), isPopular(work))
   }
 
   const summaries: FormSummary[] = []
@@ -49,23 +66,23 @@ export function formSummaries(): FormSummary[] {
   }
 
   for (const group of FORM_GROUPS) {
-    let total = 0
-    let popular = 0
-    for (const child of group.children) {
-      const row = counts.get(child)
-      if (!row) continue
-      total += row.total
-      popular += row.popular
-    }
-    if (!total) continue
-    summaries.push({ slug: group.slug, name: group.name, blurb: group.blurb, total, popular })
+    const row = counts.get(group.slug)
+    if (!row?.total) continue
+    summaries.push({ slug: group.slug, name: group.name, blurb: group.blurb, ...row })
   }
 
   return summaries.sort((a, b) => b.popular - a.popular || b.total - a.total || a.name.localeCompare(b.name))
 }
 
 export function worksForForm(slug: string): FormWork[] {
+  const group = groupFromSlug(slug)
   const forms = new Set(formsForBrowseSlug(slug))
   if (!forms.size) return []
-  return dedupeWorks(loadFormWorks().filter((work) => forms.has(work.form))).sort(compareWorksByPopularity)
+  return dedupeWorks(
+    loadFormWorks().filter((work) => {
+      if (!forms.has(work.form)) return false
+      if (!group?.instrument) return true
+      return browseSlugForWork(work) === slug
+    })
+  ).sort(compareWorksByPopularity)
 }

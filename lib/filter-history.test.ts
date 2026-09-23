@@ -9,8 +9,8 @@ test("filter paths set or clear the chip query", () => {
   )
   assert.equal(filterPath("https://example.com/genres/chamber?filter=trio", "all"), "/genres/chamber")
   assert.equal(
-    filterPath("https://example.com/genres/keyboard", "nocturne"),
-    "/genres/keyboard?filter=nocturne"
+    filterPath("https://example.com/genres/piano", "nocturne"),
+    "/genres/piano?filter=nocturne"
   )
   assert.equal(
     filterPath("https://example.com/genres/stage?sort=popular", "opera"),

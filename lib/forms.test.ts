@@ -1,12 +1,18 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
+import catalog from "../data/form-works.json" with { type: "json" }
+import composerEpochs from "../data/composer-epochs.json" with { type: "json" }
 import {
+  CHARACTER_PIECES,
   FORM_GROUPS,
   catalogGenreFromSlug,
+  classifyKeyboardInstrument,
   classifyWork,
   formFromSlug,
   formsForBrowseSlug,
   genreHrefForLabel,
+  groupForForm,
+  legacyKeyboardHref,
   relocatedGenreHref,
 } from "./forms.ts"
 import {
@@ -21,6 +27,8 @@ import {
 test("classifies common forms from the title", () => {
   assert.equal(classifyWork("Symphony no. 5 in C minor, op. 67"), "symphony")
   assert.equal(classifyWork("Piano Sonata no. 14 in C sharp minor, op. 27 no. 2"), "sonata")
+  assert.equal(classifyWork("Piano Trio no. 7 in B flat major, op. 97"), "trio")
+  assert.equal(classifyWork("String Trio in E flat major, op. 3"), "trio")
   assert.equal(classifyWork("String Quartet no. 14 in C sharp minor, op. 131"), "quartet")
   assert.equal(classifyWork("Piano Concerto no. 5 in E flat major, op. 73"), "concerto")
   assert.equal(classifyWork("Nocturne in E flat major, op. 9 no. 2"), "nocturne")
@@ -60,7 +68,7 @@ test("real genre labels keep their genre route", () => {
   assert.equal(genreHrefForLabel("symphony"), "/genres/orchestral?filter=symphony")
   assert.equal(genreHrefForLabel("Opera"), "/genres/stage?filter=opera")
   assert.equal(genreHrefForLabel("Symphonies"), "/genres/orchestral?filter=symphony")
-  assert.equal(genreHrefForLabel("Études"), "/genres/keyboard?filter=etude")
+  assert.equal(genreHrefForLabel("Études"), "/genres/piano?filter=etude")
   assert.equal(genreHrefForLabel("Sonatas"), "/genres/sonata")
   assert.equal(genreHrefForLabel("Songs"), "/genres/song")
 })
@@ -68,17 +76,10 @@ test("real genre labels keep their genre route", () => {
 test("folded forms become chips on one genre page", () => {
   assert.deepEqual(formsForBrowseSlug("chamber"), ["trio", "quartet", "quintet", "sextet"])
   assert.deepEqual(formsForBrowseSlug("choral"), ["requiem", "mass", "oratorio", "motet", "cantata"])
-  assert.deepEqual(formsForBrowseSlug("keyboard"), [
-    "nocturne",
-    "etude",
-    "mazurka",
-    "waltz",
-    "polonaise",
-    "impromptu",
-    "ballade",
-    "rhapsody",
-    "scherzo",
-  ])
+  assert.deepEqual(formsForBrowseSlug("piano"), [...CHARACTER_PIECES])
+  assert.deepEqual(formsForBrowseSlug("harpsichord"), [...CHARACTER_PIECES])
+  assert.deepEqual(formsForBrowseSlug("organ"), [...CHARACTER_PIECES])
+  assert.deepEqual(formsForBrowseSlug("keyboard"), [])
   assert.deepEqual(formsForBrowseSlug("stage"), ["opera", "ballet", "overture"])
   assert.deepEqual(formsForBrowseSlug("orchestral"), ["symphony", "suite", "serenade", "divertimento"])
   assert.equal(formsForBrowseSlug("orchestral").includes("overture"), false)
@@ -97,7 +98,10 @@ test("folded forms become chips on one genre page", () => {
   assert.deepEqual(formsForBrowseSlug("symphony"), [])
   assert.deepEqual(formsForBrowseSlug("mass"), [])
   assert.equal(catalogGenreFromSlug("chamber")?.name, "Chamber")
-  assert.equal(catalogGenreFromSlug("keyboard")?.name, "Keyboard")
+  assert.equal(catalogGenreFromSlug("keyboard"), undefined)
+  assert.equal(catalogGenreFromSlug("piano")?.name, "Piano")
+  assert.equal(catalogGenreFromSlug("harpsichord")?.name, "Harpsichord")
+  assert.equal(catalogGenreFromSlug("organ")?.name, "Organ")
   assert.equal(catalogGenreFromSlug("stage")?.name, "Stage")
   assert.equal(catalogGenreFromSlug("orchestral")?.name, "Orchestral")
   assert.equal(catalogGenreFromSlug("baroque-keyboard")?.name, "Baroque keyboard")
@@ -110,8 +114,11 @@ test("folded forms become chips on one genre page", () => {
   assert.equal(relocatedGenreHref("sextet"), "/genres/chamber?filter=sextet")
   assert.equal(relocatedGenreHref("mass"), "/genres/choral?filter=mass")
   assert.equal(relocatedGenreHref("oratorio"), "/genres/choral?filter=oratorio")
-  assert.equal(relocatedGenreHref("nocturne"), "/genres/keyboard?filter=nocturne")
-  assert.equal(relocatedGenreHref("scherzo"), "/genres/keyboard?filter=scherzo")
+  assert.equal(relocatedGenreHref("nocturne"), "/genres/piano?filter=nocturne")
+  assert.equal(relocatedGenreHref("scherzo"), "/genres/piano?filter=scherzo")
+  assert.equal(legacyKeyboardHref(), "/genres/piano")
+  assert.equal(legacyKeyboardHref("etude"), "/genres/piano?filter=etude")
+  assert.equal(legacyKeyboardHref("not a chip"), "/genres/piano")
   assert.equal(relocatedGenreHref("opera"), "/genres/stage?filter=opera")
   assert.equal(relocatedGenreHref("overture"), "/genres/stage?filter=overture")
   assert.equal(relocatedGenreHref("symphony"), "/genres/orchestral?filter=symphony")
@@ -129,6 +136,10 @@ test("folded forms become chips on one genre page", () => {
   for (const group of FORM_GROUPS) {
     for (const child of group.children) {
       assert.ok(formFromSlug(child), child)
+      if (group.instrument) {
+        assert.equal(CHARACTER_PIECES.includes(child as (typeof CHARACTER_PIECES)[number]), true, child)
+        continue
+      }
       assert.equal(children.has(child), false, child)
       children.add(child)
     }
@@ -156,7 +167,74 @@ test("a form named in the title wins over a conflicting subtitle", () => {
     "cantata"
   )
   assert.equal(classifyWork('Symphony no. 3, op. 36, "Symphony of Sorrowful Songs"'), "symphony")
-  assert.equal(classifyWork("Trio Sonata in C major"), "sonata")
+  assert.equal(classifyWork("Trio Sonata in C major"), "trio")
+})
+
+test("trio sonatas, piano trios, and string trios are chamber trios", () => {
+  assert.equal(classifyWork("Trio Sonata in C major"), "trio")
+  assert.equal(classifyWork("Sonata en trio for 2 manuals in pedal, for organ in D"), "trio")
+  assert.equal(classifyWork("Trio, sonata for 2 violins and continuo in A minor"), "trio")
+  assert.equal(classifyWork("Sonata a3, for 2 violins, trombone and continuo"), "trio")
+  assert.equal(classifyWork("Triosonate in D major"), "trio")
+  assert.equal(classifyWork("Piano Trio no. 1 in B flat major"), "trio")
+  assert.equal(classifyWork("String Trio in E flat major, op. 3"), "trio")
+  assert.equal(classifyWork("Piano Sonata no. 14 in C sharp minor"), "sonata")
+  assert.equal(classifyWork("Violin Sonata no. 9 in A major, op. 47"), "sonata")
+  assert.equal(
+    classifyWork(
+      "Cello Sonata in E flat major, op. 64",
+      "Version for cello and piano of the String Trio, op. 3"
+    ),
+    "sonata"
+  )
+})
+
+test("character pieces use the named instrument, then the composer's era", () => {
+  assert.equal(classifyKeyboardInstrument("Nocturne for piano in E flat", "", "Romantic"), "piano")
+  assert.equal(classifyKeyboardInstrument("Etude for pianoforte", "", "Classical"), "piano")
+  assert.equal(classifyKeyboardInstrument("Toccata for harpsichord", "", "Modern"), "harpsichord")
+  assert.equal(classifyKeyboardInstrument("Sonata for cembalo", "", "Classical"), "harpsichord")
+  assert.equal(classifyKeyboardInstrument("Pieces de clavecin", "", "Baroque"), "harpsichord")
+  assert.equal(classifyKeyboardInstrument("Scherzo for organ", "", "Romantic"), "organ")
+  assert.equal(
+    classifyKeyboardInstrument("Etudes in Canon Form", "For pedal piano or organ", "Romantic"),
+    "piano"
+  )
+  assert.equal(classifyKeyboardInstrument("Prelude for clavier", "", "Baroque"), "harpsichord")
+  assert.equal(classifyKeyboardInstrument("Klavierstück", "", "Romantic"), "piano")
+  assert.equal(classifyKeyboardInstrument("Nocturne in E flat major, op. 9 no. 2", "", "Romantic"), "piano")
+  assert.equal(classifyKeyboardInstrument("Ballade for 3 voices", "", "Medieval"), "harpsichord")
+  assert.equal(classifyKeyboardInstrument("Waltz", "", null), "piano")
+})
+
+test("the catalog files trio sonatas under trios and splits the old keyboard group", () => {
+  const epochs = composerEpochs as Record<string, string>
+  const works = catalog.works
+  const sonatas = works.filter((work) => work.form === "sonata")
+  assert.equal(
+    sonatas.some((work) => /trio sonata|sonata en trio|sonata a\s*3/i.test(`${work.title} ${work.subtitle}`)),
+    false
+  )
+  assert.ok(works.some((work) => work.form === "trio" && /trio sonata/i.test(work.title)))
+  assert.equal(FORM_GROUPS.some((group) => group.slug === "keyboard"), false)
+  assert.equal(catalogGenreFromSlug("keyboard"), undefined)
+  for (const slug of ["piano", "harpsichord", "organ", "baroque-keyboard", "chamber"]) {
+    assert.ok(catalogGenreFromSlug(slug), slug)
+  }
+
+  const counts = { piano: 0, harpsichord: 0, organ: 0 }
+  for (const work of works) {
+    if (!CHARACTER_PIECES.includes(work.form as (typeof CHARACTER_PIECES)[number])) continue
+    assert.equal(groupForForm(work.form)?.instrument, "piano")
+    const instrument = classifyKeyboardInstrument(work.title, work.subtitle, epochs[work.composerId] ?? null)
+    counts[instrument] += 1
+    if (instrument === "organ") {
+      assert.match(`${work.title} ${work.subtitle}`, /organ/i)
+    }
+  }
+  assert.ok(counts.piano > counts.harpsichord)
+  assert.ok(counts.harpsichord > 0)
+  assert.ok(counts.organ > 0)
 })
 
 test("either Open Opus flag counts as popular, and duplicates collapse to one work", () => {

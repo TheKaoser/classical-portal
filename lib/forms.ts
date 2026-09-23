@@ -18,9 +18,15 @@
  * order. The genres page sorts forms by how many works are popular, counting
  * either the Open Opus `popular` or `recommended` flag.
  *
- * Trios, quartets, quintets, and sextets are one Chamber genre. Requiems,
- * masses, oratorios, motets, and cantatas are one Choral genre. Nocturnes,
- * etudes, and the other character pieces are Keyboard. Operas, ballets, and
+ * Trios, quartets, quintets, and sextets are one Chamber genre. A trio sonata
+ * (including "sonata en trio" and "sonata a 3") is a trio, not a sonata, so
+ * it is not listed under Sonatas. Requiems, masses, oratorios, motets, and
+ * cantatas are one Choral genre. Nocturnes, etudes, and the other character
+ * pieces are split by keyboard instrument into Piano, Harpsichord, and Organ.
+ * The title's instrument wins (piano, pianoforte, harpsichord, cembalo,
+ * clavier, organ). Clavier or Klavier is harpsichord for Medieval,
+ * Renaissance, and Baroque composers and piano after that. A title with no
+ * keyboard instrument uses that same era split. Operas, ballets, and
  * overtures are Stage. Symphonies, suites, serenades, and divertimenti are
  * Orchestral. Preludes, fugues, toccatas, partitas, fantasias, and variations
  * are Baroque keyboard. Concertos, sonatas, and songs stay their own pages.
@@ -125,7 +131,7 @@ export const WORK_FORMS: WorkForm[] = [
   {
     slug: "sonata",
     name: "Sonatas",
-    blurb: "Sonatas, including trio sonatas.",
+    blurb: "Sonatas, other than trios.",
     pattern: /\bsonatas?\b/,
   },
   {
@@ -246,12 +252,32 @@ export const WORK_FORMS: WorkForm[] = [
 
 const bySlug = new Map(WORK_FORMS.map((form) => [form.slug, form]))
 
+export type KeyboardInstrument = "piano" | "harpsichord" | "organ"
+
+/** Character pieces that used to share the Keyboard genre. */
+export const CHARACTER_PIECES = [
+  "nocturne",
+  "etude",
+  "mazurka",
+  "waltz",
+  "polonaise",
+  "impromptu",
+  "ballade",
+  "rhapsody",
+  "scherzo",
+] as const
+
 export type FormGroup = {
   slug: string
   name: string
   blurb: string
   /** Chip order on the genre page. */
   children: readonly string[]
+  /**
+   * When set, the page lists only the character pieces for this instrument.
+   * The same forms can sit on Piano, Harpsichord, and Organ.
+   */
+  instrument?: KeyboardInstrument
 }
 
 export const FORM_GROUPS: readonly FormGroup[] = [
@@ -268,20 +294,25 @@ export const FORM_GROUPS: readonly FormGroup[] = [
     children: ["requiem", "mass", "oratorio", "motet", "cantata"],
   },
   {
-    slug: "keyboard",
-    name: "Keyboard",
-    blurb: "Character pieces for piano and keyboard.",
-    children: [
-      "nocturne",
-      "etude",
-      "mazurka",
-      "waltz",
-      "polonaise",
-      "impromptu",
-      "ballade",
-      "rhapsody",
-      "scherzo",
-    ],
+    slug: "piano",
+    name: "Piano",
+    blurb: "Nocturnes, etudes, mazurkas, waltzes, and the other character pieces for piano.",
+    children: CHARACTER_PIECES,
+    instrument: "piano",
+  },
+  {
+    slug: "harpsichord",
+    name: "Harpsichord",
+    blurb: "Character pieces for harpsichord, including earlier keyboard works with no instrument named.",
+    children: CHARACTER_PIECES,
+    instrument: "harpsichord",
+  },
+  {
+    slug: "organ",
+    name: "Organ",
+    blurb: "Character pieces whose title names the organ.",
+    children: CHARACTER_PIECES,
+    instrument: "organ",
   },
   {
     slug: "stage",
@@ -304,9 +335,15 @@ export const FORM_GROUPS: readonly FormGroup[] = [
 ]
 
 const groupBySlug = new Map(FORM_GROUPS.map((group) => [group.slug, group]))
-const groupByChild = new Map(
-  FORM_GROUPS.flatMap((group) => group.children.map((child) => [child, group] as const))
-)
+const groupByChild = new Map<string, FormGroup>()
+for (const group of FORM_GROUPS) {
+  // Piano is the redirect parent for a shared character piece. Harpsichord
+  // and Organ list the same forms but only their own works.
+  if (group.instrument && group.instrument !== "piano") continue
+  for (const child of group.children) {
+    if (!groupByChild.has(child)) groupByChild.set(child, group)
+  }
+}
 
 export type CatalogGenre = {
   slug: string
@@ -351,6 +388,13 @@ export function relocatedGenreHref(slug: string): string | null {
   return `/genres/${group.slug}?filter=${slug}`
 }
 
+/** `/genres/keyboard` and its chips now open Piano. The query filter is kept when it is a chip slug. */
+export function legacyKeyboardHref(filter?: string | null): string {
+  const chip = (filter ?? "").trim()
+  if (chip && /^[a-z0-9-]+$/.test(chip)) return `/genres/piano?filter=${chip}`
+  return "/genres/piano"
+}
+
 export function foldFormText(value: string): string {
   return value
     .normalize("NFD")
@@ -386,15 +430,68 @@ function sextetLeads(folded: string): boolean {
   return !WORK_FORMS.some((form) => form.slug !== "sextet" && form.pattern.test(before))
 }
 
+/**
+ * Trio sonatas are chamber trios. "Trio Sonata", "Trio, sonata", "sonata en
+ * trio", "Triosonate", and "sonata a 3" all name a trio. A sonata whose
+ * subtitle only mentions a trio stays a sonata, because the title is tried
+ * on its own first.
+ */
+function isTrioRatherThanSonata(folded: string): boolean {
+  if (/\btriosonat(?:e|en|a|as|es)?\b/.test(folded)) return true
+  if (!/\bsonatas?\b/.test(folded)) return false
+  if (/\btrios?\b/.test(folded)) return true
+  return /\bsonatas?\s+a\s*3\b/.test(folded)
+}
+
 function matchForm(text: string): string | null {
   const folded = foldFormText(text)
   if (!folded) return null
   if (sextetLeads(folded)) return "sextet"
   for (const form of WORK_FORMS) {
     if (form.slug === "sextet") continue
+    if (form.slug === "sonata" && isTrioRatherThanSonata(folded)) return "trio"
     if (form.pattern.test(folded)) return form.slug
   }
   return null
+}
+
+const EARLY_EPOCHS = new Set(["Medieval", "Renaissance", "Baroque"])
+
+const KEYBOARD_TAGS: { instrument: KeyboardInstrument | "clavier"; source: string }[] = [
+  { instrument: "organ", source: "\\b(?:organs?|orgues?)\\b" },
+  { instrument: "harpsichord", source: "\\b(?:harpsichords?|cembalos?|cembali|clavecins?)\\b" },
+  { instrument: "piano", source: "\\b(?:fortepianos?|pianofortes?|pianos?)\\b" },
+  { instrument: "clavier", source: "\\b(?:claviers?|klavier\\w*)\\b" },
+]
+
+export function isEarlyKeyboardEpoch(epoch?: string | null): boolean {
+  return EARLY_EPOCHS.has((epoch ?? "").trim())
+}
+
+/**
+ * Piano, harpsichord, or organ for a character piece.
+ * The earliest explicit instrument in the title or subtitle wins. Clavier and
+ * Klavier follow the composer's era. With no instrument named, Medieval,
+ * Renaissance, and Baroque works are harpsichord and later works are piano.
+ * An unknown era is piano.
+ */
+export function classifyKeyboardInstrument(
+  title: string,
+  subtitle?: string | null,
+  epoch?: string | null
+): KeyboardInstrument {
+  const text = foldFormText(`${title} ${subtitle ?? ""}`)
+  let best: { index: number; instrument: KeyboardInstrument | "clavier" } | null = null
+  for (const tag of KEYBOARD_TAGS) {
+    const re = new RegExp(tag.source, "g")
+    for (const match of text.matchAll(re)) {
+      if (match.index == null) continue
+      if (!best || match.index < best.index) best = { index: match.index, instrument: tag.instrument }
+    }
+  }
+  if (best?.instrument === "clavier") return isEarlyKeyboardEpoch(epoch) ? "harpsichord" : "piano"
+  if (best) return best.instrument
+  return isEarlyKeyboardEpoch(epoch) ? "harpsichord" : "piano"
 }
 
 const LABELED_STAGE = /\b(films?|incidental)\b/
