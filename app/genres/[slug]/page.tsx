@@ -5,8 +5,15 @@ import { PageHeader } from "@/components/page-header"
 import { WorkList } from "@/components/work-list"
 import { attachCompositionYearsByComposer } from "@/lib/composition-years"
 import { formSummaries, worksForForm } from "@/lib/form-catalog"
-import { catalogGenreFromSlug, formFromSlug, legacyBaroqueKeyboardHref, relocatedGenreHref } from "@/lib/forms"
-import { classifyListedSubtype, listedSubtypeFilters } from "@/lib/work-subtypes"
+import {
+  catalogGenreFromSlug,
+  formFromSlug,
+  legacyBaroqueKeyboardHref,
+  legacyKeyboardInstrumentHref,
+  legacyKeyboardInstrumentLabel,
+  relocatedGenreHref,
+} from "@/lib/forms"
+import { classifyListedSubtype, keyboardInstrumentOf, listedSubtypeFilters } from "@/lib/work-subtypes"
 
 export function generateStaticParams() {
   return formSummaries().map((form) => ({ slug: form.slug }))
@@ -19,7 +26,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug } = await params
   const form = catalogGenreFromSlug(slug) ?? (relocatedGenreHref(slug) ? formFromSlug(slug) : undefined)
-  return { title: form?.name ?? "Genre" }
+  return { title: form?.name ?? legacyKeyboardInstrumentLabel(slug) ?? "Genre" }
 }
 
 export default async function GenrePage({
@@ -30,10 +37,11 @@ export default async function GenrePage({
   searchParams: Promise<{ filter?: string }>
 }) {
   const { slug } = await params
-  if (slug === "baroque-keyboard") {
-    const { filter } = await searchParams
-    permanentRedirect(legacyBaroqueKeyboardHref(filter))
-  }
+  const { filter } = await searchParams
+  if (slug === "baroque-keyboard") permanentRedirect(legacyBaroqueKeyboardHref(filter))
+
+  const legacyInstrument = legacyKeyboardInstrumentHref(slug, filter)
+  if (legacyInstrument) permanentRedirect(legacyInstrument)
 
   const moved = relocatedGenreHref(slug)
   if (moved) permanentRedirect(moved)
@@ -54,6 +62,7 @@ export default async function GenrePage({
       recommended: work.recommended,
       composerLabel: work.composerName,
       subtype: classifyListedSubtype(work)?.slug ?? null,
+      instrument: keyboardInstrumentOf(work),
       composer: {
         id: work.composerId,
         name: work.composerName,

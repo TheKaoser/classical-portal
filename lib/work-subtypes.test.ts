@@ -1,10 +1,11 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 import catalog from "../data/form-works.json" with { type: "json" }
-import { KEYBOARD_FORMS } from "./forms.ts"
+import { KEYBOARD_FORMS, KEYBOARD_INSTRUMENTS } from "./forms.ts"
 import {
   classifyListedSubtype,
   classifyWorkSubtype,
+  filterWorksByListedFilter,
   filterWorksBySubtype,
   listedSubtypeFilters,
   subtypeFilters,
@@ -174,11 +175,18 @@ test("catalog forms that name instruments expose those chips", () => {
   assert.ok(subtypeFilters(ofForm("quintet")).some((item) => item.slug === "wind"))
   assert.ok(subtypeFilters(ofForm("trio")).some((item) => item.slug === "piano"))
   assert.ok(subtypeFilters(ofForm("suite")).some((item) => item.slug === "cello"))
+  const sonataChips = listedSubtypeFilters(ofForm("sonata")).map((item) => item.slug)
+  assert.ok(sonataChips.includes("piano"))
+  assert.ok(sonataChips.includes("harpsichord"))
+  assert.equal(sonataChips.includes("nocturne"), false)
+  assert.equal(sonataChips.includes("keyboard"), false)
 })
 
 test("grouped genres list form chips in catalog order", () => {
   const chips = (forms: string[]) =>
     listedSubtypeFilters(works.filter((work) => forms.includes(work.form))).map((item) => item.slug)
+  const formsAfterInstruments = (forms: string[]) =>
+    chips(forms).filter((slug) => !KEYBOARD_INSTRUMENTS.some((item) => item.slug === slug))
   assert.deepEqual(chips(["trio", "quartet", "quintet", "sextet"]), ["trio", "quartet", "quintet", "sextet"])
   assert.deepEqual(chips(["requiem", "mass", "oratorio", "motet", "cantata"]), [
     "requiem",
@@ -187,20 +195,8 @@ test("grouped genres list form chips in catalog order", () => {
     "motet",
     "cantata",
   ])
-  assert.deepEqual(
-    chips([
-      "nocturne",
-      "etude",
-      "mazurka",
-      "waltz",
-      "polonaise",
-      "impromptu",
-      "ballade",
-      "rhapsody",
-      "scherzo",
-    ]),
-    ["nocturne", "etude", "mazurka", "waltz", "polonaise", "impromptu", "ballade", "rhapsody", "scherzo"]
-  )
+  assert.deepEqual(formsAfterInstruments([...CHARACTER_PIECE_SLUGS]), [...CHARACTER_PIECE_SLUGS])
+  assert.deepEqual(chips([...CHARACTER_PIECE_SLUGS]).slice(0, 2), ["piano", "harpsichord"])
   assert.deepEqual(chips(["opera", "ballet", "overture"]), ["opera", "ballet", "overture"])
   assert.deepEqual(chips(["symphony", "suite", "serenade", "divertimento"]), [
     "symphony",
@@ -208,7 +204,7 @@ test("grouped genres list form chips in catalog order", () => {
     "serenade",
     "divertimento",
   ])
-  assert.deepEqual(chips(["prelude", "fugue", "toccata", "partita", "fantasia", "variations"]), [
+  assert.deepEqual(formsAfterInstruments(["prelude", "fugue", "toccata", "partita", "fantasia", "variations"]), [
     "prelude",
     "fugue",
     "toccata",
@@ -216,7 +212,17 @@ test("grouped genres list form chips in catalog order", () => {
     "fantasia",
     "variations",
   ])
-  assert.deepEqual(chips([...KEYBOARD_FORMS]), [...KEYBOARD_FORMS])
+  assert.deepEqual(chips(["prelude", "fugue", "toccata", "partita", "fantasia", "variations"]).slice(0, 3), [
+    "piano",
+    "harpsichord",
+    "organ",
+  ])
+  assert.deepEqual(chips([...KEYBOARD_FORMS]), [
+    "piano",
+    "harpsichord",
+    "organ",
+    ...KEYBOARD_FORMS,
+  ])
   assert.equal(
     classifyListedSubtype({ form: "quartet", title: "String Quartet no. 14 in C sharp minor, op. 131" })?.slug,
     "quartet"
@@ -228,6 +234,45 @@ test("grouped genres list form chips in catalog order", () => {
   assert.equal(
     classifyListedSubtype({ form: "concerto", title: "Piano Concerto no. 5 in E flat major, op. 73" })?.slug,
     "piano"
+  )
+})
+
+const CHARACTER_PIECE_SLUGS = [
+  "nocturne",
+  "etude",
+  "mazurka",
+  "waltz",
+  "polonaise",
+  "impromptu",
+  "ballade",
+  "rhapsody",
+  "scherzo",
+]
+
+test("keyboard instrument and form chips filter the same list", () => {
+  const rows = [
+    { id: "nocturne", subtype: "nocturne", instrument: "piano" },
+    { id: "prelude", subtype: "prelude", instrument: "harpsichord" },
+    { id: "fugue", subtype: "fugue", instrument: "organ" },
+  ]
+  assert.deepEqual(
+    filterWorksByListedFilter(rows, "piano").map((work) => work.id),
+    ["nocturne"]
+  )
+  assert.deepEqual(
+    filterWorksByListedFilter(rows, "prelude").map((work) => work.id),
+    ["prelude"]
+  )
+  assert.deepEqual(
+    filterWorksByListedFilter(rows, "all").map((work) => work.id),
+    ["nocturne", "prelude", "fugue"]
+  )
+  assert.deepEqual(
+    filterWorksBySubtype(
+      rows.map((work) => ({ id: work.id, subtype: work.instrument })),
+      "organ"
+    ).map((work) => work.id),
+    ["fugue"]
   )
 })
 
