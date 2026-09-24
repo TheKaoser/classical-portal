@@ -1,6 +1,6 @@
 "use client"
 
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react"
+import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
 
 export type PortalVariant = "modern" | "antique"
 
@@ -10,6 +10,20 @@ type PortalLayout = {
 }
 
 const CONTENT_SELECTOR = "h1 [aria-hidden='true'], a"
+
+/** Exterior wash diameter relative to the ring. The hole in the gradient matches the ring. */
+const EXTERIOR_SCALE = 2.05
+
+function exteriorFrame(layout: PortalLayout): CSSProperties {
+  const size = layout.diameter * EXTERIOR_SCALE
+  const overflow = (size - layout.diameter) / 2
+  return {
+    width: size,
+    height: size,
+    top: -layout.padBottom - overflow,
+    ["--portal-hole" as string]: `${(100 / EXTERIOR_SCALE).toFixed(2)}%`,
+  }
+}
 
 function boundsOf(element: Element): DOMRect {
   if (element.tagName === "P") {
@@ -109,15 +123,22 @@ export function HomePortal({
       style={layout ? { paddingBottom: layout.padBottom } : undefined}
     >
       {layout ? (
-        <div
-          aria-hidden="true"
-          className="portal-ring pointer-events-none absolute left-1/2 z-0 -translate-x-1/2 rounded-full"
-          style={{
-            width: layout.diameter,
-            height: layout.diameter,
-            top: -layout.padBottom,
-          }}
-        />
+        <>
+          <div
+            aria-hidden="true"
+            className="portal-exterior pointer-events-none absolute left-1/2 z-0 -translate-x-1/2 rounded-full"
+            style={exteriorFrame(layout)}
+          />
+          <div
+            aria-hidden="true"
+            className="portal-ring pointer-events-none absolute left-1/2 z-0 -translate-x-1/2 rounded-full"
+            style={{
+              width: layout.diameter,
+              height: layout.diameter,
+              top: -layout.padBottom,
+            }}
+          />
+        </>
       ) : null}
       <div ref={contentRef} className="relative z-10">
         {children}
