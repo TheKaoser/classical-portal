@@ -59,7 +59,8 @@
 }
 
 /* Home portal ring. The circle is sized in JS to the hero’s content box;
-   these rules only paint it. Decorative: the element is pointer-events-none. */
+   these rules only paint it. Decorative: the element is pointer-events-none.
+   The exterior wash is a larger circle with a hole the size of the ring. */
 .portal-ring::before,
 .portal-ring::after {
   content: "";
@@ -69,7 +70,19 @@
   pointer-events: none;
 }
 
-/* Modern: thin gradient stroke, soft outer glow, barely-there interior wash. */
+/* Pale blue field outside the ring. Transparent through the hole so the title stays clear. */
+.portal-exterior {
+  background: radial-gradient(
+    circle closest-side,
+    transparent 0 calc(var(--portal-hole) - 0.6%),
+    color-mix(in srgb, var(--surface-blue) 94%, white) calc(var(--portal-hole) + 1.4%),
+    color-mix(in srgb, var(--surface-blue) 72%, white) calc(var(--portal-hole) + 7%),
+    color-mix(in srgb, var(--blue) 5%, white) calc(var(--portal-hole) + 20%),
+    transparent 100%
+  );
+}
+
+/* Modern: thin gradient stroke, barely-there interior wash. Exterior blue is .portal-exterior. */
 .home-portal[data-portal="modern"] .portal-ring {
   background: radial-gradient(
     circle closest-side,
@@ -77,9 +90,7 @@
     rgb(from var(--blue) r g b / 0.028) 58%,
     rgb(from var(--blue) r g b / 0.012) 100%
   );
-  box-shadow:
-    0 0 0 1px rgb(from var(--blue) r g b / 0.08),
-    0 0 42px rgb(from var(--blue) r g b / 0.07);
+  box-shadow: 0 0 0 1px rgb(from var(--blue) r g b / 0.08);
 }
 
 .home-portal[data-portal="modern"] .portal-ring::before {
@@ -167,6 +178,10 @@
 }
 
 @media (forced-colors: active) {
+  .portal-exterior {
+    display: none;
+  }
+
   .portal-ring {
     background: transparent !important;
     box-shadow: none !important;

@@ -531,15 +531,20 @@ function WorkListToolbarInner({ store, count }: { store: ListPlaybackStore; coun
           {control.action === "none" ? <Loader2 className="animate-spin" /> : showPause ? <Pause /> : <Play />}
           {control.label}
         </Button>
-        <div className="flex items-center gap-2">
+        <div className="flex cursor-pointer items-center gap-2">
           <Shuffle
             className={cn("size-4", toolbar.random ? "text-primary" : "text-muted-foreground")}
             aria-hidden
           />
-          <Label htmlFor={randomId} className="font-normal text-muted-foreground">
+          <Label htmlFor={randomId} className="cursor-pointer font-normal text-muted-foreground">
             Random
           </Label>
-          <Switch id={randomId} checked={toolbar.random} onCheckedChange={(on) => store.setRandom(on)} />
+          <Switch
+            id={randomId}
+            className="cursor-pointer"
+            checked={toolbar.random}
+            onCheckedChange={(on) => store.setRandom(on)}
+          />
         </div>
       </div>
       {notice ? (
