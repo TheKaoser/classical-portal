@@ -1,4 +1,3 @@
-import type { Metadata } from "next"
 import { notFound, permanentRedirect } from "next/navigation"
 import { GenreWorkBrowser } from "@/components/genre-work-browser"
 import { PageHeader } from "@/components/page-header"
@@ -17,6 +16,7 @@ import {
 } from "@/lib/forms"
 import { isSpotifyOAuthConfigured } from "@/lib/spotify"
 import { classifyListedSubtype, listedSubtypeFilters } from "@/lib/work-subtypes"
+import { genreDescription, pageMetadata } from "@/lib/seo"
 
 export function generateStaticParams() {
   return formSummaries().map((form) => ({ slug: form.slug }))
@@ -26,10 +26,18 @@ export async function generateMetadata({
   params,
 }: {
   params: Promise<{ slug: string }>
-}): Promise<Metadata> {
+}) {
   const { slug } = await params
-  const form = catalogGenreFromSlug(slug) ?? (relocatedGenreHref(slug) ? formFromSlug(slug) : undefined)
-  return { title: form?.name ?? legacyKeyboardInstrumentLabel(slug) ?? "Genre" }
+  const form = catalogGenreFromSlug(slug)
+  if (!form) {
+    const legacy = relocatedGenreHref(slug) ? formFromSlug(slug) : undefined
+    return { title: legacy?.name ?? legacyKeyboardInstrumentLabel(slug) ?? "Genre" }
+  }
+  return pageMetadata({
+    title: form.name,
+    description: genreDescription(form, worksForForm(slug).length),
+    path: `/genres/${form.slug}`,
+  })
 }
 
 export default async function GenrePage({

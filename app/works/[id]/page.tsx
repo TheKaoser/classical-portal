@@ -1,13 +1,14 @@
-import type { Metadata } from "next"
 import Link from "next/link"
 import { notFound } from "next/navigation"
+import { JsonLd } from "@/components/json-ld"
 import { PageHeader } from "@/components/page-header"
 import { SpotifyRecordings } from "@/components/spotify-recordings"
 import { Badge } from "@/components/ui/badge"
-import { attachCompositionYears } from "@/lib/composition-years"
+import { attachCompositionYears, storedCompositionDate } from "@/lib/composition-years"
 import { formatCompositionDate } from "@/lib/composition-label"
 import { genreHrefForLabel } from "@/lib/forms"
 import { getWork, workParts, workSearchTerms } from "@/lib/openopus"
+import { pageMetadata, workDescription, workJsonLd, workPageTitle } from "@/lib/seo"
 import { searchSpotifyForWork } from "@/lib/spotify"
 import { classicalPlaylistName } from "@/lib/spotify-playlist"
 
@@ -17,11 +18,23 @@ export async function generateMetadata({
   params,
 }: {
   params: Promise<{ id: string }>
-}): Promise<Metadata> {
+}) {
   const { id } = await params
   const { composer, work } = await getWork(id)
-  if (!work) return { title: "Work" }
-  return { title: composer ? `${work.title} · ${composer.name}` : work.title }
+  if (!work || !composer) return { title: "Work", robots: { index: false, follow: false } }
+  const compositionDate = storedCompositionDate(composer.id, work)
+  const composerName = composer.name || composer.complete_name
+  return pageMetadata({
+    title: workPageTitle(composerName, work.title),
+    description: workDescription({
+      composerName: composer.complete_name || composerName,
+      title: work.title,
+      subtitle: work.subtitle,
+      genre: work.genre,
+      compositionLabel: formatCompositionDate(compositionDate),
+    }),
+    path: `/works/${work.id}`,
+  })
 }
 
 export default async function WorkPage({
@@ -53,13 +66,24 @@ export default async function WorkPage({
       parts,
     }),
   ])
-  const subtitle = [formatCompositionDate(datedList[0]?.compositionDate), work.genre, composer.complete_name]
+  const compositionDate = datedList[0]?.compositionDate ?? null
+  const subtitle = [formatCompositionDate(compositionDate), work.genre, composer.complete_name]
     .filter(Boolean)
     .join(" · ")
   const playlistName = classicalPlaylistName(composer.name, work.title)
 
   return (
     <div className="space-y-10">
+      <JsonLd
+        data={workJsonLd({
+          id: work.id,
+          title: work.title,
+          subtitle: work.subtitle,
+          genre: work.genre,
+          compositionDate,
+          composer: { id: composer.id, completeName: composer.complete_name },
+        })}
+      />
       <div>
         <PageHeader
           title={work.title}

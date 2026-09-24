@@ -1,8 +1,16 @@
 import Link from "next/link"
 import { Sparkles } from "lucide-react"
 import { BrandMark } from "@/components/brand-mark"
+import { JsonLd } from "@/components/json-ld"
 import { HomePortal, type PortalVariant } from "@/components/home-portal"
 import { Button } from "@/components/ui/button"
+import { pageMetadata, websiteJsonLd } from "@/lib/seo"
+import { SITE_DESCRIPTION } from "@/lib/site"
+
+export const metadata = pageMetadata({
+  description: SITE_DESCRIPTION,
+  path: "/",
+})
 
 const ENTRIES = [
   { href: "/periods", title: "Periods" },
@@ -29,6 +37,7 @@ export default async function HomePage({
 
   return (
     <div className="pt-24 text-center sm:pt-32 md:pt-40">
+      <JsonLd data={websiteJsonLd()} />
       <HomePortal variant={variant}>
         <section className="space-y-3 sm:space-y-4 md:space-y-5">
           <h1 className="font-serif text-[clamp(2rem,(100vw-2.5rem)/6.35,4rem)] leading-none tracking-tight sm:text-7xl">

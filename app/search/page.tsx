@@ -1,18 +1,25 @@
-import type { Metadata } from "next"
 import { ListLink } from "@/components/list-link"
 import { PageHeader } from "@/components/page-header"
 import { SearchForm } from "@/components/search-form"
 import { CompositionYear } from "@/components/work-list"
 import { attachCompositionYearsByComposer } from "@/lib/composition-years"
 import { omniSearch } from "@/lib/openopus"
+import { pageMetadata, searchDescription } from "@/lib/seo"
 
 export async function generateMetadata({
   searchParams,
 }: {
   searchParams: Promise<{ q?: string }>
-}): Promise<Metadata> {
+}) {
   const { q } = await searchParams
-  return { title: q ? `Search “${q}”` : "Search" }
+  const query = q?.trim() ?? ""
+  return pageMetadata({
+    title: query ? `Search “${query}”` : "Search",
+    description: searchDescription(query),
+    path: "/search",
+    socialPath: query ? `/search?q=${encodeURIComponent(query)}` : "/search",
+    index: query.length === 0,
+  })
 }
 
 export default async function SearchPage({

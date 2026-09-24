@@ -1,6 +1,6 @@
-import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import { ComposerWorkBrowser } from "@/components/composer-work-browser"
+import { JsonLd } from "@/components/json-ld"
 import { PageHeader } from "@/components/page-header"
 import { sortWorksChronologically } from "@/lib/composition-date"
 import { attachCompositionYears } from "@/lib/composition-years"
@@ -16,6 +16,7 @@ import {
   lifeSpan,
   WORK_GENRES,
 } from "@/lib/openopus"
+import { composerDescription, composerJsonLd, pageMetadata } from "@/lib/seo"
 
 export const revalidate = 3600
 
@@ -25,10 +26,19 @@ export async function generateMetadata({
   params,
 }: {
   params: Promise<{ id: string }>
-}): Promise<Metadata> {
+}) {
   const { id } = await params
   const composer = await getComposer(id)
-  return { title: composer?.complete_name ?? "Composer" }
+  if (!composer) return { title: "Composer", robots: { index: false, follow: false } }
+  return pageMetadata({
+    title: composer.complete_name,
+    description: composerDescription({
+      completeName: composer.complete_name,
+      years: lifeSpan(composer),
+      epoch: composer.epoch,
+    }),
+    path: `/composers/${composer.id}`,
+  })
 }
 
 export default async function ComposerPage({
@@ -81,6 +91,15 @@ export default async function ComposerPage({
 
   return (
     <div>
+      <JsonLd
+        data={composerJsonLd({
+          id: composer.id,
+          completeName: composer.complete_name,
+          birth: composer.birth,
+          death: composer.death,
+          portrait: composer.portrait,
+        })}
+      />
       <PageHeader
         title={composer.complete_name}
         subtitle={[years, composer.epoch].filter(Boolean).join(" · ")}

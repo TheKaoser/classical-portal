@@ -1,4 +1,3 @@
-import type { Metadata } from "next"
 import { notFound, permanentRedirect } from "next/navigation"
 import { ComposerList } from "@/components/composer-list"
 import { PageHeader } from "@/components/page-header"
@@ -11,6 +10,7 @@ import {
   relocatedEpochHref,
 } from "@/lib/epochs"
 import { listComposersByEpochs } from "@/lib/openopus"
+import { pageMetadata, periodDescription } from "@/lib/seo"
 
 export const revalidate = 3600
 
@@ -22,10 +22,15 @@ export async function generateMetadata({
   params,
 }: {
   params: Promise<{ epoch: string }>
-}): Promise<Metadata> {
+}) {
   const { epoch: slug } = await params
   const epoch = epochFromSlug(slug)
-  return { title: epoch?.name ?? legacyEpochName(slug) ?? "Period" }
+  if (!epoch) return { title: legacyEpochName(slug) ?? "Period" }
+  return pageMetadata({
+    title: epoch.name,
+    description: periodDescription(epoch),
+    path: `/periods/${epoch.slug}`,
+  })
 }
 
 export default async function EpochPage({
