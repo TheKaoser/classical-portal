@@ -49,6 +49,13 @@ function storedIndex(id: string): DateIndex | null {
   return normalizeDateIndex(stored[id])
 }
 
+/** Composition date from the committed index only. Does not call Wikidata or IMSLP. */
+export function storedCompositionDate(composerId: string, work: WorkLike): CompositionDate | null {
+  const index = storedIndex(composerId)
+  if (!index) return null
+  return withYear(work, index).compositionDate
+}
+
 async function indexFor(composer: ComposerLike): Promise<DateIndex> {
   const cached = storedIndex(composer.id)
   if (cached) return cached

@@ -1,14 +1,16 @@
-import type { Metadata } from "next"
 import { CatalogTile } from "@/components/catalog-icon"
 import { ListLink } from "@/components/list-link"
 import { PageHeader } from "@/components/page-header"
 import { catalogAccent } from "@/lib/accents"
 import { formSummaries } from "@/lib/form-catalog"
+import { pageMetadata } from "@/lib/seo"
 
-export const metadata: Metadata = {
+export const metadata = pageMetadata({
   title: "Genres",
-  description: "Browse classical works by genre, from orchestral and chamber music to keyboard, stage, and choral works.",
-}
+  description:
+    "Important genres from Open Opus titles and subtitles, ordered by how many works are marked popular.",
+  path: "/genres",
+})
 
 export default function GenresPage() {
   const forms = formSummaries()

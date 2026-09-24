@@ -6,6 +6,8 @@ import { AppNavigationMarker } from "@/components/app-navigation-marker"
 import { SiteHeader } from "@/components/site-header"
 import { SpotifyPlayerProvider } from "@/components/spotify-player-provider"
 import { isSpotifyOAuthConfigured } from "@/lib/spotify"
+import { SHARE_IMAGE } from "@/lib/seo"
+import { SITE_DESCRIPTION, SITE_NAME, SITE_ORIGIN } from "@/lib/site"
 
 const newsreader = Newsreader({
   subsets: ["latin"],
@@ -13,12 +15,35 @@ const newsreader = Newsreader({
   display: "swap",
 })
 
+const googleSiteVerification = process.env.GOOGLE_SITE_VERIFICATION?.trim()
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_ORIGIN),
   title: {
-    default: "Classical Portal",
-    template: "%s · Classical Portal",
+    default: SITE_NAME,
+    template: `%s | ${SITE_NAME}`,
   },
-  description: "Browse classical composers and works, then play matching recordings on Spotify.",
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    siteName: SITE_NAME,
+    title: SITE_NAME,
+    description: SITE_DESCRIPTION,
+    images: [SHARE_IMAGE],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: SITE_NAME,
+    description: SITE_DESCRIPTION,
+    images: ["/twitter-image"],
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
+  ...(googleSiteVerification ? { verification: { google: googleSiteVerification } } : {}),
 }
 
 export const viewport: Viewport = {

@@ -29,7 +29,7 @@ export function PageHeader({
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={portrait}
-            alt=""
+            alt={title}
             width={80}
             height={80}
             className="h-20 w-20 shrink-0 rounded-full object-cover shadow-card ring-1 ring-border"
