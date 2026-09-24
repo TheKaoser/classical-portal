@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 import catalog from "../data/form-works.json" with { type: "json" }
-import { KEYBOARD_FORMS, KEYBOARD_INSTRUMENTS } from "./forms.ts"
+import { KEYBOARD_FORMS } from "./forms.ts"
 import {
   classifyListedSubtype,
   classifyWorkSubtype,
@@ -185,8 +185,6 @@ test("catalog forms that name instruments expose those chips", () => {
 test("grouped genres list form chips in catalog order", () => {
   const chips = (forms: string[]) =>
     listedSubtypeFilters(works.filter((work) => forms.includes(work.form))).map((item) => item.slug)
-  const formsAfterInstruments = (forms: string[]) =>
-    chips(forms).filter((slug) => !KEYBOARD_INSTRUMENTS.some((item) => item.slug === slug))
   assert.deepEqual(chips(["trio", "quartet", "quintet", "sextet"]), ["trio", "quartet", "quintet", "sextet"])
   assert.deepEqual(chips(["requiem", "mass", "oratorio", "motet", "cantata"]), [
     "requiem",
@@ -195,8 +193,7 @@ test("grouped genres list form chips in catalog order", () => {
     "motet",
     "cantata",
   ])
-  assert.deepEqual(formsAfterInstruments([...CHARACTER_PIECE_SLUGS]), [...CHARACTER_PIECE_SLUGS])
-  assert.deepEqual(chips([...CHARACTER_PIECE_SLUGS]).slice(0, 2), ["piano", "harpsichord"])
+  assert.deepEqual(chips([...CHARACTER_PIECE_SLUGS]), [...CHARACTER_PIECE_SLUGS])
   assert.deepEqual(chips(["opera", "ballet", "overture"]), ["opera", "ballet", "overture"])
   assert.deepEqual(chips(["symphony", "suite", "serenade", "divertimento"]), [
     "symphony",
@@ -204,7 +201,7 @@ test("grouped genres list form chips in catalog order", () => {
     "serenade",
     "divertimento",
   ])
-  assert.deepEqual(formsAfterInstruments(["prelude", "fugue", "toccata", "partita", "fantasia", "variations"]), [
+  assert.deepEqual(chips(["prelude", "fugue", "toccata", "partita", "fantasia", "variations"]), [
     "prelude",
     "fugue",
     "toccata",
@@ -212,17 +209,10 @@ test("grouped genres list form chips in catalog order", () => {
     "fantasia",
     "variations",
   ])
-  assert.deepEqual(chips(["prelude", "fugue", "toccata", "partita", "fantasia", "variations"]).slice(0, 3), [
-    "piano",
-    "harpsichord",
-    "organ",
-  ])
-  assert.deepEqual(chips([...KEYBOARD_FORMS]), [
-    "piano",
-    "harpsichord",
-    "organ",
-    ...KEYBOARD_FORMS,
-  ])
+  assert.deepEqual(chips([...KEYBOARD_FORMS]), [...KEYBOARD_FORMS])
+  for (const slug of ["piano", "harpsichord", "organ"]) {
+    assert.equal(chips([...KEYBOARD_FORMS]).includes(slug), false, slug)
+  }
   assert.equal(
     classifyListedSubtype({ form: "quartet", title: "String Quartet no. 14 in C sharp minor, op. 131" })?.slug,
     "quartet"
@@ -249,15 +239,23 @@ const CHARACTER_PIECE_SLUGS = [
   "scherzo",
 ]
 
-test("keyboard instrument and form chips filter the same list", () => {
+test("keyboard listing filters by form chip", () => {
   const rows = [
-    { id: "nocturne", subtype: "nocturne", instrument: "piano" },
-    { id: "prelude", subtype: "prelude", instrument: "harpsichord" },
-    { id: "fugue", subtype: "fugue", instrument: "organ" },
+    { id: "nocturne", subtype: "nocturne" },
+    { id: "prelude", subtype: "prelude" },
+    { id: "fugue", subtype: "fugue" },
   ]
   assert.deepEqual(
     filterWorksByListedFilter(rows, "piano").map((work) => work.id),
-    ["nocturne"]
+    []
+  )
+  assert.deepEqual(
+    filterWorksByListedFilter(rows, "harpsichord").map((work) => work.id),
+    []
+  )
+  assert.deepEqual(
+    filterWorksByListedFilter(rows, "organ").map((work) => work.id),
+    []
   )
   assert.deepEqual(
     filterWorksByListedFilter(rows, "prelude").map((work) => work.id),
@@ -267,13 +265,42 @@ test("keyboard instrument and form chips filter the same list", () => {
     filterWorksByListedFilter(rows, "all").map((work) => work.id),
     ["nocturne", "prelude", "fugue"]
   )
-  assert.deepEqual(
-    filterWorksBySubtype(
-      rows.map((work) => ({ id: work.id, subtype: work.instrument })),
-      "organ"
-    ).map((work) => work.id),
-    ["fugue"]
-  )
+})
+
+test("known keyboard works land on form chips", () => {
+  const keyboard = works.filter((work) => (KEYBOARD_FORMS as readonly string[]).includes(work.form))
+  const chips = new Set(listedSubtypeFilters(keyboard).map((item) => item.slug))
+  for (const slug of ["piano", "harpsichord", "organ"]) assert.equal(chips.has(slug), false, slug)
+  for (const form of KEYBOARD_FORMS) assert.equal(chips.has(form), true, form)
+
+  const find = (composer: string, title: string) =>
+    works.find((work) => work.composerName.includes(composer) && work.title === title)
+
+  const nocturnes = find("Chopin", "Nocturnes, op. 9")
+  assert.equal(nocturnes?.genre, "Keyboard")
+  assert.equal(classifyListedSubtype(nocturnes!)?.slug, "nocturne")
+  assert.equal(chips.has("nocturne"), true)
+
+  const chopinSonata = find("Chopin", "Sonata no. 2 in B flat minor, op. 35")
+  assert.equal(chopinSonata?.genre, "Keyboard")
+  assert.equal(chopinSonata?.form, "sonata")
+  assert.equal(classifyListedSubtype(chopinSonata!)?.slug, "piano")
+
+  const prelude = find("Johann Sebastian Bach", "Prélude no. 2 en Do Mineur, BWV.871")
+  const fugue = find("Johann Sebastian Bach", "Fugue no. 2 en Do Mineur, BWV.871")
+  assert.equal(classifyListedSubtype(prelude!)?.slug, "prelude")
+  assert.equal(classifyListedSubtype(fugue!)?.slug, "fugue")
+
+  const toccata = find("Johann Sebastian Bach", "Toccata and fugue in D minor, BWV.565")
+  const passacaglia = find("Johann Sebastian Bach", "Passacaglia and Fugue in C minor, BWV.582")
+  const organPrelude = find("Johann Sebastian Bach", 'Prelude in C major, BWV.567, "Per Organo pleno"')
+  assert.equal(toccata?.genre, "Keyboard")
+  assert.equal(classifyListedSubtype(toccata!)?.slug, "fugue")
+  assert.equal(classifyListedSubtype(passacaglia!)?.slug, "fugue")
+  assert.equal(classifyListedSubtype(organPrelude!)?.slug, "prelude")
+  for (const work of [toccata, passacaglia, organPrelude, prelude, fugue, nocturnes]) {
+    assert.equal(chips.has(classifyListedSubtype(work!)!.slug), true, work?.title)
+  }
 })
 
 test("filtering keeps the surrounding list order", () => {

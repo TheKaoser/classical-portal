@@ -36,7 +36,7 @@ function bump(counts: Map<string, { total: number; popular: number }>, slug: str
   counts.set(slug, row)
 }
 
-/** Genre that owns this form. Piano, harpsichord, and organ stay inside Keyboard. */
+/** Genre that owns this form. Keyboard lists forms, not piano, harpsichord, or organ. */
 export function browseSlugForWork(work: FormWork): string {
   const group = groupForForm(work.form)
   if (!group) return work.form

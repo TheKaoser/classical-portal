@@ -23,12 +23,14 @@
  * it is not listed under Sonatas. Requiems, masses, oratorios, motets, and
  * cantatas are one Choral genre. Nocturnes, etudes, and the other character
  * pieces, together with preludes, fugues, toccatas, partitas, fantasias, and
- * variations, are one Keyboard genre. Piano, harpsichord, and organ are chips
- * on that page, not separate genres. The title's instrument wins (piano,
- * pianoforte, harpsichord, cembalo, clavier, organ). Clavier or Klavier is
- * harpsichord for Medieval, Renaissance, and Baroque composers and piano after
- * that. A title with no keyboard instrument uses that same era split. Organ is
- * used only when the title or subtitle names the organ. Operas, ballets, and
+ * variations, are one Keyboard genre. Piano, harpsichord, and organ are not
+ * chips on that page and not separate genres. Each of those works keeps the
+ * form named in its title. Sonata and concerto pages still split by
+ * instrument. There the title's instrument wins (piano, pianoforte,
+ * harpsichord, cembalo, clavier, organ). Clavier or Klavier is harpsichord
+ * for Medieval, Renaissance, and Baroque composers and piano after that. A
+ * title with no keyboard instrument uses that same era split. Organ is used
+ * only when the title or subtitle names the organ. Operas, ballets, and
  * overtures are Stage. Symphonies, suites,
  * serenades, and divertimenti are Orchestral. Concertos, sonatas, and songs
  * stay their own pages. The finer form stays on the work and becomes a filter
@@ -281,17 +283,17 @@ export const BAROQUE_KEYBOARD_FORMS = [
 /** Chip order on Keyboard: character pieces, then the former Baroque keyboard forms. */
 export const KEYBOARD_FORMS = [...CHARACTER_PIECES, ...BAROQUE_KEYBOARD_FORMS] as const
 
-/** Instrument chips on Keyboard, in display order. Not top-level genres. */
+const KEYBOARD_FORM_SLUGS = new Set<string>(KEYBOARD_FORMS)
+
+/**
+ * Retired instrument names. Not chips on Keyboard and not top-level genres.
+ * Old URLs still open Keyboard; a real form chip in the query is kept.
+ */
 export const KEYBOARD_INSTRUMENTS: readonly { slug: KeyboardInstrument; label: string }[] = [
   { slug: "piano", label: "Piano" },
   { slug: "harpsichord", label: "Harpsichord" },
   { slug: "organ", label: "Organ" },
 ]
-
-const KEYBOARD_CHIP_SLUGS = new Set<string>([
-  ...KEYBOARD_FORMS,
-  ...KEYBOARD_INSTRUMENTS.map((item) => item.slug),
-])
 
 /**
  * Paths that used to be their own genre pages. Includes the instrument names
@@ -341,8 +343,7 @@ export const FORM_GROUPS: readonly FormGroup[] = [
   {
     slug: "keyboard",
     name: "Keyboard",
-    blurb:
-      "Nocturnes, etudes, preludes, fugues, toccatas, partitas, fantasias, and variations for piano, harpsichord, and organ.",
+    blurb: "Nocturnes, etudes, preludes, fugues, toccatas, partitas, fantasias, and variations.",
     children: KEYBOARD_FORMS,
   },
   {
@@ -410,10 +411,10 @@ export function relocatedGenreHref(slug: string): string | null {
   return `/genres/${group.slug}?filter=${slug}`
 }
 
-/** `/genres/baroque-keyboard` now opens Keyboard. A slug-shaped chip query is kept. */
+/** `/genres/baroque-keyboard` now opens Keyboard. A current form chip is kept. */
 export function legacyBaroqueKeyboardHref(filter?: string | null): string {
-  const chip = (filter ?? "").trim()
-  if (chip && /^[a-z0-9-]+$/.test(chip)) return `/genres/keyboard?filter=${chip}`
+  const chip = (filter ?? "").trim().toLowerCase()
+  if (KEYBOARD_FORM_SLUGS.has(chip)) return `/genres/keyboard?filter=${chip}`
   return "/genres/keyboard"
 }
 
@@ -428,15 +429,21 @@ export function legacyKeyboardInstrumentLabel(slug: string): string | null {
 }
 
 /**
- * `/genres/piano` (and the other retired instrument slugs) open Keyboard with
- * that instrument chip. A filter that is already a Keyboard chip is kept.
+ * `/genres/piano` (and the other retired instrument slugs) open Keyboard.
+ * A filter that is already a Keyboard form chip is kept. An instrument
+ * filter is dropped so the URL is not a dead chip.
  */
 export function legacyKeyboardInstrumentHref(slug: string, filter?: string | null): string | null {
   const instrument = legacyKeyboardInstrument(slug)
   if (!instrument) return null
   const chip = (filter ?? "").trim().toLowerCase()
-  if (chip && KEYBOARD_CHIP_SLUGS.has(chip)) return `/genres/keyboard?filter=${chip}`
-  return `/genres/keyboard?filter=${instrument}`
+  if (KEYBOARD_FORM_SLUGS.has(chip)) return `/genres/keyboard?filter=${chip}`
+  return "/genres/keyboard"
+}
+
+/** `?filter=piano` (and the other retired instrument chips) opens unfiltered Keyboard. */
+export function retiredKeyboardInstrumentFilter(filter?: string | null): boolean {
+  return legacyKeyboardInstrument(filter ?? "") != null
 }
 
 export function foldFormText(value: string): string {
@@ -452,8 +459,7 @@ const byFoldedName = new Map(WORK_FORMS.map((form) => [foldFormText(form.name), 
 export function genreHrefForLabel(label: string): string | null {
   const folded = foldFormText(label.trim())
   if (!folded) return null
-  const instrument = legacyKeyboardInstrument(folded)
-  if (instrument) return `/genres/keyboard?filter=${instrument}`
+  if (legacyKeyboardInstrument(folded)) return "/genres/keyboard"
   const form = bySlug.get(folded) ?? byFoldedName.get(folded)
   if (!form) return null
   return relocatedGenreHref(form.slug) ?? `/genres/${form.slug}`
@@ -515,11 +521,11 @@ export function isEarlyKeyboardEpoch(epoch?: string | null): boolean {
 }
 
 /**
- * Piano, harpsichord, or organ for a character piece.
+ * Piano, harpsichord, or organ for a sonata or concerto row.
  * The earliest explicit instrument in the title or subtitle wins. Clavier and
  * Klavier follow the composer's era. With no instrument named, Medieval,
  * Renaissance, and Baroque works are harpsichord and later works are piano.
- * An unknown era is piano.
+ * An unknown era is piano. Keyboard genre chips do not use this split.
  */
 export function classifyKeyboardInstrument(
   title: string,

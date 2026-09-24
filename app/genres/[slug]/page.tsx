@@ -12,8 +12,9 @@ import {
   legacyKeyboardInstrumentHref,
   legacyKeyboardInstrumentLabel,
   relocatedGenreHref,
+  retiredKeyboardInstrumentFilter,
 } from "@/lib/forms"
-import { classifyListedSubtype, keyboardInstrumentOf, listedSubtypeFilters } from "@/lib/work-subtypes"
+import { classifyListedSubtype, listedSubtypeFilters } from "@/lib/work-subtypes"
 
 export function generateStaticParams() {
   return formSummaries().map((form) => ({ slug: form.slug }))
@@ -43,6 +44,8 @@ export default async function GenrePage({
   const legacyInstrument = legacyKeyboardInstrumentHref(slug, filter)
   if (legacyInstrument) permanentRedirect(legacyInstrument)
 
+  if (slug === "keyboard" && retiredKeyboardInstrumentFilter(filter)) permanentRedirect("/genres/keyboard")
+
   const moved = relocatedGenreHref(slug)
   if (moved) permanentRedirect(moved)
 
@@ -62,7 +65,6 @@ export default async function GenrePage({
       recommended: work.recommended,
       composerLabel: work.composerName,
       subtype: classifyListedSubtype(work)?.slug ?? null,
-      instrument: keyboardInstrumentOf(work),
       composer: {
         id: work.composerId,
         name: work.composerName,
