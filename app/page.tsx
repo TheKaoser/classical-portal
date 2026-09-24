@@ -36,12 +36,12 @@ export default function HomePage() {
         className="mt-40 flex flex-col items-center gap-10 sm:mt-48 sm:gap-12 md:mt-52"
         aria-label="Browse catalog"
       >
-        <div className="flex flex-nowrap items-center justify-center gap-8 sm:gap-16 md:gap-24">
+        <div className="mx-auto grid w-full max-w-2xl grid-cols-3">
           {ENTRIES.map(({ href, title }) => (
             <Link
               key={href}
               href={href}
-              className="shrink-0 text-xl font-medium tracking-tight text-primary outline-none transition-colors hover:text-primary-hover focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:text-2xl md:text-3xl"
+              className="justify-self-center whitespace-nowrap text-center text-base font-medium tracking-tight text-primary outline-none transition-colors hover:text-primary-hover focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 min-[360px]:text-xl sm:text-2xl md:text-3xl"
             >
               {title}
             </Link>
