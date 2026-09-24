@@ -12,7 +12,7 @@ const ENTRIES = [
 export default function HomePage() {
   return (
     <div className="pt-24 text-center sm:pt-32 md:pt-40">
-      <section className="space-y-8 sm:space-y-12 md:space-y-16">
+      <section className="space-y-6 sm:space-y-10 md:space-y-12">
         <h1 className="font-serif text-[clamp(2rem,(100vw-2.5rem)/6.35,4rem)] leading-none tracking-tight sm:text-7xl">
           <span className="sr-only">Classical Portal</span>
           <span
@@ -33,9 +33,18 @@ export default function HomePage() {
       </section>
 
       <nav
-        className="mt-40 flex flex-col items-center gap-16 sm:mt-48 sm:gap-24 md:mt-52"
+        className="mt-14 flex flex-col items-center gap-12 sm:mt-16 sm:gap-14 md:mt-20 md:gap-16"
         aria-label="Browse catalog"
       >
+        <Button
+          asChild
+          className="mx-auto h-11 w-fit self-center px-6 text-base shadow-raised has-[>svg]:px-6 sm:h-12 sm:px-7 sm:has-[>svg]:px-7"
+        >
+          <Link href="/discover">
+            <Sparkles aria-hidden="true" />
+            Discovery of the day
+          </Link>
+        </Button>
         <div className="mx-auto grid w-full max-w-2xl grid-cols-3">
           {ENTRIES.map(({ href, title }) => (
             <Link
@@ -47,15 +56,6 @@ export default function HomePage() {
             </Link>
           ))}
         </div>
-        <Button
-          asChild
-          className="mx-auto h-11 w-fit self-center px-6 text-base shadow-raised has-[>svg]:px-6 sm:h-12 sm:px-7 sm:has-[>svg]:px-7"
-        >
-          <Link href="/discover">
-            <Sparkles aria-hidden="true" />
-            Discovery of the day
-          </Link>
-        </Button>
       </nav>
     </div>
   )
