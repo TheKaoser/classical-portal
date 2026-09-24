@@ -1,15 +1,10 @@
-import composerEpochs from "@/data/composer-epochs.json"
 import catalog from "@/data/form-works.json"
 import {
-  CHARACTER_PIECES,
-  classifyKeyboardInstrument,
   FORM_GROUPS,
   WORK_FORMS,
   formsForBrowseSlug,
   groupForForm,
-  groupFromSlug,
   type CatalogGenre,
-  type KeyboardInstrument,
 } from "@/lib/forms"
 import { compareWorksByPopularity, dedupeWorks, isPopular } from "@/lib/openopus"
 
@@ -30,8 +25,6 @@ export type FormSummary = CatalogGenre & {
   popular: number
 }
 
-const epochs = composerEpochs as Record<string, string>
-
 export function loadFormWorks(): FormWork[] {
   return catalog.works
 }
@@ -43,26 +36,18 @@ function bump(counts: Map<string, { total: number; popular: number }>, slug: str
   counts.set(slug, row)
 }
 
-/** Genre that owns this form. Piano, Harpsichord, and Organ are counted beside Keyboard. */
+/** Genre that owns this form. Piano, harpsichord, and organ stay inside Keyboard. */
 export function browseSlugForWork(work: FormWork): string {
   const group = groupForForm(work.form)
   if (!group) return work.form
   return group.slug
 }
 
-function instrumentPageForWork(work: FormWork): KeyboardInstrument | null {
-  if (!CHARACTER_PIECES.includes(work.form as (typeof CHARACTER_PIECES)[number])) return null
-  return classifyKeyboardInstrument(work.title, work.subtitle, epochs[work.composerId] ?? null)
-}
-
 export function formSummaries(): FormSummary[] {
   const counts = new Map<string, { total: number; popular: number }>()
 
   for (const work of loadFormWorks()) {
-    const popular = isPopular(work)
-    bump(counts, browseSlugForWork(work), popular)
-    const instrument = instrumentPageForWork(work)
-    if (instrument) bump(counts, instrument, popular)
+    bump(counts, browseSlugForWork(work), isPopular(work))
   }
 
   const summaries: FormSummary[] = []
@@ -84,17 +69,7 @@ export function formSummaries(): FormSummary[] {
 }
 
 export function worksForForm(slug: string): FormWork[] {
-  const group = groupFromSlug(slug)
   const forms = new Set(formsForBrowseSlug(slug))
   if (!forms.size) return []
-  return dedupeWorks(
-    loadFormWorks().filter((work) => {
-      if (!forms.has(work.form)) return false
-      if (!group?.instrument) return true
-      return (
-        classifyKeyboardInstrument(work.title, work.subtitle, epochs[work.composerId] ?? null) ===
-        group.instrument
-      )
-    })
-  ).sort(compareWorksByPopularity)
+  return dedupeWorks(loadFormWorks().filter((work) => forms.has(work.form))).sort(compareWorksByPopularity)
 }

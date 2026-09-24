@@ -9,7 +9,14 @@
  */
 
 import composerEpochs from "../data/composer-epochs.json" with { type: "json" }
-import { classifyKeyboardInstrument, foldFormText, formFromSlug, groupForForm } from "./forms.ts"
+import {
+  KEYBOARD_INSTRUMENTS,
+  classifyKeyboardInstrument,
+  foldFormText,
+  formFromSlug,
+  groupForForm,
+  type KeyboardInstrument,
+} from "./forms.ts"
 
 export type WorkSubtype = {
   slug: string
@@ -186,6 +193,13 @@ export function classifyListedSubtype(work: TaggedWork): WorkSubtype | null {
   return classifyWorkSubtype(work)
 }
 
+/** Piano, harpsichord, or organ for a work on the Keyboard genre. */
+export function keyboardInstrumentOf(work: TaggedWork): KeyboardInstrument | null {
+  if (groupForForm(work.form)?.slug !== "keyboard") return null
+  const epoch = work.epoch?.trim() || (work.composerId ? epochs[work.composerId] : null) || null
+  return classifyKeyboardInstrument(work.title, work.subtitle, epoch)
+}
+
 export function listedSubtypeFilters<T extends TaggedWork>(works: T[]): Array<WorkSubtype & { count: number }> {
   if (works.some((work) => groupForForm(work.form))) return groupedFormFilters(works)
   return subtypeFilters(works)
@@ -215,7 +229,21 @@ function groupedFormFilters<T extends TaggedWork>(works: T[]): Array<WorkSubtype
     .map((slug) => counts.get(slug))
     .filter((row): row is WorkSubtype & { count: number } => Boolean(row && row.count >= MIN_COUNT))
   if (options.length < MIN_GROUPS) return []
-  return options
+  if (group?.slug !== "keyboard") return options
+  return [...keyboardInstrumentFilters(works), ...options]
+}
+
+function keyboardInstrumentFilters<T extends TaggedWork>(works: T[]): Array<WorkSubtype & { count: number }> {
+  const counts = new Map<string, number>()
+  for (const work of works) {
+    const instrument = keyboardInstrumentOf(work)
+    if (!instrument) continue
+    counts.set(instrument, (counts.get(instrument) ?? 0) + 1)
+  }
+  return KEYBOARD_INSTRUMENTS.flatMap((item) => {
+    const count = counts.get(item.slug) ?? 0
+    return count >= MIN_COUNT ? [{ slug: item.slug, label: item.label, count }] : []
+  })
 }
 
 export function subtypeFilters<T extends TaggedWork>(works: T[]): Array<WorkSubtype & { count: number }> {
@@ -243,6 +271,17 @@ export function subtypeFilters<T extends TaggedWork>(works: T[]): Array<WorkSubt
 export function filterWorksBySubtype<T extends { subtype: string | null }>(works: T[], slug: string): T[] {
   if (!slug || slug === "all") return works
   return works.filter((work) => work.subtype === slug)
+}
+
+/**
+ * One Keyboard chip is either a form or an instrument. Sonata and concerto
+ * rows only set `subtype`, so this stays the same filter there.
+ */
+export function filterWorksByListedFilter<
+  T extends { subtype: string | null; instrument?: string | null },
+>(works: T[], slug: string): T[] {
+  if (!slug || slug === "all") return works
+  return works.filter((work) => work.subtype === slug || work.instrument === slug)
 }
 
 function concertoSubtype(title: string, subtitle?: string | null): WorkSubtype | null {

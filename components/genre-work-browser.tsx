@@ -5,12 +5,14 @@ import { WorkList } from "@/components/work-list"
 import { useFilterSelection } from "@/hooks/use-filter-selection"
 import type { CompositionDate } from "@/lib/composition-label"
 import type { OpenOpusWork } from "@/lib/openopus"
+import { filterWorksByListedFilter } from "@/lib/work-subtypes"
 
 type BrowserWork = OpenOpusWork & {
   composerLabel?: string
   compositionDate?: CompositionDate | null
   compositionYear?: number | null
   subtype: string | null
+  instrument?: string | null
   composer?: { name: string; complete_name?: string }
 }
 
@@ -36,7 +38,7 @@ export function GenreWorkBrowser({
           })),
         ]}
       />
-      <WorkList works={active === "all" ? works : works.filter((work) => work.subtype === active)} />
+      <WorkList works={filterWorksByListedFilter(works, active)} />
     </>
   )
 }
