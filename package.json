@@ -8,7 +8,8 @@
     "lint": "next lint",
     "start": "next start",
     "test": "node --experimental-strip-types --test lib/*.test.ts",
-    "popularity": "node --experimental-strip-types scripts/refresh-spotify-popularity.ts"
+    "popularity": "node --experimental-strip-types scripts/refresh-spotify-popularity.ts",
+    "dates": "node --experimental-strip-types scripts/refresh-composition-dates.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

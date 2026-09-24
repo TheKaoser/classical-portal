@@ -48,6 +48,7 @@ export default async function ComposerPage({
     name: composer.name,
     complete_name: composer.complete_name,
     birth: composer.birth ?? worksResult.composer?.birth ?? null,
+    death: composer.death ?? worksResult.composer?.death ?? null,
   })
   const genreCounts = new Map<string, number>()
   let popularCount = 0

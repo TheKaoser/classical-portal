@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
+import { formatCompositionDate } from "@/lib/composition-label"
+import { attachCompositionYearsByComposer } from "@/lib/composition-years"
 import { omniSearch } from "@/lib/openopus"
 
 export async function GET(request: NextRequest) {
@@ -20,19 +22,22 @@ export async function GET(request: NextRequest) {
       }))
 
     const seenWorks = new Set<string>()
-    const works = []
+    const selected = []
     for (const hit of hits) {
       if (!hit.work || seenWorks.has(hit.work.id)) continue
       seenWorks.add(hit.work.id)
-      works.push({
-        id: hit.work.id,
-        title: hit.work.title,
-        genre: hit.work.genre,
-        composerId: hit.composer.id,
-        composerName: hit.composer.complete_name || hit.composer.name,
-      })
-      if (works.length >= 8) break
+      selected.push({ ...hit.work, composer: hit.composer })
+      if (selected.length >= 8) break
     }
+    const dated = await attachCompositionYearsByComposer(selected)
+    const works = dated.map((work) => ({
+      id: work.id,
+      title: work.title,
+      genre: work.genre,
+      composerId: work.composer.id,
+      composerName: work.composer.complete_name || work.composer.name,
+      compositionLabel: formatCompositionDate(work.compositionDate),
+    }))
 
     return NextResponse.json({ composers, works })
   } catch {

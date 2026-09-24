@@ -1,21 +1,28 @@
+import { formatCompositionDate, type CompositionDate } from "./composition-label.ts"
+
+export { formatCompositionDate, type CompositionDate }
+
 /**
- * Match Open Opus work titles to composition years.
+ * Match Open Opus work titles to composition dates.
  *
- * Years come from Wikidata inception (P571) on works whose composer (P86)
- * is the same person. Nothing here invents a year: a title is dated only
- * when catalogue numbers, a unique form-and-number, or the full title
- * point at exactly one year. Movements are ignored when the parent work
- * already has a year.
+ * A date is Wikidata inception (P571), or, when that is missing, IMSLP's
+ * "Year/Date of Composition" field. Nothing here invents a year: a title is
+ * dated only when catalogue numbers, a unique form-and-number, or the full
+ * title point at exactly one date. If the title already carries a catalogue
+ * number and that number is not in the index, form and title fallbacks are
+ * not used. Movements are ignored when the parent work already has a date.
  */
 
 export type DateIndex = {
-  catalogue: Record<string, number>
-  form: Record<string, number>
-  title: Record<string, number>
+  catalogue: Record<string, CompositionDate>
+  form: Record<string, CompositionDate>
+  title: Record<string, CompositionDate>
 }
 
 export type DatedWorkLabels = {
   year: number
+  end?: number | null
+  circa?: boolean
   labels: string[]
   /** Set when every label looks like a single movement, not the whole work. */
   movement?: boolean
@@ -104,6 +111,74 @@ function clampYear(year: number): number | null {
   return year
 }
 
+export function exactDate(year: number): CompositionDate | null {
+  const start = clampYear(year)
+  if (start == null) return null
+  return { start, end: null, circa: false }
+}
+
+export function coerceCompositionDate(value: unknown): CompositionDate | null {
+  if (typeof value === "number") return exactDate(value)
+  if (!value || typeof value !== "object") return null
+  const record = value as { start?: unknown; end?: unknown; circa?: unknown }
+  if (typeof record.start !== "number") return null
+  const start = clampYear(record.start)
+  if (start == null) return null
+  let end: number | null = null
+  if (typeof record.end === "number") {
+    end = clampYear(record.end)
+    if (end == null || end < start || end - start > 30) return null
+    if (end === start) end = null
+  }
+  return { start, end, circa: record.circa === true }
+}
+
+function coerceDateMap(value: unknown): Record<string, CompositionDate> {
+  if (!value || typeof value !== "object") return {}
+  const out: Record<string, CompositionDate> = {}
+  for (const [key, raw] of Object.entries(value)) {
+    const date = coerceCompositionDate(raw)
+    if (date) out[key] = date
+  }
+  return out
+}
+
+/** Accepts the current object cache and the older year-number cache. */
+export function normalizeDateIndex(value: unknown): DateIndex | null {
+  if (!value || typeof value !== "object") return null
+  const record = value as { catalogue?: unknown; form?: unknown; title?: unknown }
+  if (!record.catalogue || !record.form || !record.title) return null
+  return {
+    catalogue: coerceDateMap(record.catalogue),
+    form: coerceDateMap(record.form),
+    title: coerceDateMap(record.title),
+  }
+}
+
+export function dateWithinLife(
+  date: CompositionDate,
+  birthYear: number | null,
+  deathYear: number | null,
+  currentYear = new Date().getFullYear()
+): boolean {
+  const latest = deathYear != null ? deathYear + 5 : currentYear + 1
+  return [date.start, date.end ?? date.start].every(
+    (year) => (birthYear == null || year >= birthYear - 3) && year <= latest
+  )
+}
+
+export function dateFromWikidataPrecision(time: string, precision: number): CompositionDate | null {
+  const year = yearFromWikidataTime(time)
+  if (year == null || !Number.isInteger(precision)) return null
+  if (precision >= 9) return { start: year, end: null, circa: false }
+  if (precision === 8 && year % 10 === 0 && year % 100 !== 0) {
+    const end = clampYear(year + 9)
+    if (end == null) return null
+    return { start: year, end, circa: false }
+  }
+  return null
+}
+
 function foldLatin(value: string): string {
   return value
     .replace(/ß/g, "ss")
@@ -177,9 +252,12 @@ export function extractCatalogueKeys(value: string): string[] {
     keys.add(catalogueKey("woo", match[1], match[2]))
   }
 
-  const hobRe = /\bhob(?:oken)?\.?\s*([ivxlcdm]+)\s*[:./]\s*(\d{1,4}[a-z]?)/g
+  const hobRe =
+    /\bhob(?:oken)?\.?\s*([ivxlcdm]+[a-z]?)\s*[:./]\s*(\d{1,4}[a-z]?)(?:\s*[-–—]\s*(\d{1,4}))?/g
   for (const match of text.matchAll(hobRe)) {
-    keys.add(`hob:${match[1]}:${match[2].toLowerCase()}`)
+    const number = match[2].toLowerCase()
+    if (match[3]) keys.add(`hob:${match[1]}:${number}-${match[3]}`)
+    else keys.add(`hob:${match[1]}:${number}`)
   }
 
   const bwvAnhRe = /\bbwv\.?\s*anh\.?\s*(\d{1,4}[a-z]?)/g
@@ -236,6 +314,62 @@ function significantTokens(value: string): string[] {
     .filter((token) => token && !NAME_PARTICLES.has(token))
 }
 
+const GENERIC_TITLE = new Set([
+  "a",
+  "an",
+  "and",
+  "for",
+  "in",
+  "major",
+  "minor",
+  "flat",
+  "sharp",
+  "no",
+  "nr",
+  "nos",
+  "number",
+  "op",
+  "opus",
+  "symphony",
+  "sonata",
+  "concerto",
+  "quartet",
+  "quintet",
+  "sextet",
+  "trio",
+  "mass",
+  "requiem",
+  "opera",
+  "ballet",
+  "suite",
+  "prelude",
+  "fugue",
+  "etude",
+  "nocturne",
+  "waltz",
+  "song",
+  "songs",
+  "aria",
+  "overture",
+  "cantata",
+  "oratorio",
+  "motet",
+  "chorale",
+  "variation",
+  "variations",
+  "partita",
+  "toccata",
+  "fantasia",
+  "fantasy",
+  "rhapsody",
+  "serenade",
+  "divertimento",
+  "minuet",
+  "march",
+  "piece",
+  "pieces",
+])
+
 function substantialTitle(value: string): boolean {
   const normalized = normalizeTitle(value)
   if (!normalized || isMovementLabel(value)) return false
@@ -244,34 +378,58 @@ function substantialTitle(value: string): boolean {
   return normalized.length >= 12 || /\d/.test(normalized)
 }
 
-type YearBuckets = Map<string, { standalone: Set<number>; movement: Set<number> }>
+/** "Asyla, Op. 17" can date the Open Opus title "Asyla". Generic forms cannot. */
+function strippedTitleKey(label: string): string | null {
+  const full = normalizeTitle(label)
+  const stripped = normalizeTitle(stripCatalogueTokens(softNormalize(label)))
+  if (!stripped || stripped === full || isMovementLabel(label)) return null
+  if (GENERIC_TITLE.has(stripped) || stripped.length < 5) return null
+  const words = stripped.split(" ").filter(Boolean)
+  if (words.every((word) => GENERIC_TITLE.has(word) || /^\d+$/.test(word))) return null
+  return stripped
+}
 
-function addYear(map: YearBuckets, key: string, year: number, movement: boolean) {
-  const bucket = map.get(key) ?? { standalone: new Set<number>(), movement: new Set<number>() }
-  ;(movement ? bucket.movement : bucket.standalone).add(year)
+type DateBuckets = Map<string, { standalone: Map<string, CompositionDate>; movement: Map<string, CompositionDate> }>
+
+function dateIdentity(date: CompositionDate): string {
+  return `${date.circa ? "c" : "e"}:${date.start}:${date.end ?? ""}`
+}
+
+function addDate(map: DateBuckets, key: string, date: CompositionDate, movement: boolean) {
+  const bucket = map.get(key) ?? { standalone: new Map<string, CompositionDate>(), movement: new Map() }
+  ;(movement ? bucket.movement : bucket.standalone).set(dateIdentity(date), date)
   map.set(key, bucket)
 }
 
-function collapse(map: YearBuckets): Record<string, number> {
-  const out: Record<string, number> = {}
+function collapse(map: DateBuckets): Record<string, CompositionDate> {
+  const out: Record<string, CompositionDate> = {}
   for (const [key, bucket] of map) {
     if (bucket.standalone.size === 1) {
-      out[key] = [...bucket.standalone][0]
+      out[key] = [...bucket.standalone.values()][0]
     } else if (bucket.standalone.size === 0 && bucket.movement.size === 1) {
-      out[key] = [...bucket.movement][0]
+      out[key] = [...bucket.movement.values()][0]
     }
   }
   return out
 }
 
+function compositionDateFromWork(work: DatedWorkLabels): CompositionDate | null {
+  const start = clampYear(work.year)
+  if (start == null) return null
+  let end = work.end == null ? null : clampYear(work.end)
+  if (end != null && (end < start || end - start > 30)) return null
+  if (end === start) end = null
+  return { start, end, circa: work.circa === true }
+}
+
 export function buildDateIndex(works: DatedWorkLabels[]): DateIndex {
-  const catalogue: YearBuckets = new Map()
-  const form: YearBuckets = new Map()
-  const title: YearBuckets = new Map()
+  const catalogue: DateBuckets = new Map()
+  const form: DateBuckets = new Map()
+  const title: DateBuckets = new Map()
 
   for (const work of works) {
-    const year = clampYear(work.year)
-    if (year == null) continue
+    const date = compositionDateFromWork(work)
+    if (!date) continue
     const labels = work.labels.map((label) => label.trim()).filter(Boolean)
     if (!labels.length) continue
     const movement = work.movement ?? labels.every((label) => isMovementLabel(label))
@@ -285,11 +443,13 @@ export function buildDateIndex(works: DatedWorkLabels[]): DateIndex {
       const formKey = extractFormKey(label)
       if (formKey) formKeys.add(formKey)
       if (substantialTitle(label)) titleKeys.add(normalizeTitle(label))
+      const stripped = strippedTitleKey(label)
+      if (stripped) titleKeys.add(stripped)
     }
 
-    for (const key of catalogueKeys) addYear(catalogue, key, year, movement)
-    for (const key of formKeys) addYear(form, key, year, movement)
-    for (const key of titleKeys) addYear(title, key, year, movement)
+    for (const key of catalogueKeys) addDate(catalogue, key, date, movement)
+    for (const key of formKeys) addDate(form, key, date, movement)
+    for (const key of titleKeys) addDate(title, key, date, movement)
   }
 
   return {
@@ -299,68 +459,292 @@ export function buildDateIndex(works: DatedWorkLabels[]): DateIndex {
   }
 }
 
-function yearsFor(keys: string[], table: Record<string, number>): number[] {
-  const years = new Set<number>()
-  for (const key of keys) {
-    const year = table[key]
-    if (year != null) years.add(year)
+/**
+ * Combine exact years from one work (two Wikidata inception values, or every
+ * number in a catalogue span) into one date. A span wider than 30 years, or a
+ * mix of decades and exact years, is left unresolved.
+ */
+export function mergeExactYears(dates: CompositionDate[]): CompositionDate | null {
+  if (!dates.length) return null
+  if (dates.some((date) => date.circa || date.end != null)) {
+    const identity = dateIdentity(dates[0])
+    return dates.every((date) => dateIdentity(date) === identity) ? dates[0] : null
   }
-  return [...years]
+  const start = Math.min(...dates.map((date) => date.start))
+  const end = Math.max(...dates.map((date) => date.start))
+  if (end - start > 30) return null
+  return { start, end: end === start ? null : end, circa: false }
+}
+
+function datesFor(keys: string[], table: Record<string, CompositionDate>): CompositionDate[] {
+  const found = new Map<string, CompositionDate>()
+  for (const key of keys) {
+    const date = lookupCatalogueDate(key, table)
+    if (date) found.set(dateIdentity(date), date)
+  }
+  return [...found.values()]
+}
+
+/** "BWV 841-843" and "BWV 933-38" date the row only when every number is known. */
+function lookupCatalogueDate(key: string, table: Record<string, CompositionDate>): CompositionDate | null {
+  if (table[key]) return table[key]
+  const parts = expandCatalogueRange(key)
+  if (!parts) return null
+  const dates: CompositionDate[] = []
+  for (const part of parts) {
+    const date = table[part]
+    if (!date) return null
+    dates.push(date)
+  }
+  return mergeExactYears(dates)
+}
+
+function expandCatalogueRange(key: string): string[] | null {
+  const match = /^(.*):(\d+)-(\d+)$/.exec(key)
+  if (!match) return null
+  const prefix = match[1]
+  const start = Number(match[2])
+  let end = Number(match[3])
+  if (end < start && match[3].length < match[2].length) {
+    const factor = 10 ** match[3].length
+    end = Math.floor(start / factor) * factor + end
+    if (end < start) end += factor
+  }
+  if (end <= start || end - start > 24) return null
+  const keys: string[] = []
+  for (let number = start; number <= end; number++) keys.push(`${prefix}:${number}`)
+  return keys
 }
 
 export function matchCompositionYear(
   title: string,
   index: DateIndex,
   extraText?: string | string[] | null
-): number | null {
+): CompositionDate | null {
+  if (extractCatalogueKeys(title).length) return matchOne(title, index)
   const direct = matchOne(title, index)
-  if (direct != null) return direct
+  if (direct) return direct
   const extras = (Array.isArray(extraText) ? extraText : extraText ? [extraText] : [])
     .flatMap((value) => value.split(/[,;/]/))
     .map((value) => value.trim())
     .filter(Boolean)
   for (const extra of extras) {
-    const year = matchOne(extra, index)
-    if (year != null) return year
+    const date = matchOne(extra, index)
+    if (date) return date
   }
   return null
 }
 
-function matchOne(title: string, index: DateIndex): number | null {
+function matchOne(title: string, index: DateIndex): CompositionDate | null {
   const trimmed = title.trim()
   if (!trimmed) return null
 
   const catalogueKeys = extractCatalogueKeys(trimmed)
   if (catalogueKeys.length) {
-    const years = yearsFor(catalogueKeys, index.catalogue)
-    if (years.length === 1) return years[0]
-    if (years.length > 1) return null
+    const dates = datesFor(catalogueKeys, index.catalogue)
+    return dates.length === 1 ? dates[0] : null
   }
 
   const formKey = extractFormKey(trimmed)
-  if (formKey && index.form[formKey] != null) return index.form[formKey]
+  if (formKey && index.form[formKey]) return index.form[formKey]
+  // Bach's cantata number is the BWV number. Other catalogues are not implied.
+  const cantata = /^cantata:(\d+)$/.exec(formKey ?? "")
+  if (cantata && index.catalogue[`bwv:${cantata[1]}`]) return index.catalogue[`bwv:${cantata[1]}`]
 
   return matchTitle(trimmed, index.title)
 }
 
-function matchTitle(title: string, table: Record<string, number>): number | null {
+function allowsTitleExtension(rest: string): boolean {
+  if (!rest) return true
+  if (/^(?:book|books|part|parts|vol|vols|volume|volumes|no|nos|nr|number|movement|movements)\b/.test(rest)) {
+    return false
+  }
+  return !/^\d/.test(rest)
+}
+
+function matchTitle(title: string, table: Record<string, CompositionDate>): CompositionDate | null {
   const normalized = normalizeTitle(title)
-  const years = new Set<number>()
-  if (table[normalized] != null) years.add(table[normalized])
-  for (const [key, year] of Object.entries(table)) {
+  const found = new Map<string, CompositionDate>()
+  const add = (date: CompositionDate | undefined) => {
+    if (date) found.set(dateIdentity(date), date)
+  }
+  add(table[normalized])
+  for (const [key, date] of Object.entries(table)) {
     if (key.length < 12 || key === normalized) continue
-    if (normalized.startsWith(`${key} `) || normalized.endsWith(` ${key}`)) years.add(year)
+    if (normalized.startsWith(`${key} `)) {
+      if (allowsTitleExtension(normalized.slice(key.length + 1))) add(date)
+    } else if (normalized.endsWith(` ${key}`)) {
+      add(date)
+    }
   }
   for (const phrase of quotedPhrases(title)) {
     const key = normalizeTitle(phrase)
-    if (key.length >= 12 && table[key] != null) years.add(table[key])
+    if (key.length >= 12) add(table[key])
   }
-  if (years.size === 1) return [...years][0]
+  if (found.size === 1) return [...found.values()][0]
   return null
 }
 
 function quotedPhrases(title: string): string[] {
   return [...title.matchAll(/["“«]([^"”»]{3,})["”»]/g)].map((match) => match[1])
+}
+
+const CATALOGUE_KEYWORDS: [RegExp, string][] = [
+  [/bach-werke-verzeichnis|\bbwv\b/, "bwv"],
+  [/köchel|kochel|koechel|\bkv\b/, "k"],
+  [/hoboken|\bhob\b/, "hob"],
+  [/ryom-verzeichnis|\brv\b/, "rv"],
+  [/handel-werke-verzeichnis|händel-werke-verzeichnis|\bhwv\b/, "hwv"],
+  [/telemann-werke-verzeichnis|\btwv\b/, "twv"],
+  [/werke ohne opuszahl|\bwoo\b/, "woo"],
+  [/deutsch(?:-|\s)verzeichnis|\bdeutsch\b/, "d"],
+  [/\bopus\b/, "op"],
+]
+
+export function prefixFromCatalogueLabels(label: string, aliases: string[]): string | null {
+  const blob = `${label} ${aliases.join(" ")}`.toLowerCase()
+  for (const [pattern, prefix] of CATALOGUE_KEYWORDS) {
+    if (pattern.test(blob)) return prefix
+  }
+  const shorts = aliases
+    .map((alias) => /^([A-Za-z]{1,5})\.?$/.exec(alias.trim())?.[1]?.toLowerCase() ?? null)
+    .filter((token): token is string => Boolean(token && !CATALOGUE_SKIP.has(token)))
+    .sort((a, b) => a.length - b.length || a.localeCompare(b))
+  return shorts[0] ?? null
+}
+
+export function labelsForCatalogueCode(prefix: string | null, code: string): string[] {
+  const trimmed = code.trim().replace(/\s+/g, " ")
+  if (!trimmed || trimmed.length > 48 || /^\d{5,}$/.test(trimmed)) return []
+  const labels: string[] = []
+  const own = extractCatalogueKeys(trimmed)
+  if (own.length) labels.push(trimmed)
+  if (!prefix) return [...new Set(labels)]
+  const system = canonSystem(prefix.toLowerCase())
+  if (system === "bwv" && /\banh/i.test(trimmed)) {
+    labels.push(`BWV ${trimmed.replace(/anh\.?\s*/i, "Anh. ")}`.replace(/\s+/g, " "))
+    return [...new Set(labels)]
+  }
+  if (own.some((key) => key.startsWith(`${system}:`) || key.startsWith(`${system}.`))) return [...new Set(labels)]
+  const synthesized = synthesizeCatalogue(system, trimmed)
+  if (synthesized && extractCatalogueKeys(synthesized).length) labels.push(synthesized)
+  return [...new Set(labels)]
+}
+
+function synthesizeCatalogue(prefix: string, code: string): string | null {
+  if (prefix === "op") return `Op. ${code}`
+  if (prefix === "k") return `K. ${code}`
+  if (prefix === "hob") return `Hob. ${code}`
+  if (prefix === "woo") return `WoO ${code}`
+  if (prefix === "bwv") return `BWV ${code}`
+  if (!/^[a-z]{1,6}$/.test(prefix)) return null
+  return `${prefix.toUpperCase()}. ${code}`
+}
+
+function stripWiki(value: string): string {
+  let text = value.replace(/<!--[\s\S]*?-->/g, " ")
+  for (let i = 0; i < 6; i++) {
+    const next = text.replace(/\{\{[^{}]*\}\}/g, " ")
+    if (next === text) break
+    text = next
+  }
+  text = text.replace(/\[\[([^\[\]|]+)\|([^\[\]]+)\]\]/g, "$2")
+  text = text.replace(/\[\[([^\[\]]+)\]\]/g, "$1")
+  text = text.replace(/'''?/g, "")
+  text = text.replace(/<[^>]+>/g, " ")
+  text = text.replace(/&nbsp;|&#\d+;/g, " ")
+  return text
+}
+
+function stripCatalogueTokens(value: string): string {
+  return value.replace(
+    /\b(?:opus|op\.?|bwv|hwv|twv|wwv|swv|woo|hoboken|hob\.?|kv|k\.|rv|sz|trv|wab|wq|anh\.?)\s*[0-9][0-9a-z]*(?:\s*[-–—/]\s*[0-9]{1,4}[a-z]?)?/gi,
+    " "
+  )
+}
+
+function yearsIn(body: string): number[] {
+  const years: number[] = []
+  for (const match of body.matchAll(/\b(\d{3,4})\b/g)) {
+    const year = clampYear(Number(match[1]))
+    if (year != null) years.push(year)
+  }
+  return years
+}
+
+/**
+ * Parse a composition-date phrase from IMSLP or a similar catalogue note.
+ * Vague wording ("early 1720s", "before 1740", "?") yields nothing.
+ */
+export function parseCompositionDateText(raw: string): CompositionDate | null {
+  const plain = stripWiki(raw).replace(/\s+/g, " ").trim()
+  if (!plain) return null
+  const lower = plain.toLowerCase()
+  if (/[?]/.test(lower)) return null
+  if (/\b(?:unknown|undated|uncertain|various|century|centuries)\b/.test(lower)) return null
+  if (/\b(?:early|late|mid|middle|beginning|end)\b/.test(lower)) return null
+  if (/\b(?:before|after|until|prior|earlier|later)\b/.test(lower)) return null
+  if (/\bby\b/.test(lower)) return null
+  if (/\b(?:half|quarter)\b/.test(lower)) return null
+
+  const circa =
+    /\b(?:circa|approx(?:imately)?|around|about)\b/.test(lower) ||
+    /\bca\.?\s*\d/.test(lower) ||
+    /\bc\.?\s*\d/.test(lower) ||
+    /\d{3,4}\s*ca\.?\b/.test(lower)
+
+  let body = lower
+    .replace(/\b(?:circa|approximately|approx|around|about)\b/g, " ")
+    .replace(/\bca\.?/g, " ")
+    .replace(/\bc\./g, " ")
+  body = stripCatalogueTokens(body).replace(/\s+/g, " ").trim()
+
+  const years: number[] = []
+  body = body.replace(/\b(\d{4})[-/](\d{1,2})[-/](\d{1,2})\b/g, (_full, yearText, monthText, dayText) => {
+    const year = clampYear(Number(yearText))
+    const month = Number(monthText)
+    const day = Number(dayText)
+    if (year != null && month >= 1 && month <= 12 && day >= 1 && day <= 31) years.push(year)
+    return " "
+  })
+
+  const decades: number[] = []
+  body = body.replace(/\b(\d{3,4})s\b/g, (_full, yearText) => {
+    const start = Number(yearText)
+    if (start % 10 === 0 && start % 100 !== 0) decades.push(start)
+    return " "
+  })
+
+  body = body.replace(/\b(\d{3,4})\s*[-–—/]\s*(\d{2,4})\b/g, (_full, startText, endText) => {
+    const start = Number(startText)
+    let end = Number(endText)
+    if (end < 100) {
+      end = Math.floor(start / 100) * 100 + end
+      if (end < start) end += 100
+    }
+    const startYear = clampYear(start)
+    const endYear = clampYear(end)
+    if (startYear != null && endYear != null && endYear >= startYear && endYear - startYear <= 30) {
+      years.push(startYear, endYear)
+    }
+    return " "
+  })
+  years.push(...yearsIn(body))
+
+  if (decades.length && years.length) return null
+  if (decades.length === 1) {
+    const end = clampYear(decades[0] + 9)
+    if (end == null) return null
+    return { start: decades[0], end, circa: false }
+  }
+  if (decades.length > 1) return null
+
+  const unique = [...new Set(years)].sort((a, b) => a - b)
+  if (unique.length === 1) return { start: unique[0], end: null, circa }
+  if (unique.length > 1 && unique[unique.length - 1] - unique[0] <= 30) {
+    return { start: unique[0], end: unique[unique.length - 1], circa }
+  }
+  return null
 }
 
 export function compareByCompositionDate(

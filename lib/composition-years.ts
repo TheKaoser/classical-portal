@@ -1,11 +1,19 @@
 import { unstable_cache } from "next/cache"
 import catalog from "../data/composition-dates.json"
-import { EMPTY_DATE_INDEX, matchCompositionYear, type DateIndex } from "./composition-date.ts"
+import {
+  EMPTY_DATE_INDEX,
+  matchCompositionYear,
+  normalizeDateIndex,
+  type CompositionDate,
+  type DateIndex,
+} from "./composition-date.ts"
 import { fetchComposerDateIndex } from "./wikidata-dates.ts"
 
 type WorkLike = {
   title: string
   searchterms?: string | string[]
+  catalogue?: string
+  catalogue_number?: string
 }
 
 type ComposerLike = {
@@ -13,28 +21,32 @@ type ComposerLike = {
   name: string
   complete_name: string
   birth?: string | null
+  death?: string | null
+}
+
+export type DatedWork<T> = T & {
+  compositionDate: CompositionDate | null
+  compositionYear: number | null
 }
 
 type CatalogFile = {
-  byId?: Record<string, DateIndex>
+  byId?: Record<string, unknown>
 }
 
-const stored = ((catalog as CatalogFile).byId ?? {}) as Record<string, DateIndex>
+const stored = (catalog as unknown as CatalogFile).byId ?? {}
 const inflight = new Map<string, Promise<DateIndex>>()
 
 const liveIndex = unstable_cache(
-  async (completeName: string, birth: string) => {
-    const index = await fetchComposerDateIndex(completeName, birth || null)
+  async (completeName: string, birth: string, death: string) => {
+    const index = await fetchComposerDateIndex(completeName, birth || null, death || null)
     return index ?? EMPTY_DATE_INDEX
   },
-  ["wikidata-composition-dates-v1"],
+  ["wikidata-composition-dates-v2"],
   { revalidate: 60 * 60 * 24 * 14 }
 )
 
 function storedIndex(id: string): DateIndex | null {
-  const index = stored[id]
-  if (!index?.catalogue || !index.form || !index.title) return null
-  return index
+  return normalizeDateIndex(stored[id])
 }
 
 async function indexFor(composer: ComposerLike): Promise<DateIndex> {
@@ -44,7 +56,11 @@ async function indexFor(composer: ComposerLike): Promise<DateIndex> {
   if (pending) return pending
   const promise = (async () => {
     try {
-      return await liveIndex(composer.complete_name || composer.name, composer.birth ?? "")
+      return await liveIndex(
+        composer.complete_name || composer.name,
+        composer.birth ?? "",
+        composer.death ?? ""
+      )
     } catch (error) {
       inflight.delete(composer.id)
       console.warn(`Wikidata composition dates failed for ${composer.complete_name || composer.name}:`, error)
@@ -55,24 +71,41 @@ async function indexFor(composer: ComposerLike): Promise<DateIndex> {
   return promise
 }
 
-function withYear<T extends WorkLike>(work: T, index: DateIndex): T & { compositionYear: number | null } {
+function catalogueHint(work: WorkLike): string | null {
+  const system = work.catalogue?.trim().toLowerCase()
+  const number = work.catalogue_number?.trim()
+  if (!system || !number) return null
+  if (!/^[a-z]{1,8}$/.test(system)) return null
+  if (!/^[0-9][0-9a-z./:-]*$/i.test(number) || number.length > 24) return null
+  return `${system}. ${number}`
+}
+
+function withYear<T extends WorkLike>(work: T, index: DateIndex): DatedWork<T> {
+  const extras: string[] = []
+  const hint = catalogueHint(work)
+  if (hint) extras.push(hint)
+  const terms = work.searchterms
+  if (Array.isArray(terms)) extras.push(...terms)
+  else if (terms) extras.push(terms)
+  const compositionDate = matchCompositionYear(work.title, index, extras)
   return {
     ...work,
-    compositionYear: matchCompositionYear(work.title, index, work.searchterms),
+    compositionDate,
+    compositionYear: compositionDate?.start ?? null,
   }
 }
 
 export async function attachCompositionYears<T extends WorkLike>(
   works: T[],
   composer: ComposerLike
-): Promise<Array<T & { compositionYear: number | null }>> {
+): Promise<Array<DatedWork<T>>> {
   const index = await indexFor(composer)
   return works.map((work) => withYear(work, index))
 }
 
 export async function attachCompositionYearsByComposer<T extends WorkLike & { composer: ComposerLike }>(
   works: T[]
-): Promise<Array<T & { compositionYear: number | null }>> {
+): Promise<Array<DatedWork<T>>> {
   const composers = new Map<string, ComposerLike>()
   for (const work of works) composers.set(work.composer.id, work.composer)
   const indexes = new Map<string, DateIndex>()
