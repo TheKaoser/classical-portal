@@ -2,6 +2,7 @@
 
 import { FilterChips } from "@/components/filter-chips"
 import { WorkList } from "@/components/work-list"
+import { WorkListPlayback } from "@/components/work-list-playback"
 import { useFilterSelection } from "@/hooks/use-filter-selection"
 import type { CompositionDate } from "@/lib/composition-label"
 import type { OpenOpusWork } from "@/lib/openopus"
@@ -18,11 +19,14 @@ type BrowserWork = OpenOpusWork & {
 export function GenreWorkBrowser({
   works,
   filters,
+  oauthConfigured,
 }: {
   works: BrowserWork[]
   filters: { slug: string; label: string; count: number }[]
+  oauthConfigured: boolean
 }) {
   const { active, select } = useFilterSelection(filters.map((item) => item.slug))
+  const visible = filterWorksByListedFilter(works, active)
 
   return (
     <>
@@ -37,7 +41,9 @@ export function GenreWorkBrowser({
           })),
         ]}
       />
-      <WorkList works={filterWorksByListedFilter(works, active)} />
+      <WorkListPlayback oauthConfigured={oauthConfigured} works={visible}>
+        <WorkList works={visible} />
+      </WorkListPlayback>
     </>
   )
 }

@@ -1,7 +1,11 @@
+"use client"
+
 import { Star } from "lucide-react"
 import { ListLink } from "@/components/list-link"
+import { useWorkPlaybackStore, WorkPlayButton } from "@/components/work-list-playback"
 import { formatCompositionDate, type CompositionDate } from "@/lib/composition-label"
 import { isPopular, type OpenOpusWork } from "@/lib/openopus"
+import { cn } from "@/lib/utils"
 
 type ListedWork = OpenOpusWork & {
   composer?: { name: string; complete_name?: string }
@@ -19,6 +23,7 @@ export function WorkList({
   showComposer?: boolean
   showGenre?: boolean
 }) {
+  const playback = useWorkPlaybackStore()
   if (!works.length) {
     return <p className="text-sm text-muted-foreground">No works in this view.</p>
   }
@@ -26,8 +31,9 @@ export function WorkList({
   return (
     <ul className="space-y-0.5">
       {works.map((work) => (
-        <li key={work.id}>
-          <ListLink href={`/works/${work.id}`}>
+        <li key={work.id} className={cn(playback && "work-play-row relative")}>
+          {playback ? <WorkPlayButton workId={work.id} title={work.title} /> : null}
+          <ListLink href={`/works/${work.id}`} className={playback ? "work-play-link" : undefined}>
             {isPopular(work) ? (
               <Star className="mt-0.5 h-4 w-4 shrink-0 fill-brand-yellow text-brand-yellow" />
             ) : (

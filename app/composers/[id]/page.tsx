@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/page-header"
 import { sortWorksChronologically } from "@/lib/composition-date"
 import { attachCompositionYears } from "@/lib/composition-years"
 import { epochHref } from "@/lib/epochs"
+import { isSpotifyOAuthConfigured } from "@/lib/spotify"
 import { readFilterSlug } from "@/lib/filter-history"
 import {
   compareWorksByPopularity,
@@ -102,6 +103,7 @@ export default async function ComposerPage({
         filters={filters}
         defaultFilter={defaultFilter}
         initialFilter={initialFilter}
+        oauthConfigured={isSpotifyOAuthConfigured()}
       />
     </div>
   )

@@ -120,3 +120,35 @@
     color: var(--navy);
   }
 }
+
+/* List play sits in a left gutter, before the star and title.
+   Pointer devices reveal the icon on hover or focus.
+   Touch screens keep it visible. Unlayered so it wins over row padding utilities. */
+.work-play {
+  left: -0.5rem;
+  transition: opacity 120ms ease;
+}
+
+/* Gutter holds the 2rem control and its focus ring, clear of the star. */
+.work-play-row .work-play-link {
+  padding-left: 3.25rem;
+}
+
+.work-play[data-revealed="true"] + .work-play-link {
+  background-color: var(--accent);
+}
+
+@media (hover: hover) {
+  .work-play {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .work-play-row:hover > .work-play,
+  .work-play-row:focus-within > .work-play,
+  .work-play:focus-visible,
+  .work-play[data-revealed="true"] {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
