@@ -24,6 +24,7 @@ import {
   parsePendingListPlayback,
   readShufflePreference,
   shouldAdvanceList,
+  shouldChainListWork,
   shuffleWorkIds,
   workRecordingId,
   writeShufflePreference,
@@ -98,15 +99,25 @@ function PlaybackMachine({ store, workIds }: { store: ListPlaybackStore; workIds
   const sessionRef = useRef<Session | null>(null)
   const lastUriRef = useRef<string | null>(null)
   const advanceTimerRef = useRef<number | null>(null)
+  const contextEndTimerRef = useRef<number | null>(null)
+  const transportGenerationRef = useRef(0)
   const advancingRef = useRef(false)
   const resumedRef = useRef(false)
   const { activeUri, playerPhase, lastIssue } = spotify
 
-  function bump(): number {
+  function clearAdvanceTimers() {
     if (advanceTimerRef.current != null) {
       window.clearTimeout(advanceTimerRef.current)
       advanceTimerRef.current = null
     }
+    if (contextEndTimerRef.current != null) {
+      window.clearTimeout(contextEndTimerRef.current)
+      contextEndTimerRef.current = null
+    }
+  }
+
+  function bump(): number {
+    clearAdvanceTimers()
     advancingRef.current = false
     const session = sessionRef.current
     const generation = (session?.generation ?? 0) + 1
@@ -323,9 +334,14 @@ function PlaybackMachine({ store, workIds }: { store: ListPlaybackStore; workIds
     const session = sessionRef.current
     if (!session || session.generation !== generation || session.mode !== "list" || session.finished) return
     if (advancingRef.current) return
+    const transport = transportGenerationRef.current
     advancingRef.current = true
     try {
       const found = await takePlayable(session, session.cursor + 1, LIST_PLAY_GAP_ATTEMPTS)
+      if (transportGenerationRef.current !== transport) {
+        if (sessionRef.current === session) store.patch({ resolvingWorkId: null })
+        return
+      }
       if (sessionRef.current !== session) return
       if (found === "stop") {
         stopSession(session, {})
@@ -453,9 +469,14 @@ function PlaybackMachine({ store, workIds }: { store: ListPlaybackStore; workIds
     }
     const generation = session.generation
     const last = lastUriRef.current
+    const cursor = session.cursor
+    const transport = transportGenerationRef.current
     advanceTimerRef.current = window.setTimeout(() => {
-      advanceTimerRef.current = null
+      clearAdvanceTimers()
+      if (transportGenerationRef.current !== transport) return
       if (lastUriRef.current !== last) return
+      const current = sessionRef.current
+      if (!current || current !== session || current.cursor !== cursor) return
       void continueListRef.current(generation)
     }, LIST_PLAY_ADVANCE_DELAY_MS)
     return () => {
@@ -465,6 +486,39 @@ function PlaybackMachine({ store, workIds }: { store: ListPlaybackStore; workIds
       }
     }
   }, [activeUri, playerPhase])
+
+  useEffect(() => {
+    return spotify.registerContextEnded((uri) => {
+      const session = sessionRef.current
+      if (!session || !shouldChainListWork({
+        mode: session.mode,
+        finished: session.finished,
+        workUris: session.uris,
+        endedUri: uri,
+      })) {
+        return
+      }
+      const generation = session.generation
+      const cursor = session.cursor
+      const transport = transportGenerationRef.current
+      if (contextEndTimerRef.current != null) window.clearTimeout(contextEndTimerRef.current)
+      contextEndTimerRef.current = window.setTimeout(() => {
+        clearAdvanceTimers()
+        if (transportGenerationRef.current !== transport) return
+        const current = sessionRef.current
+        if (!current || current !== session || current.generation !== generation || current.finished) return
+        if (current.cursor !== cursor) return
+        void continueListRef.current(generation)
+      }, LIST_PLAY_ADVANCE_DELAY_MS)
+    })
+  }, [spotify.registerContextEnded])
+
+  useEffect(() => {
+    return spotify.registerUserTransport(() => {
+      transportGenerationRef.current += 1
+      clearAdvanceTimers()
+    })
+  }, [spotify.registerUserTransport])
 
   useEffect(() => {
     if (!spotify.oauthConfigured || !spotify.session.connected || resumedRef.current) return

@@ -7,8 +7,10 @@ import { orderedTrackUris } from "./spotify-playback.ts"
  * Play all starts on the first filtered work that has a recording (shuffled
  * first when Random is on). While that recording plays, the next two works
  * are matched in the background. When its last movement ends, the next work
- * starts through the existing in-page player. A list of thousands never
- * fans out into thousands of Spotify searches up front.
+ * starts through the existing in-page player. That next work is the following
+ * id in this Play all order: list order, or the shuffle chosen when Play all
+ * started with Random on. A list of thousands never fans out into thousands
+ * of Spotify searches up front.
  *
  * Matching stops after a bounded number of misses so an unmatched stretch
  * cannot walk the whole catalog. The next Play all, or a row play, continues.
@@ -24,8 +26,9 @@ export const LIST_PLAY_START_ATTEMPTS = 40
 export const LIST_PLAY_GAP_ATTEMPTS = 8
 
 /**
- * Wait after the player reports silence on the last movement.
- * A brief null state between movements must not skip the rest of the work.
+ * Wait after the work's last movement finishes before starting the next one.
+ * A brief null state between movements must not skip the rest of the work,
+ * and a pause or resume during the wait cancels it.
  */
 export const LIST_PLAY_ADVANCE_DELAY_MS = 700
 
@@ -83,6 +86,19 @@ export function primaryRecordingUris(
 
 export function isLastTrack(uris: readonly string[], uri: string | null): boolean {
   return Boolean(uri && uris.length > 0 && uris[uris.length - 1] === uri)
+}
+
+/**
+ * True when the URI that just finished is the last movement of the active
+ * Play all work. Row play is a single work and does not chain.
+ */
+export function shouldChainListWork(input: {
+  mode: "single" | "list"
+  finished: boolean
+  workUris: readonly string[]
+  endedUri: string
+}): boolean {
+  return input.mode === "list" && !input.finished && isLastTrack(input.workUris, input.endedUri)
 }
 
 /**

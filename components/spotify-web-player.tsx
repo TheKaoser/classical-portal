@@ -31,6 +31,9 @@ import {
   playbackControlAction,
   playbackControlLabel,
   playbackControlShowsPause,
+  playbackNaturalEnd,
+  PLAYBACK_END_PARKED_MS,
+  type PlaybackProgress,
 } from "@/lib/spotify-player-session"
 
 export type PlaybackIssue = {
@@ -250,6 +253,8 @@ export function SpotifyWebPlayer({
   onRegisterTransport,
   onPhase,
   onTrackUri,
+  onContextEnded,
+  onUserTransport,
   onIssue,
   savedTrackUris = [],
   onSaveTrack,
@@ -263,6 +268,10 @@ export function SpotifyWebPlayer({
   onRegisterTransport?: (transport: { pause: () => void; resume: () => void }) => void
   onPhase?: (phase: Phase) => void
   onTrackUri?: (uri: string | null) => void
+  /** Last track of this play request finished without a listener pause or resume. */
+  onContextEnded?: (uri: string) => void
+  /** Listener pressed pause or resume. Cancels a pending queue advance. */
+  onUserTransport?: () => void
   onIssue: (issue: PlaybackIssue) => void
   savedTrackUris?: string[]
   onSaveTrack?: (uri: string) => Promise<{ ok: true } | { ok: false; message: string }>
@@ -270,11 +279,15 @@ export function SpotifyWebPlayer({
   const onIssueRef = useRef(onIssue)
   const onPhaseRef = useRef(onPhase)
   const onTrackUriRef = useRef(onTrackUri)
+  const onContextEndedRef = useRef(onContextEnded)
+  const onUserTransportRef = useRef(onUserTransport)
   const onArmRef = useRef(onArm)
   const onRegisterTransportRef = useRef(onRegisterTransport)
   onIssueRef.current = onIssue
   onPhaseRef.current = onPhase
   onTrackUriRef.current = onTrackUri
+  onContextEndedRef.current = onContextEnded
+  onUserTransportRef.current = onUserTransport
   onArmRef.current = onArm
   onRegisterTransportRef.current = onRegisterTransport
 
@@ -289,14 +302,24 @@ export function SpotifyWebPlayer({
   const socketRef = useRef<"idle" | "connecting" | "ready" | "closed">("idle")
   const urisRef = useRef(uris)
   const startPositionRef = useRef(startPosition)
+  const requestGenerationRef = useRef(generation)
   urisRef.current = uris
   startPositionRef.current = startPosition
+  requestGenerationRef.current = generation
+  const progressRef = useRef<(PlaybackProgress & { generation: number }) | null>(null)
+  const contextEndSentForRef = useRef<string | null>(null)
+  const userPausedRef = useRef(false)
+  const userPausedAtRef = useRef(0)
+  /** Resume rewinds a finished track to 0; ignore the end signal until playback has moved on. */
+  const ignoreEndUntilRef = useRef(0)
+  const phaseRef = useRef<Phase>("connecting")
   const scrubbingRef = useRef(false)
   const pendingSeekRef = useRef<{ positionMs: number; untilMs: number } | null>(null)
   const lastSeekAtRef = useRef(0)
   const acceptPositionRef = useRef<(reportedMs: number) => void>(() => {})
 
   const [phase, setPhase] = useState<Phase>("connecting")
+  phaseRef.current = phase
   const [trackName, setTrackName] = useState("")
   const [trackUri, setTrackUri] = useState("")
   const [artists, setArtists] = useState("")
@@ -336,8 +359,74 @@ export function SpotifyWebPlayer({
 
   function setPlaybackPhase(next: Phase) {
     setPhase(next)
+    phaseRef.current = next
     onPhaseRef.current?.(next)
   }
+
+  function lastRequestedUri(): string | null {
+    const list = urisRef.current
+    return list.length > 0 ? list[list.length - 1] : null
+  }
+
+  function notePlaybackState(state: SpotifyPlaybackState | null) {
+    const nowMs = Date.now()
+    if (progressRef.current && progressRef.current.generation !== requestGenerationRef.current) {
+      progressRef.current = null
+      contextEndSentForRef.current = null
+      ignoreEndUntilRef.current = 0
+    }
+    if (phaseRef.current === "connecting") return
+    if (!state?.track_window?.current_track?.uri) return
+    if (userPausedRef.current && !state.paused && nowMs - userPausedAtRef.current > 1_500) {
+      userPausedRef.current = false
+    }
+    const uri = state.track_window.current_track.uri
+    const durationMs = state.duration || state.track_window.current_track.duration_ms || 0
+    const next = { paused: state.paused, positionMs: state.position, durationMs, uri }
+    if (!next.paused && durationMs > 0 && next.positionMs < durationMs - PLAYBACK_END_PARKED_MS) {
+      contextEndSentForRef.current = null
+    }
+    const ended =
+      nowMs >= ignoreEndUntilRef.current &&
+      playbackNaturalEnd({
+        previous: progressRef.current,
+        next,
+        nowMs,
+        userPaused: userPausedRef.current,
+        isLastInContext: lastRequestedUri() === uri,
+      })
+    progressRef.current = { ...next, atMs: nowMs, generation: requestGenerationRef.current }
+    if (state.paused) userPausedRef.current = false
+    if (ended && contextEndSentForRef.current !== uri) {
+      contextEndSentForRef.current = uri
+      onContextEndedRef.current?.(uri)
+    }
+  }
+
+  const notePlaybackStateRef = useRef(notePlaybackState)
+  notePlaybackStateRef.current = notePlaybackState
+
+  function pauseFromUser() {
+    userPausedRef.current = true
+    userPausedAtRef.current = Date.now()
+    onUserTransportRef.current?.()
+    void playerRef.current?.pause()
+  }
+
+  function resumeFromUser() {
+    userPausedRef.current = false
+    userPausedAtRef.current = 0
+    contextEndSentForRef.current = null
+    ignoreEndUntilRef.current = Date.now() + 1_500
+    onUserTransportRef.current?.()
+    unlockBrowserAudio(playerRef.current)
+    void playerRef.current?.resume()
+  }
+
+  const pauseFromUserRef = useRef(pauseFromUser)
+  const resumeFromUserRef = useRef(resumeFromUser)
+  pauseFromUserRef.current = pauseFromUser
+  resumeFromUserRef.current = resumeFromUser
 
   function destroyPlayer() {
     if (readyTimerRef.current != null) {
@@ -465,6 +554,7 @@ export function SpotifyWebPlayer({
       })
       player.addListener("player_state_changed", (state) => {
         if (!mountedRef.current) return
+        notePlaybackStateRef.current(state)
         if (!state) {
           onTrackUriRef.current?.(null)
           return
@@ -551,11 +641,10 @@ export function SpotifyWebPlayer({
     })
     onRegisterTransportRef.current?.({
       pause: () => {
-        void playerRef.current?.pause()
+        pauseFromUserRef.current()
       },
       resume: () => {
-        unlockBrowserAudio(playerRef.current)
-        void playerRef.current?.resume()
+        resumeFromUserRef.current()
       },
     })
     return () => {
@@ -574,6 +663,10 @@ export function SpotifyWebPlayer({
     let cancelled = false
     scrubbingRef.current = false
     pendingSeekRef.current = null
+    progressRef.current = null
+    contextEndSentForRef.current = null
+    userPausedRef.current = false
+    ignoreEndUntilRef.current = 0
     setPlaybackPhase("connecting")
     setTrackName("")
     setTrackUri("")
@@ -708,7 +801,9 @@ export function SpotifyWebPlayer({
     if (!active || phase === "connecting" || phase === "paused") return
     const id = window.setInterval(() => {
       void playerRef.current?.getCurrentState().then((state) => {
-        if (!state || !mountedRef.current) return
+        if (!mountedRef.current) return
+        if (state) notePlaybackStateRef.current(state)
+        if (!state) return
         acceptPositionRef.current(state.position)
         setDuration(state.duration || state.track_window.current_track.duration_ms)
         setPlaybackPhase(phaseFromPlayerPaused(state.paused))
@@ -743,15 +838,16 @@ export function SpotifyWebPlayer({
           aria-label={controlLabel === "Connecting…" ? "Play" : controlLabel}
           disabled={phase === "connecting"}
           onClick={() => {
-            unlockBrowserAudio(playerRef.current)
             const action = playbackControlAction(phase)
             if (action === "pause") {
-              void playerRef.current?.pause()
+              pauseFromUserRef.current()
               return
             }
             if (action === "resume") {
-              void playerRef.current?.resume()
+              resumeFromUserRef.current()
+              return
             }
+            unlockBrowserAudio(playerRef.current)
           }}
         >
           {showPause ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
