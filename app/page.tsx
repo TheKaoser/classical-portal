@@ -33,7 +33,7 @@ export default function HomePage() {
       </section>
 
       <nav
-        className="mt-40 flex flex-col items-center gap-10 sm:mt-48 sm:gap-12 md:mt-52"
+        className="mt-40 flex flex-col items-center gap-16 sm:mt-48 sm:gap-24 md:mt-52"
         aria-label="Browse catalog"
       >
         <div className="mx-auto grid w-full max-w-2xl grid-cols-3">
@@ -47,7 +47,10 @@ export default function HomePage() {
             </Link>
           ))}
         </div>
-        <Button asChild className="h-11 px-6 text-base shadow-raised has-[>svg]:px-6 sm:h-12 sm:px-7 sm:has-[>svg]:px-7">
+        <Button
+          asChild
+          className="mx-auto h-11 w-fit self-center px-6 text-base shadow-raised has-[>svg]:px-6 sm:h-12 sm:px-7 sm:has-[>svg]:px-7"
+        >
           <Link href="/discover">
             <Sparkles aria-hidden="true" />
             Discovery of the day
