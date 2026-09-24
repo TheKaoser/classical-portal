@@ -1,16 +1,11 @@
 import type { Metadata, Viewport } from "next"
 import type { ReactNode } from "react"
-import { Newsreader, Inter } from "next/font/google"
+import { Newsreader } from "next/font/google"
 import "./globals.css"
 import { AppNavigationMarker } from "@/components/app-navigation-marker"
 import { SiteHeader } from "@/components/site-header"
 import { SpotifyPlayerProvider } from "@/components/spotify-player-provider"
 import { isSpotifyOAuthConfigured } from "@/lib/spotify"
-
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-})
 
 const newsreader = Newsreader({
   subsets: ["latin"],
@@ -51,7 +46,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${inter.variable} ${newsreader.variable} flex min-h-dvh flex-col font-sans antialiased`}
+        className={`${newsreader.variable} flex min-h-dvh flex-col font-sans antialiased`}
       >
         <SpotifyPlayerProvider oauthConfigured={oauthConfigured}>
           <AppNavigationMarker />
