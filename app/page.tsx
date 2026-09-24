@@ -12,7 +12,7 @@ const ENTRIES = [
 export default function HomePage() {
   return (
     <div className="pt-24 text-center sm:pt-32 md:pt-40">
-      <section className="space-y-6 sm:space-y-10 md:space-y-12">
+      <section className="space-y-3 sm:space-y-4 md:space-y-5">
         <h1 className="font-serif text-[clamp(2rem,(100vw-2.5rem)/6.35,4rem)] leading-none tracking-tight sm:text-7xl">
           <span className="sr-only">Classical Portal</span>
           <span
@@ -33,7 +33,7 @@ export default function HomePage() {
       </section>
 
       <nav
-        className="mt-14 flex flex-col items-center gap-12 sm:mt-16 sm:gap-14 md:mt-20 md:gap-16"
+        className="mt-14 flex flex-col items-center gap-24 sm:mt-16 sm:gap-32 md:mt-20 md:gap-40"
         aria-label="Browse catalog"
       >
         <Button
