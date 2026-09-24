@@ -12,7 +12,6 @@ type BrowserWork = OpenOpusWork & {
   compositionDate?: CompositionDate | null
   compositionYear?: number | null
   subtype: string | null
-  instrument?: string | null
   composer?: { name: string; complete_name?: string }
 }
 
