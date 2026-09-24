@@ -2,9 +2,10 @@
  * Rebuild data/composition-dates.json.
  *
  * Open Opus has no composition year. For each composer this script reads
- * Wikidata inception (P571) and, where that is missing, the IMSLP
- * "Year/Date of Composition" field linked by Wikidata P839. Premiere and
- * publication dates are not used.
+ * Wikidata inception (P571) and the IMSLP "Year/Date of Composition" field.
+ * IMSLP pages come from Wikidata P839 and, when that link is missing, from
+ * the composer's IMSLP category. Premiere and publication dates are not used.
+ * A refresh keeps a year that is already stored and fills keys that were blank.
  *
  *   node --experimental-strip-types scripts/refresh-composition-dates.ts --refresh
  *
@@ -13,13 +14,18 @@
  * A full run (no `--composer`) rewrites `stats` with the Open Opus match rate.
  */
 import { readFileSync, writeFileSync } from "node:fs"
-import { EMPTY_DATE_INDEX, matchCompositionYear, normalizeDateIndex } from "../lib/composition-date.ts"
+import {
+  EMPTY_DATE_INDEX,
+  matchCompositionYear,
+  mergeDateIndexes,
+  normalizeDateIndex,
+} from "../lib/composition-date.ts"
 import { fetchComposerDateIndex } from "../lib/wikidata-dates.ts"
 
 const OPEN_OPUS = "https://api.openopus.org"
 const OUT = new URL("../data/composition-dates.json", import.meta.url)
 const SOURCE =
-  "Wikidata inception (P571, year precision or finer) on works with composer (P86). Several exact years within 30 years are stored as a range. IMSLP Year/Date of Composition via Wikidata P839 when inception is missing. Matched on catalogue numbers (a numbered span only when every number is dated), then a unique form or title. Premiere (P1191) and publication (P577) are not used. Open Opus does not provide a year."
+  "Wikidata inception (P571, year precision or finer) on works with composer (P86). A century-like decade can still use the statement's start and end years. Several exact years within 30 years are stored as a range. IMSLP Year/Date of Composition comes from Wikidata P839 and from the composer's IMSLP category when the page names that composer. An existing catalogue key is not replaced. A set key is dropped when its numbered pieces do not share one date. Matched on catalogue numbers (a numbered span only when every number is dated), then a unique form or title. Premiere (P1191), publication (P577), and MusicBrainz first-release dates are not used. Open Opus does not provide a year."
 
 type Composer = {
   id: string
@@ -93,12 +99,14 @@ async function main() {
       try {
         const dateIndex = await fetchComposerDateIndex(label, composer.birth, composer.death)
         if (dateIndex) {
-          catalog.byId[composer.id] = dateIndex
+          const previous = normalizeDateIndex(catalog.byId[composer.id]) ?? EMPTY_DATE_INDEX
+          const merged = mergeDateIndexes(previous, dateIndex)
+          catalog.byId[composer.id] = merged
           found += 1
           const keys =
-            Object.keys(dateIndex.catalogue).length +
-            Object.keys(dateIndex.form).length +
-            Object.keys(dateIndex.title).length
+            Object.keys(merged.catalogue).length +
+            Object.keys(merged.form).length +
+            Object.keys(merged.title).length
           console.log(`${index + 1}/${composers.length} ${label}: ${keys} keys`)
         } else {
           catalog.byId[composer.id] = { catalogue: {}, form: {}, title: {} }
@@ -116,7 +124,7 @@ async function main() {
 
   await Promise.all([worker(), worker()])
   catalog.generatedAt = new Date().toISOString()
-  catalog.coverageVersion = 2
+  catalog.coverageVersion = 3
   if (!only.size) catalog.stats = await coverage(catalog)
   write(catalog)
   console.log(
@@ -145,11 +153,23 @@ async function coverage(catalog: Catalog): Promise<Stats> {
       cursor += 1
       const composer = composers[index]
       const list = await openOpus(`/work/list/composer/${encodeURIComponent(composer.id)}/genre/all.json`)
-      const works = (list.works as { title?: string; searchterms?: string | string[] }[] | undefined) ?? []
+      const works =
+        (list.works as {
+          title?: string
+          searchterms?: string | string[]
+          catalogue?: string
+          catalogue_number?: string
+        }[] | undefined) ?? []
       const dateIndex = normalizeDateIndex(catalog.byId[composer.id]) ?? EMPTY_DATE_INDEX
       for (const work of works) {
         stats.works += 1
-        const date = matchCompositionYear(work.title ?? "", dateIndex, work.searchterms)
+        const extras: string[] = []
+        const hint = catalogueHint(work.catalogue, work.catalogue_number)
+        if (hint) extras.push(hint)
+        const terms = work.searchterms
+        if (Array.isArray(terms)) extras.push(...terms)
+        else if (terms) extras.push(terms)
+        const date = matchCompositionYear(work.title ?? "", dateIndex, extras)
         if (!date) continue
         stats.dated += 1
         if (date.circa) stats.circa += 1
@@ -178,6 +198,15 @@ async function openOpus(path: string): Promise<Record<string, unknown>> {
   throw lastError
 }
 
+function catalogueHint(system: string | undefined, number: string | undefined): string | null {
+  const catalogue = system?.trim().toLowerCase()
+  const value = number?.trim()
+  if (!catalogue || !value) return null
+  if (!/^[a-z]{1,8}$/.test(catalogue)) return null
+  if (!/^[0-9][0-9a-z./:-]*$/i.test(value) || value.length > 24) return null
+  return `${catalogue}. ${value}`
+}
+
 function loadCatalog(): Catalog {
   try {
     const parsed = JSON.parse(readFileSync(OUT, "utf8")) as Partial<Catalog>
@@ -194,7 +223,7 @@ function loadCatalog(): Catalog {
   } catch {
     // Start a new catalog.
   }
-  return { source: SOURCE, generatedAt: null, coverageVersion: 2, doneIds: [], stats: null, byId: {} }
+  return { source: SOURCE, generatedAt: null, coverageVersion: 3, doneIds: [], stats: null, byId: {} }
 }
 
 function write(catalog: Catalog) {

@@ -1,7 +1,8 @@
 import {
   birthYearFromIso,
   buildDateIndex,
-  dateFromWikidataPrecision,
+  catalogueKeyLabel,
+  dateFromInceptionClaim,
   dateWithinLife,
   extractCatalogueKeys,
   mergeExactYears,
@@ -15,7 +16,13 @@ import {
   type DateIndex,
   type DatedWorkLabels,
 } from "./composition-date.ts"
-import { fetchImslpWorkFields, imslpLookupKey, imslpTitleLabel } from "./imslp-dates.ts"
+import {
+  fetchImslpWorkFields,
+  imslpLookupKey,
+  imslpPageMatchesComposer,
+  imslpTitleLabel,
+  listImslpCategoryPages,
+} from "./imslp-dates.ts"
 
 const USER_AGENT = "ClassicalPortal/1.0 (https://github.com/TheKaoser/classical-portal)"
 const COMPOSER_OCCUPATION = "Q36834"
@@ -36,7 +43,7 @@ export async function fetchComposerDateIndex(
   let qid = await resolveQid(completeName, birthYear)
   if (!qid) qid = await resolveQid(`${completeName} composer`, birthYear)
   if (!qid || !/^Q\d+$/.test(qid)) return null
-  const works = await fetchDatedWorks(qid, birthYear, deathYear)
+  const works = await fetchDatedWorks(qid, completeName, birthYear, deathYear)
   return buildDateIndex(works)
 }
 
@@ -136,11 +143,12 @@ const prefixCache = new Map<string, string | null>()
 
 async function fetchDatedWorks(
   qid: string,
+  completeName: string,
   birthYear: number | null,
   deathYear: number | null
 ): Promise<DatedWorkLabels[]> {
   const [workRows, catalogueRows] = await Promise.all([
-    sparql(worksQuery(qid)).catch(() => sparql(worksQuery(qid, false))),
+    sparql(worksQuery(qid)).catch(() => sparql(worksQuery(qid, false)).catch(() => [] as SparqlBinding[])),
     sparql(catalogueQuery(qid)).catch(() => [] as SparqlBinding[]),
   ])
   const grouped = new Map<string, WorkRecord>()
@@ -158,12 +166,21 @@ async function fetchDatedWorks(
     const record = recordFor(work)
     const label = binding.label?.value?.trim()
     if (label) record.labels.add(label)
-    if (binding.date?.value && binding.precision?.value) {
-      const date = dateFromWikidataPrecision(binding.date.value, Number(binding.precision.value))
-      if (date) record.dates.set(dateKey(date), date)
-    }
+    const date = dateFromInceptionClaim(
+      binding.date?.value,
+      binding.precision?.value != null ? Number(binding.precision.value) : null,
+      binding.start?.value && binding.startPrecision?.value
+        ? { time: binding.start.value, precision: Number(binding.startPrecision.value) }
+        : null,
+      binding.end?.value && binding.endPrecision?.value
+        ? { time: binding.end.value, precision: Number(binding.endPrecision.value) }
+        : null
+    )
+    if (date) record.dates.set(dateKey(date), date)
     const imslp = binding.imslp?.value?.trim()
-    if (imslp) record.imslp.add(imslp)
+    // A hash link points at a subsection (an arrangement on the parent's page).
+    // Using it would give the arrangement the parent's catalogue number.
+    if (imslp && !imslp.includes("#")) record.imslp.add(imslp)
   }
   for (const binding of catalogueRows) {
     const work = binding.work?.value
@@ -175,8 +192,10 @@ async function fetchDatedWorks(
   const prefixes = await cataloguePrefixes(
     [...new Set([...grouped.values()].flatMap((record) => record.codes.map((code) => code.catalogue).filter(Boolean)))] as string[]
   )
+  const linkedImslp = new Set<string>()
   const imslpTitles: string[] = []
   for (const record of grouped.values()) {
+    for (const page of record.imslp) linkedImslp.add(imslpLookupKey(page))
     if (needsImslp(record, prefixes, birthYear, deathYear)) imslpTitles.push(...record.imslp)
   }
   const imslp = imslpTitles.length ? await fetchImslpWorkFields(imslpTitles) : new Map()
@@ -215,7 +234,91 @@ async function fetchDatedWorks(
       labels: [...labels],
     })
   }
+  try {
+    const category = await imslpCategoryFor(qid)
+    if (category) {
+      const extras = await imslpCategoryWorks(category, completeName, works, linkedImslp, birthYear, deathYear)
+      works.push(...extras)
+    }
+  } catch (error) {
+    console.warn(`IMSLP category skipped for ${qid}:`, error)
+  }
   return works
+}
+
+function sameDate(a: CompositionDate, b: CompositionDate): boolean {
+  return a.start === b.start && a.end === b.end && a.circa === b.circa
+}
+
+async function imslpCategoryFor(qid: string): Promise<string | null> {
+  const url = new URL(API)
+  url.searchParams.set("action", "wbgetentities")
+  url.searchParams.set("ids", qid)
+  url.searchParams.set("props", "claims")
+  url.searchParams.set("format", "json")
+  const data = (await wikidataGet(url)) as {
+    entities?: Record<string, { claims?: Record<string, { mainsnak?: { datavalue?: { value?: unknown } } }[]> }>
+  }
+  const claims = data.entities?.[qid]?.claims?.P839 ?? []
+  for (const claim of claims) {
+    const value = claim.mainsnak?.datavalue?.value
+    if (typeof value === "string" && value.startsWith("Category:")) return value.replace(/_/g, " ")
+  }
+  return null
+}
+
+/**
+ * Works with no Wikidata inception still often have an IMSLP composition
+ * year. Read the composer's category, skip pages already linked or already
+ * dated from the title, and keep a page only when its credit matches.
+ * A catalogue key Wikidata already dated is not overwritten.
+ */
+async function imslpCategoryWorks(
+  category: string,
+  completeName: string,
+  works: DatedWorkLabels[],
+  linked: Set<string>,
+  birthYear: number | null,
+  deathYear: number | null
+): Promise<DatedWorkLabels[]> {
+  const known = buildDateIndex(works)
+  const pages = await listImslpCategoryPages(category)
+  const needed: string[] = []
+  for (const page of pages) {
+    if (/\b(?:arranged|arrangement|transcription|transcribed)\b/i.test(page)) continue
+    if (page.includes("#")) continue
+    if (!imslpPageMatchesComposer(page, completeName)) continue
+    const titleKeys = extractCatalogueKeys(imslpTitleLabel(page))
+    // A Wikidata link is not enough when that link never produced a catalogue key.
+    if (titleKeys.length && titleKeys.every((key) => known.catalogue[key])) continue
+    if (!titleKeys.length && linked.has(imslpLookupKey(page))) continue
+    needed.push(page)
+  }
+  if (!needed.length) return []
+  console.log(`IMSLP ${completeName}: ${pages.length} pages, ${needed.length} unread`)
+  const fields = await fetchImslpWorkFields(needed)
+  const extras: DatedWorkLabels[] = []
+  for (const page of needed) {
+    const parsed = fields.get(imslpLookupKey(page))
+    if (!parsed?.composition) continue
+    const date = parseCompositionDateText(parsed.composition)
+    if (!date || !dateWithinLife(date, birthYear, deathYear)) continue
+    const title = imslpTitleLabel(page)
+    const rawLabels = [title, parsed.catalogue].filter((label): label is string => Boolean(label))
+    const keys = [...new Set(rawLabels.flatMap((label) => extractCatalogueKeys(label)))]
+    const conflicts = keys.filter((key) => known.catalogue[key] && !sameDate(known.catalogue[key], date))
+    if (conflicts.length) {
+      const fresh = keys
+        .filter((key) => !known.catalogue[key])
+        .map((key) => catalogueKeyLabel(key))
+        .filter((label): label is string => Boolean(label))
+      if (!fresh.length) continue
+      extras.push({ year: date.start, end: date.end, circa: date.circa, labels: fresh })
+      continue
+    }
+    extras.push({ year: date.start, end: date.end, circa: date.circa, labels: rawLabels })
+  }
+  return extras
 }
 
 function acceptedInception(
@@ -272,6 +375,16 @@ SELECT ?work ?label ?date ?precision ?imslp WHERE {
     ?statement psv:P571 ?value .
     ?value wikibase:timeValue ?date .
     ?value wikibase:timePrecision ?precision .
+    OPTIONAL {
+      ?statement pqv:P580 ?startValue .
+      ?startValue wikibase:timeValue ?start .
+      ?startValue wikibase:timePrecision ?startPrecision .
+    }
+    OPTIONAL {
+      ?statement pqv:P582 ?endValue .
+      ?endValue wikibase:timeValue ?end .
+      ?endValue wikibase:timePrecision ?endPrecision .
+    }
   }
   OPTIONAL { ?work wdt:P839 ?imslp }
 }`
@@ -333,6 +446,10 @@ type SparqlBinding = {
   label?: { value?: string }
   date?: { value?: string }
   precision?: { value?: string }
+  start?: { value?: string }
+  startPrecision?: { value?: string }
+  end?: { value?: string }
+  endPrecision?: { value?: string }
   imslp?: { value?: string }
   code?: { value?: string }
   cat?: { value?: string }

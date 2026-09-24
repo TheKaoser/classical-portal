@@ -41,7 +41,7 @@ const liveIndex = unstable_cache(
     const index = await fetchComposerDateIndex(completeName, birth || null, death || null)
     return index ?? EMPTY_DATE_INDEX
   },
-  ["wikidata-composition-dates-v2"],
+  ["wikidata-composition-dates-v3"],
   { revalidate: 60 * 60 * 24 * 14 }
 )
 
