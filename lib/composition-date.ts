@@ -83,6 +83,7 @@ const CATALOGUE_SKIP = new Set([
   "ie",
   "fig",
   "anh",
+  "posth",
 ])
 
 const INSTRUMENTS =
@@ -179,6 +180,27 @@ export function dateFromWikidataPrecision(time: string, precision: number): Comp
   return null
 }
 
+/**
+ * Year-precision inception wins. When that value is only a century-like decade,
+ * P580/P582 on the same statement can still supply a real year span.
+ */
+export function dateFromInceptionClaim(
+  time: string | null | undefined,
+  precision: number | null,
+  start: { time: string; precision: number } | null,
+  end: { time: string; precision: number } | null
+): CompositionDate | null {
+  if (time && precision != null) {
+    const direct = dateFromWikidataPrecision(time, precision)
+    if (direct) return direct
+  }
+  if (!start || !end || start.precision < 9 || end.precision < 9) return null
+  const from = yearFromWikidataTime(start.time)
+  const to = yearFromWikidataTime(end.time)
+  if (from == null || to == null || to < from || to - from > 30) return null
+  return { start: from, end: to === from ? null : to, circa: false }
+}
+
 function foldLatin(value: string): string {
   return value
     .replace(/ß/g, "ss")
@@ -253,11 +275,21 @@ export function extractCatalogueKeys(value: string): string[] {
   }
 
   const hobRe =
-    /\bhob(?:oken)?\.?\s*([ivxlcdm]+[a-z]?)\s*[:./]\s*(\d{1,4}[a-z]?)(?:\s*[-–—]\s*(\d{1,4}))?/g
+    /\bhob(?:oken)?\.?\s*([ivxlcdm]+[a-z]?)\s*(?:[:./]\s*|,\s*(?:nos?|nrs?)\.?\s+)(\d{1,4}[a-z]?)(?:\s*[-–—]\s*(\d{1,4}))?/g
   for (const match of text.matchAll(hobRe)) {
     const number = match[2].toLowerCase()
     if (match[3]) keys.add(`hob:${match[1]}:${number}-${match[3]}`)
     else keys.add(`hob:${match[1]}:${number}`)
+  }
+
+  // Hoboken's short form is "H.3/57" (group III, number 57), not Helm "H.24".
+  const hobSlashRe = /\bh\.?\s*(\d{1,2})\s*\/\s*(\d{1,4}[a-z]?)(?:\s*[-–—]\s*(\d{1,4}))?/g
+  for (const match of text.matchAll(hobSlashRe)) {
+    const roman = hobokenRoman(Number(match[1]))
+    if (!roman) continue
+    const number = match[2].toLowerCase()
+    if (match[3]) keys.add(`hob:${roman}:${number}-${match[3]}`)
+    else keys.add(`hob:${roman}:${number}`)
   }
 
   const bwvAnhRe = /\bbwv\.?\s*anh\.?\s*(\d{1,4}[a-z]?)/g
@@ -272,7 +304,8 @@ export function extractCatalogueKeys(value: string): string[] {
     keys.add(catalogueKey(match[1], match[3] ? `${match[2]}:${match[3]}` : match[2], null, match[3] ? null : match[4]))
   }
 
-  const genericRe = /\b([a-z]{1,6})\.\s*(\d{1,4}[a-z]?)(?::(\d{1,4}[a-z]?))?(?:\s*-\s*(\d{1,4}[a-z]?))?/g
+  const genericRe =
+    /\b([a-z]{1,6})\.\s*(\d{1,4}[a-z]?)(?::(\d{1,4}[a-z]?))?(?:\s*-\s*(\d{1,4}[a-z]?))?(?!\/\d)/g
   for (const match of text.matchAll(genericRe)) {
     if (CATALOGUE_SKIP.has(match[1])) continue
     if (match[1] === "hob" || match[1] === "bwv") continue
@@ -281,7 +314,73 @@ export function extractCatalogueKeys(value: string): string[] {
     keys.add(catalogueKey(match[1], number, null, end))
   }
 
+  // Köchel Anhang, and the revised number after the slash (K.252/240a, K.Anh.95/484b).
+  const anhRe = /\bk\.?\s*anh\.?\s*(\d{1,4}[a-z]?)(?:\s*\/\s*(\d{1,4}[a-z]?))?/g
+  for (const match of text.matchAll(anhRe)) {
+    keys.add(catalogueKey("k.anh", match[1]))
+    if (match[2]) keys.add(catalogueKey("k", match[2]))
+  }
+  const koechelAltRe = /\bk\.?\s*(\d{1,4}[a-z]?)\s*\/\s*(\d{1,4}[a-z]?)/g
+  for (const match of text.matchAll(koechelAltRe)) {
+    keys.add(catalogueKey("k", match[1]))
+    keys.add(catalogueKey("k", match[2]))
+  }
+
+  // Warburton numbers as printed by Open Opus: "CW C65", "CW.G6", "CW 36/195", "W.G3".
+  const cwRe = /\bcw\.?\s*([a-z])?\s*(\d{1,4}[a-z]{0,4})(?:\s*\/\s*(\d{1,4}[a-z]{0,3}))?/g
+  for (const match of text.matchAll(cwRe)) {
+    if (match[1] && match[3]) keys.add(`cw:${match[1]}${match[2]}:${match[3]}`)
+    else if (match[3]) keys.add(`cw:${match[2]}:${match[3]}`)
+    else if (match[1]) keys.add(`cw:${match[1]}${match[2]}`)
+    else keys.add(`cw:${match[2]}`)
+  }
+  const warburtonRe = /\bw\.([a-z])(\d{1,4}[a-z]{0,4})\b/g
+  for (const match of text.matchAll(warburtonRe)) {
+    keys.add(`w:${match[1]}${match[2]}`)
+  }
+
   return [...keys]
+}
+
+const HOB_ROMAN = [
+  "",
+  "i",
+  "ii",
+  "iii",
+  "iv",
+  "v",
+  "vi",
+  "vii",
+  "viii",
+  "ix",
+  "x",
+  "xi",
+  "xii",
+  "xiii",
+  "xiv",
+  "xv",
+  "xvi",
+  "xvii",
+  "xviii",
+  "xix",
+  "xx",
+  "xxi",
+  "xxii",
+  "xxiii",
+  "xxiv",
+  "xxv",
+  "xxvi",
+  "xxvii",
+  "xxviii",
+  "xxix",
+  "xxx",
+  "xxxi",
+  "xxxii",
+]
+
+function hobokenRoman(group: number): string | null {
+  if (!Number.isInteger(group)) return null
+  return HOB_ROMAN[group] ?? null
 }
 
 export function extractFormKey(value: string): string | null {
@@ -452,11 +551,45 @@ export function buildDateIndex(works: DatedWorkLabels[]): DateIndex {
     for (const key of titleKeys) addDate(title, key, date, movement)
   }
 
-  return {
+  return suppressDisputedSetKeys({
     catalogue: collapse(catalogue),
     form: collapse(form),
     title: collapse(title),
+  })
+}
+
+/**
+ * "Etudes, op. 10" stays blank when the pieces do not share one year.
+ * A parent stays when its numbered children all carry one date, even if that
+ * date is not the parent's: the parent may be the whole work (a symphony)
+ * rather than a set.
+ */
+export function suppressDisputedSetKeys(index: DateIndex): DateIndex {
+  const catalogue = { ...index.catalogue }
+  for (const key of Object.keys(catalogue)) {
+    const children = Object.keys(catalogue).filter((child) => child.startsWith(`${key}:`))
+    if (children.length < 2) continue
+    const shared = dateIdentity(catalogue[children[0]])
+    const childrenAgree = children.every((child) => dateIdentity(catalogue[child]) === shared)
+    if (!childrenAgree) delete catalogue[key]
   }
+  return { catalogue, form: index.form, title: index.title }
+}
+
+/** Fill keys that are still blank. An existing year is left as it is. */
+export function mergeDateIndexes(base: DateIndex, extra: DateIndex): DateIndex {
+  const fill = (kept: Record<string, CompositionDate>, incoming: Record<string, CompositionDate>) => {
+    const out = { ...kept }
+    for (const [key, date] of Object.entries(incoming)) {
+      if (!out[key]) out[key] = date
+    }
+    return out
+  }
+  return suppressDisputedSetKeys({
+    catalogue: fill(base.catalogue, extra.catalogue),
+    form: fill(base.form, extra.form),
+    title: fill(base.title, extra.title),
+  })
 }
 
 /**
@@ -568,7 +701,7 @@ function matchTitle(title: string, table: Record<string, CompositionDate>): Comp
   const add = (date: CompositionDate | undefined) => {
     if (date) found.set(dateIdentity(date), date)
   }
-  add(table[normalized])
+  if (table[normalized]) return table[normalized]
   for (const [key, date] of Object.entries(table)) {
     if (key.length < 12 || key === normalized) continue
     if (normalized.startsWith(`${key} `)) {
@@ -629,6 +762,34 @@ export function labelsForCatalogueCode(prefix: string | null, code: string): str
   const synthesized = synthesizeCatalogue(system, trimmed)
   if (synthesized && extractCatalogueKeys(synthesized).length) labels.push(synthesized)
   return [...new Set(labels)]
+}
+
+/** A label that extractCatalogueKeys turns back into this key. */
+export function catalogueKeyLabel(key: string): string | null {
+  const pieces = key.split(":")
+  if (pieces.length < 2 || pieces.length > 3) return null
+  const [system, first, second] = pieces
+  if (!first || /[^0-9a-z-]/i.test(first)) return null
+  if (second && /[^0-9a-z-]/i.test(second)) return null
+  if (system === "op") return second ? `Op. ${first} no. ${second}` : `Op. ${first}`
+  if (system === "op.posth") return second ? `Op. posth. ${first} no. ${second}` : `Op. posth. ${first}`
+  if (system === "k") return second ? `K. ${first} no. ${second}` : `K. ${first}`
+  if (system === "k.anh") return `K.Anh. ${first}`
+  if (system === "hob") {
+    if (!second) return null
+    return `Hob.${first.toUpperCase()}:${second}`
+  }
+  if (system === "woo") return second ? `WoO ${first} no. ${second}` : `WoO ${first}`
+  if (system === "bwv") return second ? `BWV ${first} no. ${second}` : `BWV ${first}`
+  if (system === "bwv.anh") return `BWV Anh. ${first}`
+  if (system === "cw") {
+    if (second) return `CW ${first}/${second}`
+    return `CW ${first.toUpperCase()}`
+  }
+  if (system === "w") return `W.${first.toUpperCase()}`
+  if (!/^[a-z]{1,6}$/.test(system)) return null
+  const head = `${system.toUpperCase()}. ${first}`
+  return second ? `${head} no. ${second}` : head
 }
 
 function synthesizeCatalogue(prefix: string, code: string): string | null {

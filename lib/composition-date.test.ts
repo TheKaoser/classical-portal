@@ -2,7 +2,11 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 import {
   buildDateIndex,
+  catalogueKeyLabel,
+  dateFromInceptionClaim,
   dateFromWikidataPrecision,
+  mergeDateIndexes,
+  suppressDisputedSetKeys,
   dateWithinLife,
   extractCatalogueKeys,
   extractFormKey,
@@ -388,6 +392,15 @@ test("an unmatched catalogue number does not borrow another work's year", () => 
   assert.equal(year("Symphony no. 5 in C minor", index), 1807)
 })
 
+test("an exact title wins over a shorter work it contains", () => {
+  const index = buildDateIndex([
+    { year: 1934, labels: ["Symphony Mathis der Maler"] },
+    { year: 1933, end: 1935, labels: ["Mathis der Maler"] },
+  ])
+  assert.equal(year("Symphony Mathis der Maler", index), 1934)
+  assert.deepEqual(matchCompositionYear("Mathis der Maler", index), { start: 1933, end: 1935, circa: false })
+})
+
 test("a shorter title does not date a later book or part", () => {
   const index = buildDateIndex([
     { year: 1722, labels: ["The Well-Tempered Clavier"] },
@@ -448,6 +461,112 @@ test("catalogue codes become the same keys Open Opus titles use", () => {
   assert.equal(prefixFromCatalogueLabels("Köchel catalogue", ["K", "KV"]), "k")
   assert.equal(prefixFromCatalogueLabels("Werke ohne Opuszahl", ["WoO"]), "woo")
   assert.equal(prefixFromCatalogueLabels("Brown catalogue", ["BI", "B"]), "b")
+})
+
+test("catalogue keys cover Hoboken lists, Köchel alternates, and Warburton numbers", () => {
+  assert.deepEqual(extractCatalogueKeys("2 Divertimenti, Hob.II, nos. 13-14"), ["hob:ii:13-14"])
+  assert.ok(extractCatalogueKeys("3 String Quartets, op. 54, H.3/57-59").includes("hob:iii:57-59"))
+  assert.equal(extractCatalogueKeys("3 String Quartets, op. 54, H.3/57-59").includes("h:3"), false)
+  assert.ok(extractCatalogueKeys("6 Sonatas, Wq.48, H.24-29").includes("h:24-29"))
+  const koechel = extractCatalogueKeys("Divertimento in E-flat major, K.252/240a")
+  assert.ok(koechel.includes("k:252"))
+  assert.ok(koechel.includes("k:240a"))
+  const anh = extractCatalogueKeys("Allegro, K.Anh.95/484b")
+  assert.ok(anh.includes("k.anh:95"))
+  assert.ok(anh.includes("k:484b"))
+  assert.ok(extractCatalogueKeys("Adagio in F major, K.Anh.206a").includes("k.anh:206a"))
+  assert.ok(extractCatalogueKeys("Harpsichord Concerto, CW C65").includes("cw:c65"))
+  assert.ok(extractCatalogueKeys("Adriano in Siria, CW.G6").includes("cw:g6"))
+  assert.ok(extractCatalogueKeys("Bassoon Concerto, CW 36/195").includes("cw:36:195"))
+  assert.ok(extractCatalogueKeys("Alessandro nell'Indie, W.G3").includes("w:g3"))
+  assert.equal(extractCatalogueKeys("Fantasia in F minor, op. posth.103").includes("posth:103"), false)
+})
+
+test("a Hoboken list is dated only when every number in it is dated", () => {
+  const index = buildDateIndex([
+    { year: 1765, labels: ["Divertimento, Hob.II:13"] },
+    { year: 1767, labels: ["Divertimento, Hob.II:14"] },
+  ])
+  assert.deepEqual(matchCompositionYear("2 Divertimenti, Hob.II, nos. 13-14", index), {
+    start: 1765,
+    end: 1767,
+    circa: false,
+  })
+  assert.equal(matchCompositionYear("2 Divertimenti, Hob.II, nos. 13-15", index), null)
+})
+
+test("a set key is kept only when every numbered piece shares it", () => {
+  const disagreed = buildDateIndex([
+    { year: 1829, labels: ["Etude in C major, Op. 10 no. 1"] },
+    { year: 1832, labels: ["Etude in A minor, Op. 10 no. 2"] },
+    { year: 1830, labels: ["Etudes, Op. 10"] },
+  ])
+  assert.equal(disagreed.catalogue["op:10"], undefined)
+  assert.equal(year("Etude in C major, op. 10 no. 1", disagreed), 1829)
+  assert.equal(year("Etudes, op. 10", disagreed), null)
+
+  const shared = buildDateIndex([
+    { year: 1830, labels: ["Etude in C major, Op. 10 no. 1"] },
+    { year: 1830, labels: ["Etude in A minor, Op. 10 no. 2"] },
+    { year: 1830, labels: ["Etudes, Op. 10"] },
+  ])
+  assert.equal(year("Etudes, op. 10", shared), 1830)
+  const kept = suppressDisputedSetKeys(shared)
+  assert.equal(kept.catalogue["op:10"]?.start, 1830)
+
+  const symphony = buildDateIndex([
+    { year: 1842, labels: ["Symphony No. 3, Op. 56"] },
+    { year: 1845, labels: ["Song, Op. 56 no. 2"] },
+    { year: 1845, labels: ["Song, Op. 56 no. 3"] },
+  ])
+  assert.equal(year("Symphony no. 3, op. 56", symphony), 1842)
+  assert.equal(year("Song, op. 56 no. 2", symphony), 1845)
+})
+
+test("merging indexes fills blank keys and does not replace a stored year", () => {
+  const merged = mergeDateIndexes(
+    { catalogue: { "op:67": { start: 1807, end: null, circa: false } }, form: {}, title: {} },
+    {
+      catalogue: {
+        "op:67": { start: 1808, end: null, circa: false },
+        "op:68": { start: 1809, end: null, circa: false },
+      },
+      form: {},
+      title: {},
+    }
+  )
+  assert.equal(merged.catalogue["op:67"].start, 1807)
+  assert.equal(merged.catalogue["op:68"].start, 1809)
+})
+
+test("catalogue labels round-trip into the same keys", () => {
+  for (const key of ["op:67", "op:59:1", "op.posth:103", "k:240a", "k.anh:95", "hob:xviii:11", "hob:iii:57-59", "bwv:811", "bwv:841-843", "woo:54", "cw:c65", "cw:g6", "cw:36:195", "w:g3", "d:940"]) {
+    const label = catalogueKeyLabel(key)
+    assert.ok(label, key)
+    assert.ok(extractCatalogueKeys(label as string).includes(key), `${key} via ${label}`)
+  }
+})
+
+test("inception qualifiers supply a span when the main value is not a year", () => {
+  assert.deepEqual(
+    dateFromInceptionClaim(
+      "+1700-00-00T00:00:00Z",
+      8,
+      { time: "+1703-00-00T00:00:00Z", precision: 9 },
+      { time: "+1708-00-00T00:00:00Z", precision: 9 }
+    ),
+    { start: 1703, end: 1708, circa: false }
+  )
+  assert.deepEqual(
+    dateFromInceptionClaim(
+      "+1808-00-00T00:00:00Z",
+      9,
+      { time: "+1804-00-00T00:00:00Z", precision: 9 },
+      { time: "+1808-00-00T00:00:00Z", precision: 9 }
+    ),
+    { start: 1808, end: null, circa: false }
+  )
+  assert.equal(dateFromInceptionClaim("+1700-00-00T00:00:00Z", 8, null, null), null)
 })
 
 test("wikidata precision and life span stay conservative", () => {
