@@ -3,6 +3,7 @@ import { notFound, permanentRedirect } from "next/navigation"
 import { GenreWorkBrowser } from "@/components/genre-work-browser"
 import { PageHeader } from "@/components/page-header"
 import { WorkList } from "@/components/work-list"
+import { WorkListPlayback } from "@/components/work-list-playback"
 import { attachCompositionYearsByComposer } from "@/lib/composition-years"
 import { formSummaries, worksForForm } from "@/lib/form-catalog"
 import {
@@ -14,6 +15,7 @@ import {
   relocatedGenreHref,
   retiredKeyboardInstrumentFilter,
 } from "@/lib/forms"
+import { isSpotifyOAuthConfigured } from "@/lib/spotify"
 import { classifyListedSubtype, listedSubtypeFilters } from "@/lib/work-subtypes"
 
 export function generateStaticParams() {
@@ -55,6 +57,7 @@ export default async function GenrePage({
   const listed = worksForForm(slug)
   if (!listed.length) notFound()
   const filters = listedSubtypeFilters(listed)
+  const oauthConfigured = isSpotifyOAuthConfigured()
   const works = await attachCompositionYearsByComposer(
     listed.map((work) => ({
       id: work.id,
@@ -82,7 +85,13 @@ export default async function GenrePage({
         backHref="/genres"
         backLabel="Genres"
       />
-      {filters.length ? <GenreWorkBrowser works={works} filters={filters} /> : <WorkList works={works} />}
+      {filters.length ? (
+        <GenreWorkBrowser works={works} filters={filters} oauthConfigured={oauthConfigured} />
+      ) : (
+        <WorkListPlayback oauthConfigured={oauthConfigured} works={works}>
+          <WorkList works={works} />
+        </WorkListPlayback>
+      )}
     </div>
   )
 }

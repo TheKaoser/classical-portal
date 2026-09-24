@@ -2,6 +2,7 @@
 
 import { FilterChips } from "@/components/filter-chips"
 import { WorkList } from "@/components/work-list"
+import { WorkListPlayback } from "@/components/work-list-playback"
 import { useFilterSelection } from "@/hooks/use-filter-selection"
 import { isPopular } from "@/lib/popularity"
 
@@ -45,11 +46,13 @@ export function ComposerWorkBrowser({
   filters,
   defaultFilter,
   initialFilter,
+  oauthConfigured,
 }: {
   works: BrowserWork[]
   filters: { slug: string; label: string; count: number }[]
   defaultFilter: string
   initialFilter: string
+  oauthConfigured: boolean
 }) {
   const { active, select } = useFilterSelection(
     filters.map((item) => item.slug),
@@ -64,6 +67,16 @@ export function ComposerWorkBrowser({
         : works.filter((work) => work.genre === active)
 
   const grouped = active === "popular" ? groupsFor(filtered) : null
+  const sections =
+    grouped && grouped.length > 0
+      ? grouped
+      : [
+          {
+            genre: active,
+            works: [...filtered].sort(byOrder(active === "all" ? "chronoOrder" : "popularityOrder")),
+          },
+        ]
+  const visible = sections.flatMap((section) => section.works)
 
   return (
     <>
@@ -75,22 +88,22 @@ export function ComposerWorkBrowser({
           onSelect: () => select(item.slug),
         }))}
       />
-      {active === "all" ? (
-        <WorkList works={[...filtered].sort(byOrder("chronoOrder"))} showGenre />
-      ) : (
-        <div className="space-y-8">
-          {(grouped ?? [{ genre: active, works: [...filtered].sort(byOrder("popularityOrder")) }]).map(
-            (group) => (
+      <WorkListPlayback oauthConfigured={oauthConfigured} works={visible}>
+        {active === "all" ? (
+          <WorkList works={visible} showGenre />
+        ) : (
+          <div className="space-y-8">
+            {sections.map((group) => (
               <section key={group.genre}>
                 {grouped && grouped.length > 1 ? (
                   <h2 className="mb-2 px-3 text-sm font-medium text-primary">{group.genre}</h2>
                 ) : null}
                 <WorkList works={group.works} />
               </section>
-            )
-          )}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </WorkListPlayback>
     </>
   )
 }
