@@ -98,7 +98,9 @@ Set these in `.env.local` and in the Vercel project (Settings → Environment Va
 | --- | --- | --- |
 | `SPOTIFY_CLIENT_ID` | For matching recordings | Spotify app client ID |
 | `SPOTIFY_CLIENT_SECRET` | For matching recordings | Spotify app secret (server only) |
-| `SPOTIFY_MARKET` | No (default `US`) | ISO 3166-1 alpha-2 market for search |
+| `SPOTIFY_MARKET` | No (default `US`) | ISO 3166-1 alpha-2 market for search. Also the market half of the durable match key |
+| `STORAGE_CLASSICAL_POSTGRES_URL` | No | Direct `postgres://` URL for the durable Spotify match cache. Preferred |
+| `STORAGE_CLASSICAL_DATABASE_URL` | No | Fallback direct `postgres://` URL when `STORAGE_CLASSICAL_POSTGRES_URL` is unset |
 | `NEXT_PUBLIC_DONATE_URL` | No | Stripe Payment Link for the footer Donate control. Leave unset to hide it |
 
 Create an app at [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard).
@@ -108,6 +110,37 @@ Create an app at [developer.spotify.com/dashboard](https://developer.spotify.com
 **Play** loads the matched movement URIs into the official Spotify embed (iFrame API) fixed to the bottom of the page. The embed does not use this app’s Spotify Web API quota. Listeners signed in to Spotify in the browser hear full tracks; others hear 30-second previews. Play all and Random on composer and genre lists use the same embed and the same server-side match lookup.
 
 Without `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` the work page still offers **Search on Spotify**, which opens Spotify’s own search for the composer + work.
+
+## Durable Spotify match cache
+
+A finished catalog search is stored once per work and market in Postgres table `public.spotify_work_matches`. The server reads `STORAGE_CLASSICAL_POSTGRES_URL`, then `STORAGE_CLASSICAL_DATABASE_URL`. Both have to be a `postgres://` or `postgresql://` URL. `STORAGE_CLASSICAL_PRISMA_DATABASE_URL` (Prisma Accelerate) is not used. On Vercel these are set for Production and Preview. The app creates the table on first use. `db/spotify_work_matches.sql` is the same statement, for reference.
+
+`market` is `SPOTIFY_MARKET` (default `US`), trimmed and uppercased. The row holds the recordings plus the public search query and URL.
+
+When neither URL is set, or Postgres cannot be reached, the search still runs. Nothing is written to the table. Those requests still pass through the in-memory layer and the Next.js data cache (14 days for a payload, 6 hours for an empty payload), keyed by the search text rather than the work id. That cache is not the permanent record.
+
+Lifetime:
+
+- One or more recordings: `expires_at` is null. The row does not expire.
+- Empty catalog search: `expires_at` is seven days out. After that the row is a miss and the work may be searched once more.
+- Not stored: quota or upstream failure, a crawler skip, or missing Spotify credentials.
+
+Crawlers never read or write the table.
+
+Clear one entry. `market` has to match `SPOTIFY_MARKET` for that deployment:
+
+```sql
+delete from public.spotify_work_matches
+where work_id = '17109' and market = 'ES';
+```
+
+The next request treats that work as unseen. A warm Next.js data cache for the same search text can still answer for up to 14 days, so deleting the row does not by itself call the Spotify Web API.
+
+To drop every stored match:
+
+```sql
+delete from public.spotify_work_matches;
+```
 
 ## Routes
 
@@ -124,7 +157,7 @@ Without `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` the work page still offers
 - `/api/spotify/recordings` — client-triggered catalog match for a work page
 - `/api/spotify/work-playback` — primary recording URIs for list playback (Play all / Random)
 
-Supabase and YouTube are no longer used. Old `/admin`, `/blog`, and `/piece/:id` URLs redirect home.
+YouTube is no longer used. The match cache uses Postgres and does not read Supabase. Old `/admin`, `/blog`, and `/piece/:id` URLs redirect home.
 
 ## Playback notes
 

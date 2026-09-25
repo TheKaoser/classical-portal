@@ -2,11 +2,12 @@
 -- Positive rows never expire (expires_at is null). Negative rows set expires_at
 -- about 7 days out and are ignored after that, so the work can be searched once more.
 --
--- The server writes with SUPABASE_SERVICE_ROLE_KEY, which bypasses row level
--- security. The anon and authenticated roles have no policies and no grants,
--- so the public anon key cannot read or poison this table.
+-- The server connects with STORAGE_CLASSICAL_POSTGRES_URL, or
+-- STORAGE_CLASSICAL_DATABASE_URL when that is unset. Both are postgres:// URLs.
+-- The table is created on first use (the same statement is in
+-- lib/spotify-match-store.ts). This file is the reference copy.
 --
--- Run this once in the Supabase SQL editor. Clearing one entry:
+-- Clearing one entry. market must match SPOTIFY_MARKET for that deployment:
 --
 --   delete from public.spotify_work_matches
 --   where work_id = '17109' and market = 'ES';
@@ -29,8 +30,3 @@ create table if not exists public.spotify_work_matches (
 
 comment on table public.spotify_work_matches is
   'Spotify matches keyed by work id and market. Positive rows do not expire. Negative rows expire at expires_at.';
-
-alter table public.spotify_work_matches enable row level security;
-
-revoke all on table public.spotify_work_matches from public, anon, authenticated;
-grant select, insert, update, delete on table public.spotify_work_matches to service_role;
