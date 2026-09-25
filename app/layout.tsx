@@ -84,7 +84,7 @@ export default function RootLayout({
               Catalog from{" "}
               <a
                 className={footerLinkClassName}
-                href="https://openopus.org"
+                href="https://openopus.org/"
                 target="_blank"
                 rel="noopener noreferrer"
               >
@@ -93,24 +93,32 @@ export default function RootLayout({
               . Recordings via{" "}
               <a
                 className={footerLinkClassName}
-                href="https://spotify.com"
+                href="https://spotify.com/"
                 target="_blank"
                 rel="noopener noreferrer"
               >
                 Spotify
               </a>
-              .
+              . Made with love by Rodrigo Alonso.
             </p>
-            {donateHref ? (
+            <div className="ml-auto flex shrink-0 items-baseline gap-x-6">
               <a
-                className={`${footerLinkClassName} ml-auto shrink-0`}
-                href={donateHref}
-                target="_blank"
-                rel="noopener noreferrer"
+                className={footerLinkClassName}
+                href="mailto:rodrigoalonso@rocketmail.com"
               >
-                Donate
+                Contact
               </a>
-            ) : null}
+              {donateHref ? (
+                <a
+                  className={footerLinkClassName}
+                  href={donateHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Donate
+                </a>
+              ) : null}
+            </div>
           </footer>
         </SpotifyPlayerProvider>
       </body>
