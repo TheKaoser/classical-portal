@@ -299,18 +299,14 @@ export function SpotifyEmbedPlayer({
   useLayoutEffect(() => {
     if (!visible) return
     const root = document.documentElement
-    const previousPadding = document.body.style.paddingBottom
     const previousVar = root.style.getPropertyValue(PLAYER_BAR_HEIGHT_VAR)
     const applyHeight = (heightPx: number) => {
-      const css = playerBarPaddingCss(heightPx)
-      document.body.style.paddingBottom = css
-      root.style.setProperty(PLAYER_BAR_HEIGHT_VAR, css)
+      root.style.setProperty(PLAYER_BAR_HEIGHT_VAR, playerBarPaddingCss(heightPx))
     }
     applyHeight(PLAYER_BAR_FALLBACK_HEIGHT_PX)
     const node = barRef.current
     if (!node || typeof ResizeObserver === "undefined") {
       return () => {
-        document.body.style.paddingBottom = previousPadding
         if (previousVar) root.style.setProperty(PLAYER_BAR_HEIGHT_VAR, previousVar)
         else root.style.removeProperty(PLAYER_BAR_HEIGHT_VAR)
       }
@@ -323,7 +319,6 @@ export function SpotifyEmbedPlayer({
     applyHeight(node.getBoundingClientRect().height)
     return () => {
       observer.disconnect()
-      document.body.style.paddingBottom = previousPadding
       if (previousVar) root.style.setProperty(PLAYER_BAR_HEIGHT_VAR, previousVar)
       else root.style.removeProperty(PLAYER_BAR_HEIGHT_VAR)
     }
@@ -337,7 +332,7 @@ export function SpotifyEmbedPlayer({
       role="region"
       aria-label="Spotify player"
       hidden={!visible}
-      data-player-dock="flush"
+      data-player-dock={visible ? "flush" : undefined}
       className={visible ? PLAYER_BAR_DOCK_CLASS : "hidden"}
       style={visible ? PLAYER_BAR_DOCK_STYLE : undefined}
     >

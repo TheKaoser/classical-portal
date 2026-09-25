@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { readFileSync } from "node:fs"
 import test from "node:test"
 import {
   PLAYER_BAR_DOCK_CLASS,
@@ -30,11 +31,18 @@ test("player bar class list has no floating-card inset or rounded shell", () => 
   assert.doesNotMatch(PLAYER_BAR_DOCK_CLASS, /\bshadow-float\b/)
 })
 
-test("body padding equals measured player height", () => {
+test("footer clearance equals measured player height", () => {
   assert.equal(playerBarPaddingCss(148.2), "149px")
   assert.equal(playerBarPaddingCss(0), `${PLAYER_BAR_FALLBACK_HEIGHT_PX}px`)
   assert.equal(playerBarPaddingCss(Number.NaN), `${PLAYER_BAR_FALLBACK_HEIGHT_PX}px`)
   assert.equal(PLAYER_BAR_HEIGHT_VAR, "--player-bar-height")
+})
+
+test("hidden player dock does not reserve space under the footer", () => {
+  const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8")
+  assert.match(css, /body:has\(\[data-player-dock="flush"\]:not\(\[hidden\]\)\) footer/)
+  assert.match(css, /padding-bottom:\s*calc\(2rem \+ var\(--player-bar-height, 9\.5rem\)\)/)
+  assert.doesNotMatch(css, /body:has\(\[data-player-dock="flush"\]\)\s*\{/)
 })
 
 test("detects the leftover Google floating-card classes", () => {
