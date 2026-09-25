@@ -1,6 +1,7 @@
 /**
  * Layout constants for the in-page Spotify player dock.
- * The bar is fixed to the viewport edges; body padding clears content above it.
+ * The bar is fixed to the viewport edges. Footer padding, not body padding,
+ * clears content above it, and only while the dock is actually visible.
  */
 
 /** Fallback height while the live bar has not been measured yet. */

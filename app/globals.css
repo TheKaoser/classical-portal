@@ -205,6 +205,15 @@ body:has(.home-portal) {
   overflow-x: clip;
 }
 
+/* The embed dock stays in the DOM while hidden. :has() matches hidden
+   elements, so clearance must require a dock that is actually showing.
+   Padding is on the footer (not the body) so it is part of the footer's
+   box: the text clears the fixed bar, and nothing scrolls past the footer.
+   Unlayered so it wins over the footer's pb-8 utility. 2rem is that pb-8. */
+body:has([data-player-dock="flush"]:not([hidden])) footer {
+  padding-bottom: calc(2rem + var(--player-bar-height, 9.5rem));
+}
+
 :root {
   /* Google-like ink and brand accents. Names stay stable for existing utilities. */
   --navy: #202124;
@@ -253,13 +262,10 @@ body:has(.home-portal) {
     color: var(--foreground);
     display: flex;
     flex-direction: column;
+    /* 100vh for browsers without dvh; 100dvh tracks mobile browser chrome. */
+    min-height: 100vh;
     min-height: 100dvh;
     margin: 0;
-  }
-
-  /* Keep page content clear of the fixed player dock when it is visible. */
-  body:has([data-player-dock="flush"]) {
-    padding-bottom: var(--player-bar-height, 9.5rem);
   }
 
   ::selection {

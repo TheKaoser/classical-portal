@@ -71,15 +71,15 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${newsreader.variable} flex min-h-dvh flex-col font-sans antialiased`}
+        className={`${newsreader.variable} relative flex min-h-screen min-h-dvh flex-col font-sans antialiased`}
       >
         <SpotifyPlayerProvider oauthConfigured={oauthConfigured}>
           <AppNavigationMarker />
           <SiteHeader />
-          <main className="relative mx-auto w-full max-w-4xl flex-1 px-4 py-10 sm:px-6">
+          <main className="relative z-10 mx-auto w-full max-w-4xl flex-1 px-4 py-10 sm:px-6">
             {children}
           </main>
-          <footer className="relative mx-auto mt-auto flex w-full max-w-4xl flex-wrap items-baseline justify-between gap-x-6 gap-y-2 px-4 pb-8 pt-4 text-sm text-muted-foreground sm:px-6">
+          <footer className="relative z-10 mx-auto mt-auto flex w-full max-w-4xl flex-wrap items-baseline justify-between gap-x-6 gap-y-2 px-4 pb-8 pt-4 text-sm text-muted-foreground sm:px-6">
             <p>
               Catalog from{" "}
               <a

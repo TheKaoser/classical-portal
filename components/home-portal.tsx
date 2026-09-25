@@ -1,12 +1,18 @@
 "use client"
 
 import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
+import { createPortal } from "react-dom"
 
 export type PortalVariant = "modern" | "antique"
 
-type PortalLayout = {
+type MeasuredPortal = {
   diameter: number
   padBottom: number
+}
+
+type PortalLayout = MeasuredPortal & {
+  /** Portal top, in pixels, relative to the body padding edge. */
+  originTop: number
 }
 
 const CONTENT_SELECTOR = "h1 [aria-hidden='true'], a"
@@ -20,7 +26,7 @@ function exteriorFrame(layout: PortalLayout): CSSProperties {
   return {
     width: size,
     height: size,
-    top: -layout.padBottom - overflow,
+    top: layout.originTop - layout.padBottom - overflow,
     ["--portal-hole" as string]: `${(100 / EXTERIOR_SCALE).toFixed(2)}%`,
   }
 }
@@ -35,7 +41,7 @@ function boundsOf(element: Element): DOMRect {
   return element.getBoundingClientRect()
 }
 
-function measureContent(root: HTMLElement): PortalLayout | null {
+function measureContent(root: HTMLElement): MeasuredPortal | null {
   const nodes = [
     ...root.querySelectorAll(CONTENT_SELECTOR),
     ...root.querySelectorAll("p"),
@@ -87,16 +93,20 @@ export function HomePortal({
     const update = () => {
       if (cancelled) return
       const next = measureContent(root)
+      const originTop = Math.round(
+        root.getBoundingClientRect().top - document.body.getBoundingClientRect().top,
+      )
       setLayout((current) => {
         if (
           current &&
           next &&
           current.diameter === next.diameter &&
-          current.padBottom === next.padBottom
+          current.padBottom === next.padBottom &&
+          current.originTop === originTop
         ) {
           return current
         }
-        return next
+        return next ? { ...next, originTop } : null
       })
     }
 
@@ -122,23 +132,29 @@ export function HomePortal({
       data-portal={variant}
       style={layout ? { paddingBottom: layout.padBottom } : undefined}
     >
+      {layout
+        ? createPortal(
+            <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0 overflow-clip">
+              {/* The wash is larger than the page. Clipping it to the body keeps the
+                  full-bleed field without letting it extend scrollHeight past the footer. */}
+              <div
+                className="portal-exterior pointer-events-none absolute left-1/2 -translate-x-1/2 rounded-full"
+                style={exteriorFrame(layout)}
+              />
+            </div>,
+            document.body,
+          )
+        : null}
       {layout ? (
-        <>
-          <div
-            aria-hidden="true"
-            className="portal-exterior pointer-events-none absolute left-1/2 z-0 -translate-x-1/2 rounded-full"
-            style={exteriorFrame(layout)}
-          />
-          <div
-            aria-hidden="true"
-            className="portal-ring pointer-events-none absolute left-1/2 z-0 -translate-x-1/2 rounded-full"
-            style={{
-              width: layout.diameter,
-              height: layout.diameter,
-              top: -layout.padBottom,
-            }}
-          />
-        </>
+        <div
+          aria-hidden="true"
+          className="portal-ring pointer-events-none absolute left-1/2 z-0 -translate-x-1/2 rounded-full"
+          style={{
+            width: layout.diameter,
+            height: layout.diameter,
+            top: -layout.padBottom,
+          }}
+        />
       ) : null}
       <div ref={contentRef} className="relative z-10">
         {children}
