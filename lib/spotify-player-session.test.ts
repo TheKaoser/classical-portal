@@ -8,6 +8,8 @@ import {
   playbackControlAction,
   playbackControlLabel,
   playbackControlShowsPause,
+  playbackNaturalEnd,
+  type PlaybackProgress,
 } from "./spotify-player-session.ts"
 
 test("playback session stays active while a play request has track URIs", () => {
@@ -92,6 +94,117 @@ test("selection alone does not highlight without a play request", () => {
     isAlbumRowActive({
       recordingId: "album-1",
       playRequestRecordingId: null,
+    }),
+    false
+  )
+})
+
+const LAST = "spotify:track:ii"
+
+function playingNearEnd(positionMs: number, atMs: number): PlaybackProgress {
+  return { uri: LAST, positionMs, durationMs: 180_000, paused: false, atMs }
+}
+
+test("a finished context pauses rewound to the start after the playhead reached the end", () => {
+  assert.equal(
+    playbackNaturalEnd({
+      previous: playingNearEnd(179_000, 1_000),
+      next: { paused: true, positionMs: 0, durationMs: 180_000, uri: LAST },
+      nowMs: 2_000,
+      userPaused: false,
+      isLastInContext: true,
+    }),
+    true
+  )
+})
+
+test("a finished context can stay paused on the final moment of the last track", () => {
+  assert.equal(
+    playbackNaturalEnd({
+      previous: playingNearEnd(178_200, 1_000),
+      next: { paused: true, positionMs: 179_600, durationMs: 180_000, uri: LAST },
+      nowMs: 1_800,
+      userPaused: false,
+      isLastInContext: true,
+    }),
+    true
+  )
+})
+
+test("two playing samples sitting on the end count as the context finishing", () => {
+  assert.equal(
+    playbackNaturalEnd({
+      previous: playingNearEnd(179_800, 1_000),
+      next: { paused: false, positionMs: 179_900, durationMs: 180_000, uri: LAST },
+      nowMs: 1_500,
+      userPaused: false,
+      isLastInContext: true,
+    }),
+    true
+  )
+  assert.equal(
+    playbackNaturalEnd({
+      previous: playingNearEnd(179_000, 1_000),
+      next: { paused: false, positionMs: 179_400, durationMs: 180_000, uri: LAST },
+      nowMs: 1_500,
+      userPaused: false,
+      isLastInContext: true,
+    }),
+    false
+  )
+})
+
+test("a listener pause does not look like the end of the work", () => {
+  assert.equal(
+    playbackNaturalEnd({
+      previous: playingNearEnd(90_000, 1_000),
+      next: { paused: true, positionMs: 90_400, durationMs: 180_000, uri: LAST },
+      nowMs: 1_400,
+      userPaused: false,
+      isLastInContext: true,
+    }),
+    false
+  )
+  assert.equal(
+    playbackNaturalEnd({
+      previous: playingNearEnd(179_200, 1_000),
+      next: { paused: true, positionMs: 179_500, durationMs: 180_000, uri: LAST },
+      nowMs: 1_300,
+      userPaused: true,
+      isLastInContext: true,
+    }),
+    false
+  )
+  assert.equal(
+    playbackNaturalEnd({
+      previous: playingNearEnd(200, 1_000),
+      next: { paused: true, positionMs: 0, durationMs: 180_000, uri: LAST },
+      nowMs: 1_200,
+      userPaused: false,
+      isLastInContext: true,
+    }),
+    false
+  )
+})
+
+test("the end of an earlier movement does not finish the context", () => {
+  assert.equal(
+    playbackNaturalEnd({
+      previous: playingNearEnd(179_000, 1_000),
+      next: { paused: true, positionMs: 0, durationMs: 180_000, uri: LAST },
+      nowMs: 2_000,
+      userPaused: false,
+      isLastInContext: false,
+    }),
+    false
+  )
+  assert.equal(
+    playbackNaturalEnd({
+      previous: { uri: "spotify:track:i", positionMs: 179_000, durationMs: 180_000, paused: false, atMs: 1_000 },
+      next: { paused: true, positionMs: 0, durationMs: 180_000, uri: LAST },
+      nowMs: 2_000,
+      userPaused: false,
+      isLastInContext: true,
     }),
     false
   )

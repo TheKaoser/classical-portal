@@ -11,6 +11,7 @@ import {
   primaryRecordingUris,
   readShufflePreference,
   shouldAdvanceList,
+  shouldChainListWork,
   shuffleWorkIds,
   workRecordingId,
   writeShufflePreference,
@@ -32,6 +33,26 @@ test("primaryRecordingUris uses the first recording that has tracks", () => {
       { id: "album", tracks: [{ uri: "spotify:track:aaa" }, { uri: "spotify:track:aaa" }, { uri: "spotify:track:bbb" }] },
     ]),
     { recordingId: "album", uris: ["spotify:track:aaa", "spotify:track:bbb"] }
+  )
+})
+
+test("shouldChainListWork follows the play-all order after the last movement", () => {
+  const uris = ["spotify:track:i", "spotify:track:ii"]
+  assert.equal(
+    shouldChainListWork({ mode: "list", finished: false, workUris: uris, endedUri: "spotify:track:ii" }),
+    true
+  )
+  assert.equal(
+    shouldChainListWork({ mode: "list", finished: false, workUris: uris, endedUri: "spotify:track:i" }),
+    false
+  )
+  assert.equal(
+    shouldChainListWork({ mode: "single", finished: false, workUris: uris, endedUri: "spotify:track:ii" }),
+    false
+  )
+  assert.equal(
+    shouldChainListWork({ mode: "list", finished: true, workUris: uris, endedUri: "spotify:track:ii" }),
+    false
   )
 })
 

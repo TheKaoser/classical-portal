@@ -77,6 +77,8 @@ type SpotifyPlayerContextValue = {
   resumePlayback: () => void
   beginPlayback: (recordingId: string, uris: string[], position: number) => void
   clearPlayback: () => void
+  registerContextEnded: (listener: (uri: string) => void) => () => void
+  registerUserTransport: (listener: () => void) => () => void
   handleIssue: (issue: PlaybackIssue) => void
   saveTrack: (uri: string) => Promise<{ ok: true } | { ok: false; message: string }>
   logout: () => Promise<void>
@@ -112,6 +114,8 @@ export function SpotifyPlayerProvider({
   const armPlaybackRef = useRef<(() => void) | null>(null)
   const transportRef = useRef<{ pause: () => void; resume: () => void } | null>(null)
   const mountedRef = useRef(true)
+  const contextEndedListenersRef = useRef(new Set<(uri: string) => void>())
+  const userTransportListenersRef = useRef(new Set<() => void>())
 
   const registerArm = useCallback((arm: () => void) => {
     armPlaybackRef.current = arm
@@ -138,6 +142,28 @@ export function SpotifyPlayerProvider({
     setPlayRequest(null)
     setPlayerPhase("idle")
     setActiveUri(null)
+  }, [])
+
+  const registerContextEnded = useCallback((listener: (uri: string) => void) => {
+    contextEndedListenersRef.current.add(listener)
+    return () => {
+      contextEndedListenersRef.current.delete(listener)
+    }
+  }, [])
+
+  const registerUserTransport = useCallback((listener: () => void) => {
+    userTransportListenersRef.current.add(listener)
+    return () => {
+      userTransportListenersRef.current.delete(listener)
+    }
+  }, [])
+
+  const noteContextEnded = useCallback((uri: string) => {
+    for (const listener of contextEndedListenersRef.current) listener(uri)
+  }, [])
+
+  const noteUserTransport = useCallback(() => {
+    for (const listener of userTransportListenersRef.current) listener()
   }, [])
 
   const clearLastIssue = useCallback(() => {
@@ -319,6 +345,8 @@ export function SpotifyPlayerProvider({
       resumePlayback,
       beginPlayback,
       clearPlayback,
+      registerContextEnded,
+      registerUserTransport,
       handleIssue,
       saveTrack,
       logout,
@@ -340,6 +368,8 @@ export function SpotifyPlayerProvider({
       resumePlayback,
       beginPlayback,
       clearPlayback,
+      registerContextEnded,
+      registerUserTransport,
       handleIssue,
       saveTrack,
       logout,
@@ -362,6 +392,8 @@ export function SpotifyPlayerProvider({
           onRegisterTransport={registerTransport}
           onPhase={setPlayerPhase}
           onTrackUri={setActiveUri}
+          onContextEnded={noteContextEnded}
+          onUserTransport={noteUserTransport}
           onIssue={handleIssue}
           savedTrackUris={savedTrackUris}
           onSaveTrack={saveTrack}
