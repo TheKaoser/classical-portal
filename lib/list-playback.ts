@@ -7,7 +7,7 @@ import { orderedTrackUris } from "./spotify-playback.ts"
  * Play all starts on the first filtered work that has a recording (shuffled
  * first when Random is on). While that recording plays, the next two works
  * are matched in the background. When its last movement ends, the next work
- * starts through the existing in-page player. That next work is the following
+ * starts through the in-page Spotify embed. That next work is the following
  * id in this Play all order: list order, or the shuffle chosen when Play all
  * started with Random on. A list of thousands never fans out into thousands
  * of Spotify searches up front.
@@ -36,7 +36,7 @@ export const LIST_SHUFFLE_STORAGE_KEY = "cp_list_shuffle"
 export const PENDING_LIST_PLAYBACK_KEY = "cp_pending_list_playback"
 
 export const LIST_PLAY_NOT_CONFIGURED =
-  "Sequential playback needs Spotify login, which is not configured on this server."
+  "Spotify matching is not configured on this server."
 export const LIST_PLAY_NO_MATCH = "No close catalog match for this work."
 export const LIST_PLAY_NO_LIST_MATCH = "No close catalog matches in this list."
 export const LIST_PLAY_STORAGE_BLOCKED = "Spotify login needs browser storage, which is blocked."

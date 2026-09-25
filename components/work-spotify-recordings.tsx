@@ -15,14 +15,10 @@ type Phase = "idle" | "loading" | "ready" | "unavailable" | "crawler"
  */
 export function WorkSpotifyRecordings({
   workId,
-  oauthConfigured,
   searchUrl,
-  playlistName,
 }: {
   workId: string
-  oauthConfigured: boolean
   searchUrl: string
-  playlistName: string
 }) {
   const [phase, setPhase] = useState<Phase>("idle")
   const [match, setMatch] = useState<SpotifyMatches | null>(null)
@@ -58,10 +54,8 @@ export function WorkSpotifyRecordings({
     return (
       <SpotifyRecordings
         configured={match.configured}
-        oauthConfigured={match.oauthConfigured || oauthConfigured}
         searchUrl={searchUrl || match.searchUrl}
         recordings={match.recordings}
-        playlistName={playlistName}
       />
     )
   }

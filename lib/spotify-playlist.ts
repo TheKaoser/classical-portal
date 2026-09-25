@@ -218,8 +218,8 @@ export function parsePendingPlaylist(raw: string): PendingPlaylist | null {
 }
 
 /**
- * Legacy embed choice. The work page plays in the Web Playback SDK instead of
- * these iframes. The helper stays so playlist-vs-track selection stays specified.
+ * Playlist-vs-track embed choice kept for the playlist helpers. Playback uses
+ * the Spotify iFrame API, one movement URI at a time, not these playlist embeds.
  */
 export function choosePlaybackEmbed(input: {
   trackCount: number
