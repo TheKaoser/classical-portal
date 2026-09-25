@@ -16,26 +16,17 @@ import {
   LIST_PLAY_NO_LIST_MATCH,
   LIST_PLAY_NO_MATCH,
   LIST_PLAY_START_ATTEMPTS,
-  LIST_PLAY_STORAGE_BLOCKED,
-  PENDING_LIST_PLAYBACK_KEY,
   idsToPrefetch,
   listPlayAllControl,
   listStoppedEarly,
-  parsePendingListPlayback,
   readShufflePreference,
   shouldAdvanceList,
   shouldChainListWork,
   shuffleWorkIds,
   workRecordingId,
   writeShufflePreference,
-  type PendingListPlayback,
 } from "@/lib/list-playback"
 import { createListPlaybackStore, IDLE_ROW, type ListPlaybackStore } from "@/lib/list-playback-store"
-import {
-  PLAYBACK_LOGIN_EXPIRED_MESSAGE,
-  PLAYBACK_RECONNECT_MESSAGE,
-  PREMIUM_REQUIRED_MESSAGE,
-} from "@/lib/spotify-playback"
 import { cn } from "@/lib/utils"
 
 const WorkPlaybackContext = createContext<ListPlaybackStore | null>(null)
@@ -52,13 +43,6 @@ type Session = {
 }
 
 type Found = { index: number; id: string; uris: string[] }
-
-function loginHref(reconnect: boolean) {
-  const returnTo = `${window.location.pathname}${window.location.search}`
-  const params = new URLSearchParams({ returnTo })
-  if (reconnect) params.set("reconnect", "1")
-  return `/api/spotify/login?${params.toString()}`
-}
 
 function serverIdleRow() {
   return IDLE_ROW
@@ -102,7 +86,6 @@ function PlaybackMachine({ store, workIds }: { store: ListPlaybackStore; workIds
   const contextEndTimerRef = useRef<number | null>(null)
   const transportGenerationRef = useRef(0)
   const advancingRef = useRef(false)
-  const resumedRef = useRef(false)
   const { activeUri, playerPhase, lastIssue } = spotify
 
   function clearAdvanceTimers() {
@@ -194,26 +177,10 @@ function PlaybackMachine({ store, workIds }: { store: ListPlaybackStore; workIds
     }
   }
 
-  function preparePlayback(pending: PendingListPlayback): boolean {
-    const api = apiRef.current
-    if (!api.oauthConfigured) {
+  function preparePlayback(): boolean {
+    if (!apiRef.current.oauthConfigured) {
       // The toolbar already explains this. Keep that note quiet instead of turning it into an error.
       store.patch({ notice: null, noticeKind: null, noticeAction: null })
-      return false
-    }
-    if (!api.session.connected) {
-      try {
-        sessionStorage.setItem(PENDING_LIST_PLAYBACK_KEY, JSON.stringify(pending))
-      } catch {
-        store.patch({ notice: LIST_PLAY_STORAGE_BLOCKED, noticeKind: "error", noticeAction: null })
-        return false
-      }
-      window.location.href = loginHref(false)
-      return false
-    }
-    if (api.session.premium === false || api.premiumBlocked) {
-      api.setPremiumBlocked(true)
-      store.patch({ notice: PREMIUM_REQUIRED_MESSAGE, noticeKind: "premium", noticeAction: null })
       return false
     }
     return true
@@ -257,7 +224,7 @@ function PlaybackMachine({ store, workIds }: { store: ListPlaybackStore; workIds
       noticeAction: null,
       noticeKind: null,
     })
-    if (!preparePlayback({ kind: "work", workId })) {
+    if (!preparePlayback()) {
       stopSession(session, { activeWorkId: null })
       return
     }
@@ -306,7 +273,7 @@ function PlaybackMachine({ store, workIds }: { store: ListPlaybackStore; workIds
       noticeAction: null,
       noticeKind: null,
     })
-    if (!preparePlayback({ kind: "list", shuffle })) {
+    if (!preparePlayback()) {
       stopSession(session, { activeWorkId: null })
       return
     }
@@ -413,33 +380,6 @@ function PlaybackMachine({ store, workIds }: { store: ListPlaybackStore; workIds
   useEffect(() => {
     if (!lastIssue) return
     apiRef.current.clearLastIssue()
-    if (lastIssue.code === "premium_required") {
-      store.patch({
-        notice: lastIssue.message || PREMIUM_REQUIRED_MESSAGE,
-        noticeKind: "premium",
-        noticeAction: null,
-        starting: false,
-      })
-      return
-    }
-    if (lastIssue.code === "insufficient_scope") {
-      store.patch({
-        notice: lastIssue.message || PLAYBACK_RECONNECT_MESSAGE,
-        noticeKind: "error",
-        noticeAction: "reconnect",
-        starting: false,
-      })
-      return
-    }
-    if (lastIssue.code === "not_connected") {
-      store.patch({
-        notice: lastIssue.message || PLAYBACK_LOGIN_EXPIRED_MESSAGE,
-        noticeKind: "error",
-        noticeAction: "login",
-        starting: false,
-      })
-      return
-    }
     store.patch({
       notice: lastIssue.message || "Spotify could not start playback.",
       noticeKind: "error",
@@ -520,27 +460,6 @@ function PlaybackMachine({ store, workIds }: { store: ListPlaybackStore; workIds
     })
   }, [spotify.registerUserTransport])
 
-  useEffect(() => {
-    if (!spotify.oauthConfigured || !spotify.session.connected || resumedRef.current) return
-    let raw: string | null = null
-    try {
-      raw = sessionStorage.getItem(PENDING_LIST_PLAYBACK_KEY)
-    } catch {
-      return
-    }
-    if (!raw) return
-    const pending = parsePendingListPlayback(raw)
-    try {
-      sessionStorage.removeItem(PENDING_LIST_PLAYBACK_KEY)
-    } catch {
-      // The value was already read.
-    }
-    if (!pending) return
-    resumedRef.current = true
-    if (pending.kind === "work") void playWorkRef.current(pending.workId)
-    else void playAllRef.current({ shuffle: pending.shuffle })
-  }, [spotify.oauthConfigured, spotify.session.connected])
-
   return null
 }
 
@@ -602,18 +521,7 @@ function WorkListToolbarInner({ store, count }: { store: ListPlaybackStore; coun
         </div>
       </div>
       {notice ? (
-        <div className="mt-3 space-y-2">
-          <p className={cn("text-sm", noticeIsQuiet ? "text-muted-foreground" : "text-destructive")}>
-            {notice}
-          </p>
-          {toolbar.oauthConfigured && toolbar.noticeAction ? (
-            <Button variant="outline" size="sm" asChild>
-              <a href={loginHref(toolbar.noticeAction === "reconnect")}>
-                {toolbar.noticeAction === "reconnect" ? "Reconnect Spotify" : "Sign in to Spotify"}
-              </a>
-            </Button>
-          ) : null}
-        </div>
+        <p className={cn("mt-3 text-sm", noticeIsQuiet ? "text-muted-foreground" : "text-destructive")}>{notice}</p>
       ) : null}
     </div>
   )

@@ -9,8 +9,6 @@ import { formatCompositionDate } from "@/lib/composition-label"
 import { genreHrefForLabel } from "@/lib/forms"
 import { getWork, workParts } from "@/lib/openopus"
 import { pageMetadata, workDescription, workJsonLd, workPageTitle } from "@/lib/seo"
-import { isSpotifyOAuthConfigured } from "@/lib/spotify-model"
-import { classicalPlaylistName } from "@/lib/spotify-playlist"
 import { catalogSpotifySearchUrl } from "@/lib/spotify-work-query"
 
 export const revalidate = 600
@@ -57,7 +55,6 @@ export default async function WorkPage({
   const subtitle = [formatCompositionDate(compositionDate), work.genre, composer.complete_name]
     .filter(Boolean)
     .join(" · ")
-  const playlistName = classicalPlaylistName(composer.name, work.title)
   const searchUrl = catalogSpotifySearchUrl(composer, work)
 
   return (
@@ -100,13 +97,7 @@ export default async function WorkPage({
         )}
       </div>
 
-      <WorkSpotifyRecordings
-        key={work.id}
-        workId={work.id}
-        oauthConfigured={isSpotifyOAuthConfigured()}
-        searchUrl={searchUrl}
-        playlistName={playlistName}
-      />
+      <WorkSpotifyRecordings key={work.id} workId={work.id} searchUrl={searchUrl} />
     </div>
   )
 }

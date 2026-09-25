@@ -12,6 +12,6 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // API is excluded so a Spotify callback keeps the host that started the login.
+  // API routes stay on the host that received them.
   matcher: ["/((?!api/|_next/static|_next/image).*)"],
 }
