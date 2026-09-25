@@ -10,7 +10,10 @@ import {
   isDurableRowFresh,
   resolveDurableWorkMatch,
   SPOTIFY_WORK_MATCH_NEGATIVE_TTL_MS,
+  SPOTIFY_WORK_MATCH_SCHEMA_SQL,
+  spotifyMatchPostgresUrl,
   type SpotifyMatchStoreDeps,
+  type SqlExecutor,
 } from "./spotify-match-store.ts"
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..")
@@ -26,6 +29,8 @@ const recording: SpotifyRecording = {
   tracks: [],
 }
 
+type Call = { text: string; params: readonly unknown[] }
+
 function positive(): SpotifyMatches {
   return {
     configured: true,
@@ -40,18 +45,36 @@ function negative(): SpotifyMatches {
   return { ...positive(), recordings: [] }
 }
 
-function deps(
-  fetchImpl: typeof fetch,
-  market = "es"
-): SpotifyMatchStoreDeps {
+function isSchema(call: Call): boolean {
+  return /create table/i.test(call.text)
+}
+
+function isRead(call: Call): boolean {
+  return /^\s*select/i.test(call.text)
+}
+
+function mockDb(
+  handler: (call: Call) => readonly Record<string, unknown>[] | Promise<readonly Record<string, unknown>[]>
+): SqlExecutor & { calls: Call[] } {
+  const calls: Call[] = []
+  return {
+    calls,
+    query: async (text, params = []) => {
+      const call = { text, params }
+      calls.push(call)
+      return handler(call)
+    },
+  }
+}
+
+function deps(db: SqlExecutor, market = "es"): SpotifyMatchStoreDeps {
   return {
     now: () => NOW,
     env: {
-      supabaseUrl: "https://example.supabase.co",
-      serviceRoleKey: "service-role",
+      postgresUrl: "postgres://portal.example/classical",
       market,
     },
-    fetch: fetchImpl,
+    db,
   }
 }
 
@@ -78,8 +101,44 @@ test("positive rows never expire and negative rows last seven days", () => {
   assert.equal(isDurableRowFresh(storedNegative?.expires_at, NOW + SPOTIFY_WORK_MATCH_NEGATIVE_TTL_MS - 1), true)
 })
 
+test("the postgres url prefers the direct connection and ignores Prisma Accelerate", () => {
+  assert.equal(
+    spotifyMatchPostgresUrl({
+      STORAGE_CLASSICAL_POSTGRES_URL: " postgres://preferred/db ",
+      STORAGE_CLASSICAL_DATABASE_URL: "postgres://fallback/db",
+    }),
+    "postgres://preferred/db"
+  )
+  assert.equal(
+    spotifyMatchPostgresUrl({
+      STORAGE_CLASSICAL_POSTGRES_URL: "prisma://accelerate",
+      STORAGE_CLASSICAL_DATABASE_URL: "postgresql://fallback/db",
+    }),
+    "postgresql://fallback/db"
+  )
+  assert.equal(
+    spotifyMatchPostgresUrl({
+      STORAGE_CLASSICAL_DATABASE_URL: "prisma://accelerate",
+    }),
+    ""
+  )
+})
+
 test("a stored positive match is reused and Spotify is not searched", async () => {
   let searches = 0
+  const db = mockDb(async (call) => {
+    if (isSchema(call)) return []
+    assert.equal(isRead(call), true)
+    assert.deepEqual(call.params, ["17109", "ES"])
+    return [
+      {
+        recordings: [recording],
+        query: "Frédéric Chopin op 9",
+        search_url: "https://open.spotify.com/search/chopin",
+        expires_at: null,
+      },
+    ]
+  })
   const match = await resolveDurableWorkMatch(
     "17109",
     "Mozilla/5.0 Chrome/120",
@@ -87,28 +146,13 @@ test("a stored positive match is reused and Spotify is not searched", async () =
       searches += 1
       throw new Error("Spotify should not be called")
     },
-    deps(async (input, init) => {
-      const url = new URL(String(input))
-      assert.equal(url.pathname, "/rest/v1/spotify_work_matches")
-      assert.equal(url.searchParams.get("work_id"), "eq.17109")
-      assert.equal(url.searchParams.get("market"), "eq.ES")
-      assert.equal(init?.method ?? "GET", "GET")
-      const headers = new Headers(init?.headers)
-      assert.equal(headers.get("apikey"), "service-role")
-      assert.equal(headers.get("authorization"), "Bearer service-role")
-      return Response.json([
-        {
-          recordings: [recording],
-          query: "Frédéric Chopin op 9",
-          search_url: "https://open.spotify.com/search/chopin",
-          expires_at: null,
-        },
-      ])
-    })
+    deps(db)
   )
   assert.equal(searches, 0)
   assert.equal(match.recordings[0]?.album, "Nocturnes")
   assert.equal(match.query, "Frédéric Chopin op 9")
+  assert.equal(db.calls.filter(isSchema).length, 1)
+  assert.equal(db.calls.filter(isRead).length, 1)
 })
 
 test("an unexpired negative match is reused", async () => {
@@ -120,15 +164,18 @@ test("an unexpired negative match is reused", async () => {
       searches += 1
       return positive()
     },
-    deps(async () =>
-      Response.json([
-        {
-          recordings: [],
-          query: "saved query",
-          search_url: "https://open.spotify.com/search/saved",
-          expires_at: new Date(NOW + 60_000).toISOString(),
-        },
-      ])
+    deps(
+      mockDb(async (call) => {
+        if (isSchema(call) || !isRead(call)) return []
+        return [
+          {
+            recordings: [],
+            query: "saved query",
+            search_url: "https://open.spotify.com/search/saved",
+            expires_at: new Date(NOW + 60_000).toISOString(),
+          },
+        ]
+      })
     )
   )
   assert.equal(searches, 0)
@@ -137,57 +184,63 @@ test("an unexpired negative match is reused", async () => {
 })
 
 test("an expired negative is searched again and stored for another seven days", async () => {
-  const calls: { method: string; body: Record<string, unknown> | null }[] = []
+  const calls: Call[] = []
   const match = await resolveDurableWorkMatch(
     "neg-stale",
     null,
     async () => negative(),
-    deps(async (input, init) => {
-      const method = init?.method ?? "GET"
-      const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : null
-      calls.push({ method, body })
-      if (method === "GET") {
-        return Response.json([
+    deps(
+      mockDb(async (call) => {
+        calls.push(call)
+        if (!isRead(call)) return []
+        return [
           {
             recordings: [],
             query: "old",
             search_url: "https://open.spotify.com/search/old",
             expires_at: "2020-01-01T00:00:00.000Z",
           },
-        ])
-      }
-      const url = new URL(String(input))
-      assert.equal(url.searchParams.get("on_conflict"), "work_id,market")
-      const headers = new Headers(init?.headers)
-      assert.equal(headers.get("prefer"), "resolution=merge-duplicates,return=minimal")
-      return new Response(null, { status: 201 })
-    })
+        ]
+      })
+    )
   )
+  const dataCalls = calls.filter((call) => !isSchema(call))
   assert.equal(match.recordings.length, 0)
-  assert.equal(calls.length, 2)
-  assert.equal(calls[1]?.method, "POST")
-  assert.equal(calls[1]?.body?.negative, true)
-  assert.equal(calls[1]?.body?.expires_at, new Date(NOW + SPOTIFY_WORK_MATCH_NEGATIVE_TTL_MS).toISOString())
-  assert.equal(calls[1]?.body?.market, "ES")
+  assert.equal(dataCalls.length, 2)
+  assert.equal(isRead(dataCalls[0]!), true)
+  const write = dataCalls[1]!
+  assert.match(write.text, /on conflict \(work_id, market\)/i)
+  assert.equal(write.params[0], "neg-stale")
+  assert.equal(write.params[1], "ES")
+  assert.equal(write.params[2], true)
+  assert.equal(write.params[6], "2026-09-25T00:00:00.000Z")
+  assert.equal(write.params[7], new Date(NOW + SPOTIFY_WORK_MATCH_NEGATIVE_TTL_MS).toISOString())
+  assert.equal(calls.filter(isSchema).length, 1)
 })
 
 test("a positive match is upserted with no expiry", async () => {
-  const saved: { body: Record<string, unknown> | null } = { body: null }
+  const saved: { params: readonly unknown[] | null } = { params: null }
   await resolveDurableWorkMatch(
     "pos-new",
     null,
     async () => positive(),
-    deps(async (_input, init) => {
-      if ((init?.method ?? "GET") === "GET") return Response.json([])
-      saved.body = JSON.parse(String(init?.body)) as Record<string, unknown>
-      return new Response(null, { status: 201 })
-    }, "ES")
+    deps(
+      mockDb(async (call) => {
+        if (!isRead(call) && !isSchema(call)) saved.params = call.params
+        return []
+      }),
+      "ES"
+    )
   )
-  assert.equal(saved.body?.work_id, "pos-new")
-  assert.equal(saved.body?.negative, false)
-  assert.equal(saved.body?.expires_at, null)
-  assert.equal(saved.body?.stored_at, "2026-09-25T00:00:00.000Z")
-  assert.equal((saved.body?.recordings as SpotifyRecording[])[0]?.id, "album-1")
+  assert.ok(saved.params)
+  assert.equal(saved.params[0], "pos-new")
+  assert.equal(saved.params[1], "ES")
+  assert.equal(saved.params[2], false)
+  assert.equal(saved.params[4], "Frédéric Chopin op 9")
+  assert.equal(saved.params[5], "https://open.spotify.com/search/chopin")
+  assert.equal(saved.params[6], "2026-09-25T00:00:00.000Z")
+  assert.equal(saved.params[7], null)
+  assert.equal(JSON.parse(String(saved.params[3]))[0]?.id, "album-1")
 })
 
 test("quota, crawler, and unconfigured results are not stored", async () => {
@@ -197,19 +250,21 @@ test("quota, crawler, and unconfigured results are not stored", async () => {
     ["missing", null, { ...negative(), configured: false }],
   ] as const) {
     let writes = 0
-    let fetches = 0
+    let queries = 0
     await resolveDurableWorkMatch(
       id,
       userAgent,
       async () => matches,
-      deps(async (_input, init) => {
-        fetches += 1
-        if ((init?.method ?? "GET") === "POST") writes += 1
-        return Response.json([])
-      })
+      deps(
+        mockDb(async (call) => {
+          queries += 1
+          if (!isSchema(call) && !isRead(call)) writes += 1
+          return []
+        })
+      )
     )
     assert.equal(writes, 0, id)
-    if (userAgent === GOOGLEBOT) assert.equal(fetches, 0, id)
+    if (userAgent === GOOGLEBOT) assert.equal(queries, 0, id)
   }
 })
 
@@ -218,38 +273,72 @@ test("a store outage still returns the live search", async () => {
     "outage",
     null,
     async () => positive(),
-    deps(async (_input, init) => {
-      if ((init?.method ?? "GET") === "GET") return new Response("no", { status: 500 })
-      return new Response("no", { status: 500 })
+    deps({
+      query: async () => {
+        throw new Error("connection refused at postgres://user:secret@db.example/classical")
+      },
     })
   )
   assert.equal(match.recordings.length, 1)
 })
 
-test("without Supabase credentials the search still runs and nothing is stored", async () => {
-  let fetches = 0
+test("a failed table create is retried instead of disabling the client", async () => {
+  let creates = 0
+  let writes = 0
+  const db = mockDb(async (call) => {
+    if (isSchema(call)) {
+      creates += 1
+      if (creates === 1) throw new Error("timeout")
+      return []
+    }
+    if (!isRead(call)) writes += 1
+    return []
+  })
+  const match = await resolveDurableWorkMatch("retry", null, async () => positive(), deps(db))
+  assert.equal(match.recordings.length, 1)
+  assert.equal(creates, 2)
+  assert.equal(writes, 1)
+})
+
+test("without a postgres url the search still runs and nothing is stored", async () => {
+  let queries = 0
   const match = await resolveDurableWorkMatch("plain", null, async () => positive(), {
     now: () => NOW,
     env: {},
-    fetch: async () => {
-      fetches += 1
-      return Response.json([])
+    db: {
+      query: async () => {
+        queries += 1
+        return []
+      },
     },
   })
-  assert.equal(fetches, 0)
+  assert.equal(queries, 0)
   assert.equal(match.query, "Frédéric Chopin op 9")
 })
 
-test("the match table is locked to the service role", () => {
-  const sql = readFileSync(join(root, "supabase/spotify_work_matches.sql"), "utf8")
+test("the same client creates the table once", async () => {
+  const db = mockDb(async () => [])
+  const options = deps(db)
+  await resolveDurableWorkMatch("one", null, async () => positive(), options)
+  await resolveDurableWorkMatch("two", null, async () => positive(), options)
+  assert.equal(db.calls.filter(isSchema).length, 1)
+  assert.equal(db.calls.filter((call) => !isSchema(call) && !isRead(call)).length, 2)
+})
+
+test("the match table sql matches the store and does not use Supabase", () => {
+  const sql = readFileSync(join(root, "db/spotify_work_matches.sql"), "utf8")
+  const statement = sql.slice(sql.indexOf("create table if not exists")).split(";")[0]?.trim()
+  assert.equal(statement, SPOTIFY_WORK_MATCH_SCHEMA_SQL)
   assert.match(sql, /primary key \(work_id, market\)/)
-  assert.match(sql, /enable row level security/)
-  assert.match(sql, /revoke all on table public\.spotify_work_matches from public, anon, authenticated/)
-  assert.match(sql, /grant select, insert, update, delete on table public\.spotify_work_matches to service_role/)
   assert.match(sql, /negative = false and expires_at is null/)
+  assert.match(sql, /delete from public\.spotify_work_matches/)
   const store = readFileSync(join(root, "lib/spotify-match-store.ts"), "utf8")
-  assert.match(store, /SUPABASE_SERVICE_ROLE_KEY/)
+  assert.match(store, /STORAGE_CLASSICAL_POSTGRES_URL/)
+  assert.match(store, /STORAGE_CLASSICAL_DATABASE_URL/)
+  assert.equal(store.includes("SUPABASE"), false)
   assert.equal(store.includes("ANON_KEY"), false)
+  assert.equal(store.includes("PRISMA_DATABASE_URL"), false)
+  assert.equal(store.includes("NEXT_PUBLIC_SUPABASE"), false)
   const matcher = readFileSync(join(root, "lib/work-spotify.ts"), "utf8")
   assert.match(matcher, /resolveDurableWorkMatch/)
 })
