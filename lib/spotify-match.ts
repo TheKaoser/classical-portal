@@ -304,6 +304,13 @@ export function buildSearchQueries(work: WorkQuery, parsed = parseWork(work)): s
     .slice(0, 4)
 }
 
+/** Open Spotify search for the first query variant. Does not call the Web API. */
+export function primarySpotifySearchUrl(work: WorkQuery): string {
+  const queries = buildSearchQueries(work)
+  const query = queries[0] || `${work.composerName} ${work.title}`
+  return `https://open.spotify.com/search/${encodeURIComponent(query)}`
+}
+
 function composerPresent(parsed: ParsedWork, haystack: string): boolean {
   if (!parsed.composerLast) return false
   if (!haystack.includes(parsed.composerLast)) return false
@@ -452,6 +459,22 @@ export function scoreTrack(track: TrackLike, parsed: ParsedWork): number {
 }
 
 export const MATCH_THRESHOLD = 20
+
+/**
+ * Stop firing query variants once the tracks in hand identify the work.
+ * A catalogue-strength hit (40+) is enough on its own. Three acceptable hits
+ * are enough when no single track is that strong.
+ */
+export function hasGoodMatch(scores: readonly number[]): boolean {
+  let acceptable = 0
+  let best = -1
+  for (const score of scores) {
+    if (score > best) best = score
+    if (score >= MATCH_THRESHOLD) acceptable += 1
+  }
+  if (best >= 40) return true
+  return acceptable >= 3
+}
 
 export function trackStem(name: string): string {
   return normalize(workTitle(name))

@@ -5,7 +5,7 @@ import { ExternalLink, LogOut, Pause, Play } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useSpotifyPlayer } from "@/components/spotify-player-provider"
 import { cn } from "@/lib/utils"
-import { formatDuration, type SpotifyRecording, type SpotifyTrackMatch } from "@/lib/spotify"
+import { formatDuration, type SpotifyRecording, type SpotifyTrackMatch } from "@/lib/spotify-model"
 import {
   orderedTrackUris,
   parsePendingPlayback,

@@ -4,7 +4,9 @@ import {
   buildSearchQueries,
   clusterTracks,
   fillAlbumGaps,
+  hasGoodMatch,
   parseWork,
+  primarySpotifySearchUrl,
   scoreTrack,
   type TrackLike,
   type WorkQuery,
@@ -438,4 +440,34 @@ test("catalogue searches stay ahead of the cleaned title", () => {
   )
   assert.match(queries[0], /op 67/i)
   assert.match(queries[1], /symphony 5/i)
+})
+
+test("a catalogue-strength score is a good match on its own", () => {
+  assert.equal(hasGoodMatch([40]), true)
+  assert.equal(hasGoodMatch([55, 10]), true)
+})
+
+test("three acceptable scores are a good match", () => {
+  assert.equal(hasGoodMatch([20, 22, 21]), true)
+})
+
+test("one or two weak scores keep searching", () => {
+  assert.equal(hasGoodMatch([]), false)
+  assert.equal(hasGoodMatch([20]), false)
+  assert.equal(hasGoodMatch([24, 30]), false)
+  assert.equal(hasGoodMatch([-1, 0, 19]), false)
+})
+
+test("primary search url uses the first query and does not call Spotify", () => {
+  const url = primarySpotifySearchUrl(
+    work({
+      composerName: "Chopin",
+      composerCompleteName: "Frédéric Chopin",
+      title: "Nocturne in B-flat minor, op. 9 no. 1",
+      catalogue: "op",
+      catalogueNumber: "9",
+    })
+  )
+  assert.match(url, /^https:\/\/open\.spotify\.com\/search\//)
+  assert.match(decodeURIComponent(url), /Fr[eé]d[eé]ric Chopin op 9/i)
 })
