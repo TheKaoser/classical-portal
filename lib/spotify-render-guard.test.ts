@@ -42,4 +42,7 @@ test("work recordings are loaded from the client API, not during render", () => 
   const route = source("app/api/spotify/recordings/route.ts")
   assert.match(route, /isCrawlerUserAgent/)
   assert.match(route, /SPOTIFY_RECORDINGS_UNAVAILABLE/)
+  const matcher = source("lib/work-spotify.ts")
+  assert.match(matcher, /resolveDurableWorkMatch/)
+  assert.equal(matcher.includes("searchSpotifyForWork(spotifyQueryForWork"), false)
 })

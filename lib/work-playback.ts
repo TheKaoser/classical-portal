@@ -11,7 +11,7 @@ export type WorkPlayback = {
   unavailable?: boolean
 }
 
-/** Same Spotify match as the work page. Search results are cached inside the matcher. */
+/** Same Spotify match as the work page. A stored work+market row is reused before Spotify is called. */
 export async function playbackForWorkId(
   id: string,
   userAgent?: string | null
