@@ -2,15 +2,16 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { JsonLd } from "@/components/json-ld"
 import { PageHeader } from "@/components/page-header"
-import { SpotifyRecordings } from "@/components/spotify-recordings"
+import { WorkSpotifyRecordings } from "@/components/work-spotify-recordings"
 import { Badge } from "@/components/ui/badge"
 import { attachCompositionYears, storedCompositionDate } from "@/lib/composition-years"
 import { formatCompositionDate } from "@/lib/composition-label"
 import { genreHrefForLabel } from "@/lib/forms"
-import { getWork, workParts, workSearchTerms } from "@/lib/openopus"
+import { getWork, workParts } from "@/lib/openopus"
 import { pageMetadata, workDescription, workJsonLd, workPageTitle } from "@/lib/seo"
-import { searchSpotifyForWork } from "@/lib/spotify"
+import { isSpotifyOAuthConfigured } from "@/lib/spotify-model"
 import { classicalPlaylistName } from "@/lib/spotify-playlist"
+import { catalogSpotifySearchUrl } from "@/lib/spotify-work-query"
 
 export const revalidate = 600
 
@@ -47,30 +48,17 @@ export default async function WorkPage({
   if (!work || !composer) notFound()
 
   const parts = workParts(work)
-  const [datedList, spotify] = await Promise.all([
-    attachCompositionYears([work], {
-      id: composer.id,
-      name: composer.name,
-      complete_name: composer.complete_name,
-    }),
-    searchSpotifyForWork({
-      composerName: composer.name,
-      composerCompleteName: composer.complete_name,
-      title: work.title,
-      subtitle: work.subtitle,
-      genre: work.genre,
-      catalogue: work.catalogue,
-      catalogueNumber: work.catalogue_number,
-      additionalNumber: work.additional_number,
-      searchterms: workSearchTerms(work),
-      parts,
-    }),
-  ])
+  const datedList = await attachCompositionYears([work], {
+    id: composer.id,
+    name: composer.name,
+    complete_name: composer.complete_name,
+  })
   const compositionDate = datedList[0]?.compositionDate ?? null
   const subtitle = [formatCompositionDate(compositionDate), work.genre, composer.complete_name]
     .filter(Boolean)
     .join(" · ")
   const playlistName = classicalPlaylistName(composer.name, work.title)
+  const searchUrl = catalogSpotifySearchUrl(composer, work)
 
   return (
     <div className="space-y-10">
@@ -112,11 +100,11 @@ export default async function WorkPage({
         )}
       </div>
 
-      <SpotifyRecordings
-        configured={spotify.configured}
-        oauthConfigured={spotify.oauthConfigured}
-        searchUrl={spotify.searchUrl}
-        recordings={spotify.recordings}
+      <WorkSpotifyRecordings
+        key={work.id}
+        workId={work.id}
+        oauthConfigured={isSpotifyOAuthConfigured()}
+        searchUrl={searchUrl}
         playlistName={playlistName}
       />
     </div>

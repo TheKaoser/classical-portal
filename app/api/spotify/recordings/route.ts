@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server"
 import { isCrawlerUserAgent } from "@/lib/crawler"
 import { isCatalogWorkId } from "@/lib/list-playback"
-import { isSpotifyConfigured } from "@/lib/spotify-model"
+import { isSpotifyConfigured, isSpotifyOAuthConfigured } from "@/lib/spotify-model"
 import { SPOTIFY_RECORDINGS_UNAVAILABLE } from "@/lib/spotify-quota"
-import { playbackForWorkId } from "@/lib/work-playback"
+import { matchSpotifyWork } from "@/lib/work-spotify"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -12,9 +12,9 @@ export const maxDuration = 60
 const NO_STORE = { "Cache-Control": "no-store" }
 
 /**
- * GET /api/spotify/work-playback?id=
- * The primary recording for one work: the same match the work page would play.
- * List playback calls this for the current work and a short lookahead, not the whole list.
+ * GET /api/spotify/recordings?id=
+ * Client-triggered catalog match for a work page. Crawlers get an empty
+ * payload and do not call Spotify.
  */
 export async function GET(request: Request) {
   const id = new URL(request.url).searchParams.get("id")?.trim() ?? ""
@@ -26,11 +26,11 @@ export async function GET(request: Request) {
   if (isCrawlerUserAgent(userAgent)) {
     return NextResponse.json(
       {
-        id,
-        title: "",
         configured: isSpotifyConfigured(),
-        recordingId: null,
-        uris: [],
+        oauthConfigured: isSpotifyOAuthConfigured(),
+        query: "",
+        searchUrl: "",
+        recordings: [],
         skipped: "crawler",
       },
       { headers: NO_STORE }
@@ -38,23 +38,31 @@ export async function GET(request: Request) {
   }
 
   try {
-    const playback = await playbackForWorkId(id, userAgent)
-    if (!playback) {
+    const match = await matchSpotifyWork(id, userAgent)
+    if (!match) {
       return NextResponse.json({ error: "Work not found", code: "not_found" }, { status: 404, headers: NO_STORE })
     }
-    if (playback.unavailable) {
+    if (match.spotify.unavailable) {
       return NextResponse.json(
-        { error: SPOTIFY_RECORDINGS_UNAVAILABLE, code: "quota", unavailable: true },
+        { ...match.spotify, error: SPOTIFY_RECORDINGS_UNAVAILABLE },
         { status: 503, headers: NO_STORE }
       )
     }
-    return NextResponse.json(playback, {
-      headers: { "Cache-Control": "private, max-age=600" },
+    return NextResponse.json(match.spotify, {
+      headers: { "Cache-Control": "private, max-age=3600" },
     })
   } catch (error) {
-    console.error("GET /api/spotify/work-playback failed", error)
+    console.error("GET /api/spotify/recordings failed", error)
     return NextResponse.json(
-      { error: SPOTIFY_RECORDINGS_UNAVAILABLE, code: "quota", unavailable: true },
+      {
+        configured: isSpotifyConfigured(),
+        oauthConfigured: isSpotifyOAuthConfigured(),
+        query: "",
+        searchUrl: "",
+        recordings: [],
+        unavailable: true,
+        error: SPOTIFY_RECORDINGS_UNAVAILABLE,
+      },
       { status: 503, headers: NO_STORE }
     )
   }

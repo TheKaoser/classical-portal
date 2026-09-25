@@ -5,7 +5,7 @@ import "./globals.css"
 import { AppNavigationMarker } from "@/components/app-navigation-marker"
 import { SiteHeader } from "@/components/site-header"
 import { SpotifyPlayerProvider } from "@/components/spotify-player-provider"
-import { isSpotifyOAuthConfigured } from "@/lib/spotify"
+import { isSpotifyOAuthConfigured } from "@/lib/spotify-model"
 import { SHARE_IMAGE } from "@/lib/seo"
 import { SITE_DESCRIPTION, SITE_NAME, SITE_ORIGIN } from "@/lib/site"
 

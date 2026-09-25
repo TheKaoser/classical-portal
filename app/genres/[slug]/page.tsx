@@ -14,7 +14,7 @@ import {
   relocatedGenreHref,
   retiredKeyboardInstrumentFilter,
 } from "@/lib/forms"
-import { isSpotifyOAuthConfigured } from "@/lib/spotify"
+import { isSpotifyOAuthConfigured } from "@/lib/spotify-model"
 import { classifyListedSubtype, listedSubtypeFilters } from "@/lib/work-subtypes"
 import { genreDescription, pageMetadata } from "@/lib/seo"
 
