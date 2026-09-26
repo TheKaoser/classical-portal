@@ -7,6 +7,8 @@ import {
   PLAYER_BAR_DOCK_STYLE,
   PLAYER_BAR_FALLBACK_HEIGHT_PX,
   PLAYER_BAR_HEIGHT_VAR,
+  PLAYER_BAR_SHELL_CLASS,
+  PLAYER_BAR_SHELL_STYLE,
   playerBarPaddingCss,
 } from "@/lib/player-bar-layout"
 import {
@@ -336,20 +338,20 @@ export function SpotifyEmbedPlayer({
       className={visible ? PLAYER_BAR_DOCK_CLASS : "hidden"}
       style={visible ? PLAYER_BAR_DOCK_STYLE : undefined}
     >
-      <div className="mx-auto w-full max-w-4xl">
+      <div className={PLAYER_BAR_SHELL_CLASS} style={PLAYER_BAR_SHELL_STYLE} data-player-shell="">
         {needsGesture ? (
-          <div className="flex items-center justify-between gap-3 border-b border-border px-3 py-2 sm:px-4">
+          <div className="pointer-events-auto flex items-center justify-between gap-3 border-b border-border bg-card px-3 py-2 sm:px-4">
             <p className="text-sm text-foreground">Tap play to continue</p>
             <button
               type="button"
-              className="shrink-0 cursor-pointer rounded-full bg-primary px-3 py-1 text-sm font-medium text-primary-foreground"
+              className="pointer-events-auto shrink-0 cursor-pointer rounded-full bg-primary px-3 py-1 text-sm font-medium text-primary-foreground"
               onClick={() => commandsRef.current.resume()}
             >
               Play
             </button>
           </div>
         ) : null}
-        <div ref={hostRef} className="h-[152px] w-full overflow-hidden bg-card" />
+        <div ref={hostRef} className="pointer-events-auto h-[152px] w-full overflow-hidden bg-card" />
       </div>
     </div>,
     document.body
