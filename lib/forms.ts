@@ -2,8 +2,18 @@
  * Open Opus stores only five genres on each work: Chamber, Keyboard,
  * Orchestral, Stage, and Vocal. Finer forms (symphony, sonata, opera, …)
  * are not a separate field. These patterns were checked against the public
- * work dump (`/work/dump.json`) and assign one form per work from the title,
- * then the subtitle if the title has no form.
+ * work dump (`/work/dump.json`) and local `data/form-works.json`.
+ *
+ * The Open Opus genre picks the genre page. The title, then the subtitle,
+ * only picks the chip on that page. A form is listed in a group only when
+ * the work's Open Opus genre is one that group accepts:
+ * Keyboard requires Keyboard; Orchestral requires Orchestral; Chamber
+ * requires Chamber; Choral requires Vocal (Stage as well, for oratorios);
+ * Stage requires Stage. Concert overtures (Orchestral) are an Orchestral
+ * chip; opera overtures (Stage) stay on Stage. The same title word can
+ * therefore be a different page: a Chamber suite or partita is Chamber, a
+ * Keyboard suite is Keyboard, an orchestral waltz or variation is Orchestral.
+ * Concertos, sonatas, and songs stay their own pages whatever Open Opus says.
  *
  * Title wins over subtitle so a cantata whose subtitle says "Opera" stays a
  * cantata, while "Carmen" with subtitle "Opera" still lands in Operas.
@@ -18,25 +28,26 @@
  * order. The genres page sorts forms by how many works are popular, counting
  * either the Open Opus `popular` or `recommended` flag.
  *
- * Trios, quartets, quintets, and sextets are one Chamber genre. A trio sonata
- * (including "sonata en trio" and "sonata a 3") is a trio, not a sonata, so
- * it is not listed under Sonatas. Requiems, masses, oratorios, motets, and
- * cantatas are one Choral genre. Nocturnes, etudes, and the other character
- * pieces, together with preludes, fugues, toccatas, partitas, fantasias, and
- * variations, are one Keyboard genre. Piano, harpsichord, and organ are not
- * chips on that page and not separate genres. Each of those works keeps the
- * form named in its title. Sonata and concerto pages still split by
- * instrument. There the title's instrument wins (piano, pianoforte,
- * harpsichord, cembalo, clavier, organ). Clavier or Klavier is harpsichord
- * for Medieval, Renaissance, and Baroque composers and piano after that. A
- * title with no keyboard instrument uses that same era split. Organ is used
- * only when the title or subtitle names the organ. Operas, ballets, and
- * overtures are Stage. Symphonies, suites,
- * serenades, and divertimenti are Orchestral. Concertos, sonatas, and songs
- * stay their own pages. The finer form stays on the work and becomes a filter
- * chip, the way concertos split by instrument. A sextet is recognized only
- * when that word is the form named before any other form, so "Sextet for
- * string quartet" is a sextet and "suite for wind sextet" stays a suite.
+ * Trios, quartets, quintets, sextets, septets, octets, nonets, and instrumental
+ * duos are Chamber, along with chamber suites, partitas, serenades, divertimenti,
+ * and overtures. A trio sonata (including "sonata en trio" and "sonata a 3")
+ * is a trio, not a sonata, so it is not listed under Sonatas. Requiems, masses,
+ * oratorios, motets, cantatas, passions, Stabat Mater, Magnificat, and Te Deum
+ * are Choral. Nocturnes, etudes, and the other character pieces, together with
+ * preludes, fugues, toccatas, partitas, fantasias, variations, and keyboard
+ * suites, are Keyboard when Open Opus says Keyboard. Piano, harpsichord, and
+ * organ are not chips on that page and not separate genres. Sonata and concerto
+ * pages still split by instrument. There the title's instrument wins (piano,
+ * pianoforte, harpsichord, cembalo, clavier, organ). Clavier or Klavier is
+ * harpsichord for Medieval, Renaissance, and Baroque composers and piano after
+ * that. A title with no keyboard instrument uses that same era split. Organ is
+ * used only when the title or subtitle names the organ. Symphonies, orchestral
+ * suites, serenades, divertimenti, concert overtures, symphonic poems, and
+ * orchestral variations, preludes, rhapsodies, waltzes, and mazurkas are
+ * Orchestral. A sextet, septet, octet, nonet, or duo is recognized only when
+ * that word is the form named before any other form, so "Sextet for string
+ * quartet" is a sextet, "suite for wind sextet" stays a suite, and "Octet for
+ * string sextet" is an octet.
  */
 
 export type WorkForm = {
@@ -52,6 +63,31 @@ export const WORK_FORMS: WorkForm[] = [
     name: "Requiems",
     blurb: "Requiems, including requiem masses.",
     pattern: /\brequiems?\b/,
+  },
+  {
+    slug: "stabat-mater",
+    name: "Stabat Mater",
+    blurb: "Settings of the Stabat Mater.",
+    pattern: /\bstabat maters?\b/,
+  },
+  {
+    slug: "magnificat",
+    name: "Magnificats",
+    blurb: "Magnificat settings.",
+    pattern: /\bmagnificats?\b/,
+  },
+  {
+    slug: "te-deum",
+    name: "Te Deum",
+    blurb: "Te Deum settings.",
+    pattern: /\bte deums?\b/,
+  },
+  {
+    slug: "passion",
+    name: "Passions",
+    blurb: "Passions, including St Matthew and St John.",
+    pattern:
+      /\b(?:(?:st\.?|saint)\s+[a-z]+,?\s+passion|passion according\b|brockes passion|(?:johannes|matthaus|matthaeus|marcus|markus|lucas|lukas)-passion)\b/,
   },
   {
     slug: "cantata",
@@ -138,6 +174,30 @@ export const WORK_FORMS: WorkForm[] = [
     pattern: /\bsonatas?\b/,
   },
   {
+    slug: "nonet",
+    name: "Nonets",
+    blurb: "Nonets.",
+    pattern: /\bnonets?\b/,
+  },
+  {
+    slug: "octet",
+    name: "Octets",
+    blurb: "Octets.",
+    pattern: /\boctets?\b/,
+  },
+  {
+    slug: "septet",
+    name: "Septets",
+    blurb: "Septets.",
+    pattern: /\bseptets?\b/,
+  },
+  {
+    slug: "duo",
+    name: "Duos",
+    blurb: "Instrumental duos and duets.",
+    pattern: /\b(?:duos?|duettos?|duetti|duette|duetts?|duets?)\b/,
+  },
+  {
     slug: "sextet",
     name: "Sextets",
     blurb: "Sextets.",
@@ -160,6 +220,12 @@ export const WORK_FORMS: WorkForm[] = [
     name: "Trios",
     blurb: "Trios.",
     pattern: /\btrios?\b/,
+  },
+  {
+    slug: "symphonic-poem",
+    name: "Symphonic Poems",
+    blurb: "Symphonic poems, tone poems, and Tondichtungen.",
+    pattern: /\b(?:symphonic poems?|tone poems?|tondichtung(?:en)?|poemes? symphoniques?)\b/,
   },
   {
     slug: "symphony",
@@ -327,24 +393,52 @@ export type FormGroup = {
   children: readonly string[]
 }
 
+const KEYBOARD_GROUP_FORMS = KEYBOARD_FORMS.flatMap((slug) =>
+  slug === "partita" ? [slug, "suite"] : [slug]
+)
+
 export const FORM_GROUPS: readonly FormGroup[] = [
   {
     slug: "chamber",
     name: "Chamber",
-    blurb: "Trios, quartets, quintets, and sextets.",
-    children: ["trio", "quartet", "quintet", "sextet"],
+    blurb: "Trios through nonets, duos, suites, partitas, serenades, and divertimenti.",
+    children: [
+      "trio",
+      "quartet",
+      "quintet",
+      "sextet",
+      "septet",
+      "octet",
+      "nonet",
+      "duo",
+      "suite",
+      "partita",
+      "serenade",
+      "divertimento",
+      "overture",
+    ],
   },
   {
     slug: "choral",
     name: "Choral",
-    blurb: "Requiems, masses, oratorios, motets, and cantatas.",
-    children: ["requiem", "mass", "oratorio", "motet", "cantata"],
+    blurb: "Requiems, masses, oratorios, motets, cantatas, passions, and other sacred choral works.",
+    children: [
+      "requiem",
+      "mass",
+      "oratorio",
+      "motet",
+      "cantata",
+      "passion",
+      "stabat-mater",
+      "magnificat",
+      "te-deum",
+    ],
   },
   {
     slug: "keyboard",
     name: "Keyboard",
-    blurb: "Nocturnes, etudes, preludes, fugues, toccatas, partitas, fantasias, and variations.",
-    children: KEYBOARD_FORMS,
+    blurb: "Nocturnes, etudes, preludes, fugues, suites, partitas, fantasias, variations, overtures, and trios.",
+    children: [...KEYBOARD_GROUP_FORMS, "overture", "trio"],
   },
   {
     slug: "stage",
@@ -355,17 +449,74 @@ export const FORM_GROUPS: readonly FormGroup[] = [
   {
     slug: "orchestral",
     name: "Orchestral",
-    blurb: "Symphonies, suites, serenades, and divertimenti.",
-    children: ["symphony", "suite", "serenade", "divertimento"],
+    blurb: "Symphonies, symphonic poems, suites, overtures, serenades, and orchestral character pieces.",
+    children: [
+      "symphony",
+      "symphonic-poem",
+      "suite",
+      "overture",
+      "serenade",
+      "divertimento",
+      "variations",
+      "prelude",
+      "rhapsody",
+      "waltz",
+      "mazurka",
+      "polonaise",
+    ],
   },
 ]
 
+/** Open Opus genres that may list a chip on this page. */
+const GROUP_OPEN_OPUS: Record<string, readonly string[]> = {
+  chamber: ["Chamber"],
+  choral: ["Vocal"],
+  keyboard: ["Keyboard"],
+  stage: ["Stage"],
+  orchestral: ["Orchestral"],
+}
+
+/**
+ * Historical parent for `/genres/{form}`. Shared chips keep that old URL
+ * even when the same form is also listed on another page.
+ */
+const LEGACY_GROUP_SLUG: Record<string, string> = {
+  trio: "chamber",
+  suite: "orchestral",
+  partita: "keyboard",
+  overture: "stage",
+  serenade: "orchestral",
+  divertimento: "orchestral",
+  variations: "keyboard",
+  prelude: "keyboard",
+  rhapsody: "keyboard",
+  waltz: "keyboard",
+  mazurka: "keyboard",
+}
+
+const STANDALONE_FORMS = new Set(["concerto", "sonata", "song"])
+
 const groupBySlug = new Map(FORM_GROUPS.map((group) => [group.slug, group]))
-const groupByChild = new Map<string, FormGroup>()
+
+type FormHome = { group: FormGroup; genres: ReadonlySet<string> }
+
+const homesByForm = new Map<string, FormHome[]>()
 for (const group of FORM_GROUPS) {
+  const fallback = GROUP_OPEN_OPUS[group.slug] ?? []
   for (const child of group.children) {
-    if (!groupByChild.has(child)) groupByChild.set(child, group)
+    const names =
+      child === "oratorio" && group.slug === "choral" ? ["Vocal", "Stage"] : fallback
+    const list = homesByForm.get(child) ?? []
+    list.push({ group, genres: new Set(names) })
+    homesByForm.set(child, list)
   }
+}
+
+const groupByChild = new Map<string, FormGroup>()
+for (const [form, homes] of homesByForm) {
+  const legacySlug = LEGACY_GROUP_SLUG[form]
+  const legacy = homes.find((home) => home.group.slug === legacySlug) ?? homes[0]
+  if (legacy) groupByChild.set(form, legacy.group)
 }
 
 export type CatalogGenre = {
@@ -385,6 +536,30 @@ export function groupFromSlug(slug: string): FormGroup | undefined {
 /** Browse genre that folds this form in, when the form is not its own page. */
 export function groupForForm(formSlug: string): FormGroup | undefined {
   return groupByChild.get(formSlug)
+}
+
+function canonicalOpenOpusGenre(genre?: string | null): string {
+  const folded = (genre ?? "").trim().toLowerCase()
+  if (folded === "chamber") return "Chamber"
+  if (folded === "keyboard") return "Keyboard"
+  if (folded === "orchestral") return "Orchestral"
+  if (folded === "stage") return "Stage"
+  if (folded === "vocal") return "Vocal"
+  return ""
+}
+
+/**
+ * Genre page for a classified form. Concertos, sonatas, and songs ignore
+ * the Open Opus genre. Other forms need a chip on a group that accepts it.
+ * With no genre, the historical page is used so older callers keep a home.
+ */
+export function browsePageForForm(form: string, genre?: string | null): string | null {
+  if (STANDALONE_FORMS.has(form)) return form
+  const homes = homesByForm.get(form)
+  if (!homes?.length) return null
+  const openOpus = canonicalOpenOpusGenre(genre)
+  if (!openOpus) return groupForForm(form)?.slug ?? null
+  return homes.find((home) => home.genres.has(openOpus))?.group.slug ?? null
 }
 
 /** Top-level genre page: a group, or a form that was not folded into one. */
@@ -465,21 +640,32 @@ export function genreHrefForLabel(label: string): string | null {
   return relocatedGenreHref(form.slug) ?? `/genres/${form.slug}`
 }
 
-const LARGER_ENSEMBLE = /\b(?:septets?|octets?|nonets?)\b/
+/** Ensemble sizes named only when that word is the form, not the scoring. */
+const ENSEMBLE_LEAD = new Set(["nonet", "octet", "septet", "sextet", "duo"])
 
 /**
  * "Sextet for string quartet" names the sextet first. "Suite for wind sextet"
- * names the suite first and keeps that form. An octet that merely uses a
- * string sextet is not a sextet.
+ * names the suite first and keeps that form. "Octet for string sextet" is an
+ * octet. The earliest such word wins when no other form is named before it.
  */
-function sextetLeads(folded: string): boolean {
-  const sextet = bySlug.get("sextet")
-  if (!sextet) return false
-  const match = new RegExp(sextet.pattern.source).exec(folded)
-  if (!match || match.index == null) return false
-  const before = folded.slice(0, match.index)
-  if (LARGER_ENSEMBLE.test(before)) return false
-  return !WORK_FORMS.some((form) => form.slug !== "sextet" && form.pattern.test(before))
+function leadingEnsemble(folded: string): string | null {
+  let best: { slug: string; index: number } | null = null
+  for (const slug of ENSEMBLE_LEAD) {
+    const form = bySlug.get(slug)
+    if (!form) continue
+    const match = new RegExp(form.pattern.source).exec(folded)
+    if (!match || match.index == null) continue
+    const before = folded.slice(0, match.index)
+    if (WORK_FORMS.some((other) => !ENSEMBLE_LEAD.has(other.slug) && other.pattern.test(before))) continue
+    if ([...ENSEMBLE_LEAD].some((other) => other !== slug && bySlug.get(other)?.pattern.test(before))) continue
+    if (slug === "duo") {
+      const concerto = bySlug.get("concerto")
+      const sonata = bySlug.get("sonata")
+      if ((concerto && concerto.pattern.test(folded)) || (sonata && sonata.pattern.test(folded))) continue
+    }
+    if (!best || match.index < best.index) best = { slug, index: match.index }
+  }
+  return best?.slug ?? null
 }
 
 /**
@@ -498,10 +684,13 @@ function isTrioRatherThanSonata(folded: string): boolean {
 function matchForm(text: string): string | null {
   const folded = foldFormText(text)
   if (!folded) return null
-  if (sextetLeads(folded)) return "sextet"
+  const ensemble = leadingEnsemble(folded)
+  if (ensemble) return ensemble
   for (const form of WORK_FORMS) {
-    if (form.slug === "sextet") continue
+    if (ENSEMBLE_LEAD.has(form.slug)) continue
     if (form.slug === "sonata" && isTrioRatherThanSonata(folded)) return "trio"
+    if (form.slug === "magnificat" && bySlug.get("fugue")?.pattern.test(folded)) continue
+    if (form.slug === "te-deum" && bySlug.get("prelude")?.pattern.test(folded)) continue
     if (form.pattern.test(folded)) return form.slug
   }
   return null
@@ -548,15 +737,21 @@ export function classifyKeyboardInstrument(
 
 const LABELED_STAGE = /\b(films?|incidental)\b/
 
+/** Vocal "duo" is not an instrumental duo. A subtitle such as Songs can still match. */
+function acceptedForm(form: string, genre?: string | null): boolean {
+  if (form === "duo" && canonicalOpenOpusGenre(genre) === "Vocal") return false
+  return true
+}
+
 export function classifyWork(
   title: string,
   subtitle?: string | null,
   genre?: string | null
 ): string | null {
   const fromTitle = matchForm(title)
-  if (fromTitle) return fromTitle
+  if (fromTitle && acceptedForm(fromTitle, genre)) return fromTitle
   const fromSubtitle = matchForm(subtitle ?? "")
-  if (fromSubtitle) return fromSubtitle
+  if (fromSubtitle && acceptedForm(fromSubtitle, genre)) return fromSubtitle
 
   // Open Opus often stores an opera as genre Stage with an empty subtitle.
   if ((genre ?? "").trim().toLowerCase() !== "stage") return null

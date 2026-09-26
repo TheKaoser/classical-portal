@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 import catalog from "../data/form-works.json" with { type: "json" }
-import { KEYBOARD_FORMS } from "./forms.ts"
+import { FORM_GROUPS, KEYBOARD_FORMS, browsePageForForm } from "./forms.ts"
 import {
   classifyListedSubtype,
   classifyWorkSubtype,
@@ -101,7 +101,7 @@ test("sonatas use the title instrument, and unlabeled keyboard sonatas use the c
   )
   assert.equal(classifyWorkSubtype({ form: "sonata", title: "Sonata for violin and piano" })?.slug, "violin")
   assert.equal(classifyWorkSubtype({ form: "sonata", title: "Sonata no. 1 for Solo Violin in G minor, BWV.1001" })?.slug, "violin")
-  assert.equal(classifyWorkSubtype({ form: "sonata", title: "Trio Sonata in C major" })?.slug, "trio")
+  assert.equal(classifyWorkSubtype({ form: "sonata", title: "Trio Sonata in C major" }), null)
   assert.equal(
     classifyWorkSubtype({ form: "sonata", title: "Sonata in A major, K.322", genre: "Keyboard", epoch: "Baroque" })?.slug,
     "harpsichord"
@@ -183,35 +183,28 @@ test("catalog forms that name instruments expose those chips", () => {
 })
 
 test("grouped genres list form chips in catalog order", () => {
-  const chips = (forms: string[]) =>
-    listedSubtypeFilters(works.filter((work) => forms.includes(work.form))).map((item) => item.slug)
-  assert.deepEqual(chips(["trio", "quartet", "quintet", "sextet"]), ["trio", "quartet", "quintet", "sextet"])
-  assert.deepEqual(chips(["requiem", "mass", "oratorio", "motet", "cantata"]), [
-    "requiem",
-    "mass",
-    "oratorio",
-    "motet",
-    "cantata",
-  ])
-  assert.deepEqual(chips([...CHARACTER_PIECE_SLUGS]), [...CHARACTER_PIECE_SLUGS])
-  assert.deepEqual(chips(["opera", "ballet", "overture"]), ["opera", "ballet", "overture"])
-  assert.deepEqual(chips(["symphony", "suite", "serenade", "divertimento"]), [
-    "symphony",
-    "suite",
-    "serenade",
-    "divertimento",
-  ])
-  assert.deepEqual(chips(["prelude", "fugue", "toccata", "partita", "fantasia", "variations"]), [
-    "prelude",
-    "fugue",
-    "toccata",
-    "partita",
-    "fantasia",
-    "variations",
-  ])
-  assert.deepEqual(chips([...KEYBOARD_FORMS]), [...KEYBOARD_FORMS])
-  for (const slug of ["piano", "harpsichord", "organ"]) {
-    assert.equal(chips([...KEYBOARD_FORMS]).includes(slug), false, slug)
+  const onPage = (slug: string) => works.filter((work) => browsePageForForm(work.form, work.genre) === slug)
+  for (const group of FORM_GROUPS) {
+    const chips = listedSubtypeFilters(onPage(group.slug)).map((item) => item.slug)
+    const present = group.children.filter((slug) => chips.includes(slug))
+    assert.deepEqual(chips, present, group.slug)
+    for (const slug of chips) {
+      const count = onPage(group.slug).filter((work) => work.form === slug).length
+      assert.ok(count >= 8, `${group.slug}:${slug}`)
+    }
+  }
+  const chamber = listedSubtypeFilters(onPage("chamber")).map((item) => item.slug)
+  for (const slug of ["trio", "quartet", "quintet", "sextet"]) assert.ok(chamber.includes(slug), slug)
+  const choral = listedSubtypeFilters(onPage("choral")).map((item) => item.slug)
+  for (const slug of ["requiem", "mass", "oratorio", "motet", "cantata"]) assert.ok(choral.includes(slug), slug)
+  const keyboard = listedSubtypeFilters(onPage("keyboard")).map((item) => item.slug)
+  for (const slug of KEYBOARD_FORMS) assert.ok(keyboard.includes(slug), slug)
+  for (const slug of ["piano", "harpsichord", "organ"]) assert.equal(keyboard.includes(slug), false, slug)
+  const stage = listedSubtypeFilters(onPage("stage")).map((item) => item.slug)
+  assert.deepEqual(stage, ["opera", "ballet"])
+  const orchestral = listedSubtypeFilters(onPage("orchestral")).map((item) => item.slug)
+  for (const slug of ["symphony", "suite", "overture", "variations", "prelude", "rhapsody", "waltz"]) {
+    assert.ok(orchestral.includes(slug), slug)
   }
   assert.equal(
     classifyListedSubtype({ form: "quartet", title: "String Quartet no. 14 in C sharp minor, op. 131" })?.slug,
@@ -225,19 +218,27 @@ test("grouped genres list form chips in catalog order", () => {
     classifyListedSubtype({ form: "concerto", title: "Piano Concerto no. 5 in E flat major, op. 73" })?.slug,
     "piano"
   )
+  assert.equal(
+    classifyListedSubtype({
+      form: "suite",
+      title: "Cello Suite no. 1 in G major, BWV.1007",
+      genre: "Chamber",
+    })?.slug,
+    "suite"
+  )
+  assert.equal(
+    classifyListedSubtype({
+      form: "overture",
+      title: "1812 Festival Overture, op. 49",
+      genre: "Orchestral",
+    })?.slug,
+    "overture"
+  )
+  assert.equal(
+    classifyListedSubtype({ form: "overture", title: "Overture to Carmen", genre: "Stage" })?.slug,
+    "overture"
+  )
 })
-
-const CHARACTER_PIECE_SLUGS = [
-  "nocturne",
-  "etude",
-  "mazurka",
-  "waltz",
-  "polonaise",
-  "impromptu",
-  "ballade",
-  "rhapsody",
-  "scherzo",
-]
 
 test("keyboard listing filters by form chip", () => {
   const rows = [
@@ -268,7 +269,7 @@ test("keyboard listing filters by form chip", () => {
 })
 
 test("known keyboard works land on form chips", () => {
-  const keyboard = works.filter((work) => (KEYBOARD_FORMS as readonly string[]).includes(work.form))
+  const keyboard = works.filter((work) => browsePageForForm(work.form, work.genre) === "keyboard")
   const chips = new Set(listedSubtypeFilters(keyboard).map((item) => item.slug))
   for (const slug of ["piano", "harpsichord", "organ"]) assert.equal(chips.has(slug), false, slug)
   for (const form of KEYBOARD_FORMS) assert.equal(chips.has(form), true, form)

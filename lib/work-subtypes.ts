@@ -10,10 +10,11 @@
 
 import composerEpochs from "../data/composer-epochs.json" with { type: "json" }
 import {
+  browsePageForForm,
   classifyKeyboardInstrument,
   foldFormText,
   formFromSlug,
-  groupForForm,
+  groupFromSlug,
 } from "./forms.ts"
 
 export type WorkSubtype = {
@@ -71,7 +72,6 @@ const ENSEMBLES: Term[] = [
   { slug: "vocal", label: "Vocal", source: "\\bvocal\\b" },
 ]
 
-const TRIO: WorkSubtype = { slug: "trio", label: "Trio sonata" }
 const GROSSO: WorkSubtype = { slug: "grosso", label: "Concerto grosso" }
 const MULTIPLE: WorkSubtype = { slug: "multiple", label: "Multiple" }
 const CHAMBER: WorkSubtype = { slug: "chamber", label: "Chamber" }
@@ -132,7 +132,6 @@ const DISPLAY_ORDER = [
   "brass",
   "vocal",
   "orchestral",
-  "trio",
   "grosso",
   "multiple",
   "chamber",
@@ -186,37 +185,52 @@ function unmappedSubtype(work: TaggedWork): WorkSubtype | null {
 
 /** Chip on a genre page: a folded form (Trios, Masses, …) or an instrument. */
 export function classifyListedSubtype(work: TaggedWork): WorkSubtype | null {
-  const grouped = groupedFormChip(work.form)
+  const grouped = groupedFormChip(work)
   if (grouped) return grouped
   return classifyWorkSubtype(work)
 }
 
 export function listedSubtypeFilters<T extends TaggedWork>(works: T[]): Array<WorkSubtype & { count: number }> {
-  if (works.some((work) => groupForForm(work.form))) return groupedFormFilters(works)
+  const group = sharedFormGroup(works)
+  if (group) return groupedFormFilters(works, group)
   return subtypeFilters(works)
 }
 
-function groupedFormChip(formSlug: string): WorkSubtype | null {
-  if (!groupForForm(formSlug)) return null
-  const form = formFromSlug(formSlug)
+function sharedFormGroup(works: readonly TaggedWork[]) {
+  let slug: string | null = null
+  for (const work of works) {
+    const page = browsePageForForm(work.form, work.genre)
+    const group = page ? groupFromSlug(page) : undefined
+    if (!group) return undefined
+    if (slug && slug !== group.slug) return undefined
+    slug = group.slug
+  }
+  return slug ? groupFromSlug(slug) : undefined
+}
+
+function groupedFormChip(work: TaggedWork): WorkSubtype | null {
+  const page = browsePageForForm(work.form, work.genre)
+  const group = page ? groupFromSlug(page) : undefined
+  if (!group || !group.children.includes(work.form)) return null
+  const form = formFromSlug(work.form)
   return form ? { slug: form.slug, label: form.name } : null
 }
 
-function groupedFormFilters<T extends TaggedWork>(works: T[]): Array<WorkSubtype & { count: number }> {
+function groupedFormFilters<T extends TaggedWork>(
+  works: T[],
+  group: NonNullable<ReturnType<typeof groupFromSlug>>
+): Array<WorkSubtype & { count: number }> {
   const counts = new Map<string, WorkSubtype & { count: number }>()
-  let group: ReturnType<typeof groupForForm> | undefined
   for (const work of works) {
-    const parent = groupForForm(work.form)
-    if (!parent) continue
-    group = parent
-    const chip = groupedFormChip(work.form)
-    if (!chip) continue
-    const row = counts.get(chip.slug) ?? { ...chip, count: 0 }
+    if (!group.children.includes(work.form)) continue
+    const form = formFromSlug(work.form)
+    if (!form) continue
+    const row = counts.get(form.slug) ?? { slug: form.slug, label: form.name, count: 0 }
     row.count += 1
-    counts.set(chip.slug, row)
+    counts.set(form.slug, row)
   }
 
-  const options = (group?.children ?? [])
+  const options = group.children
     .map((slug) => counts.get(slug))
     .filter((row): row is WorkSubtype & { count: number } => Boolean(row && row.count >= MIN_COUNT))
   if (options.length < MIN_GROUPS) return []
@@ -274,8 +288,6 @@ function concertoSubtype(title: string, subtitle?: string | null): WorkSubtype |
 
 function sonataSubtype(title: string, subtitle?: string | null, genre?: string | null): WorkSubtype | null {
   const text = normalize(title)
-  if (/\btrio sonatas?\b/.test(text)) return TRIO
-
   const prefixed = instrumentBefore(text, /\bsonatas?\b/, TERMS)
   if (prefixed) return prefixed
 

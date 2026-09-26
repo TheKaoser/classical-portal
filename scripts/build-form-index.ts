@@ -117,7 +117,7 @@ console.log(`${String(works.length).padStart(5)}  total`)
 
 const payload = {
   source:
-    "Derived from Open Opus composer work lists (https://api.openopus.org). Open Opus genres are only Chamber, Keyboard, Orchestral, Stage, and Vocal. Each work is assigned one form from its title, or from its subtitle when the title has none, using the patterns in lib/forms.ts. The dump at /work/dump.json confirms those patterns but omits work ids, so ids come from /work/list/composer/{id}/genre/all.json.",
+    "Derived from Open Opus composer work lists (https://api.openopus.org). Open Opus genres are only Chamber, Keyboard, Orchestral, Stage, and Vocal. Each work is assigned one form from its title, or from its subtitle when the title has none, using the patterns in lib/forms.ts. The Open Opus genre then chooses the genre page; the form is only the chip. The dump at /work/dump.json confirms those patterns but omits work ids, so ids come from /work/list/composer/{id}/genre/all.json.",
   generatedAt: new Date().toISOString().slice(0, 10),
   works,
 }

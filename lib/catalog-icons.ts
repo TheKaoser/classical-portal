@@ -461,6 +461,41 @@ export const GENRE_ICONS: Record<string, IconMark[]> = {
     { kind: "path", d: "M18.35 14.8V7.2" },
     { kind: "path", d: "M18.35 7.2c2 1.1 2.8 2.8.2 4" },
   ],
+  "symphonic-poem": [
+    { kind: "path", d: "M6.2 4.2h11.6v15.6H6.2Z" },
+    { kind: "path", d: "M8.4 7.4h7.2" },
+    { kind: "path", d: "M8.4 10h7.2" },
+    { kind: "path", d: "M8.4 12.6h4.6" },
+    noteHead(15.2, 16.2, 1.15),
+    { kind: "path", d: "M16.35 16.2V13.2" },
+  ],
+  passion: [
+    { kind: "path", d: "M12 3.4v17.2" },
+    { kind: "path", d: "M7.2 8.6h9.6" },
+    { kind: "circle", cx: 12, cy: 12.4, r: 2.15 },
+  ],
+  "stabat-mater": [
+    { kind: "path", d: "M12 3.6 7.2 20.4h9.6Z" },
+    { kind: "path", d: "M9.4 14.2h5.2" },
+    { kind: "path", d: "M12 3.6V20.4" },
+  ],
+  magnificat: [
+    { kind: "path", d: "M4.2 16.4c2.2-6.4 13.4-6.4 15.6 0" },
+    { kind: "path", d: "M8.2 16.4V8.8" },
+    { kind: "path", d: "M12 16.4V6.2" },
+    { kind: "path", d: "M15.8 16.4V9.4" },
+    { kind: "path", d: "M6.4 19.6h11.2" },
+  ],
+  "te-deum": [
+    { kind: "path", d: "M5.2 6.2h13.6v12.4H5.2Z" },
+    { kind: "path", d: "M5.2 10.2h13.6" },
+    { kind: "path", d: "M9.4 6.2v12.4" },
+    { kind: "path", d: "M14.6 6.2v12.4" },
+  ],
+  septet: ensemble(7, 0.5, 7.4, 20.4),
+  octet: ensemble(8, 0.44, 8.2, 20.6),
+  nonet: ensemble(9, 0.39, 8.8, 20.6),
+  duo: ensemble(2, 1.15, 6.4, 20.6),
 }
 
 const FALLBACK: IconMark[] = NOTE
