@@ -5,8 +5,10 @@ import {
   idsToPrefetch,
   isCatalogWorkId,
   isLastTrack,
+  LIST_PLAY_ADVANCE_DELAY_MS,
   listPlayAllControl,
   listStoppedEarly,
+  runListChain,
   parsePendingListPlayback,
   primaryRecordingUris,
   readShufflePreference,
@@ -32,7 +34,25 @@ test("primaryRecordingUris uses the first recording that has tracks", () => {
       { id: "empty", tracks: [{ uri: "not-a-track" }] },
       { id: "album", tracks: [{ uri: "spotify:track:aaa" }, { uri: "spotify:track:aaa" }, { uri: "spotify:track:bbb" }] },
     ]),
-    { recordingId: "album", uris: ["spotify:track:aaa", "spotify:track:bbb"] }
+    { recordingId: "album", albumId: null, uris: ["spotify:track:aaa", "spotify:track:bbb"] }
+  )
+  assert.deepEqual(
+    primaryRecordingUris([
+      {
+        id: "album:track",
+        albumId: "5Z9iiGl2FcIfa3BMiv6OIw",
+        tracks: [{ uri: "spotify:track:aaa" }],
+      },
+    ]),
+    {
+      recordingId: "album:track",
+      albumId: "5Z9iiGl2FcIfa3BMiv6OIw",
+      uris: ["spotify:track:aaa"],
+    }
+  )
+  assert.equal(
+    primaryRecordingUris([{ id: "row", albumId: "work:9231", tracks: [{ uri: "spotify:track:aaa" }] }])?.albumId,
+    null
   )
 })
 
@@ -124,6 +144,28 @@ test("listStoppedEarly reports an unfinished tail", () => {
   assert.equal(listStoppedEarly(["a", "b", "c"], 0, new Set(["b"])), true)
   assert.equal(listStoppedEarly(["a", "b", "c"], 0, new Set(["b", "c"])), false)
   assert.equal(listStoppedEarly(["a", "b"], 1, new Set()), false)
+})
+
+test("runListChain waits while the tab is visible and runs immediately in the background", () => {
+  let ran = 0
+  const scheduled: number[] = []
+  const visible = runListChain(false, () => {
+    ran += 1
+  }, (_chain, delayMs) => {
+    scheduled.push(delayMs)
+    return 4
+  })
+  assert.equal(ran, 0)
+  assert.deepEqual(scheduled, [LIST_PLAY_ADVANCE_DELAY_MS])
+  assert.equal(visible, 4)
+
+  const hidden = runListChain(true, () => {
+    ran += 1
+  }, () => {
+    throw new Error("background chaining must not schedule a timer")
+  })
+  assert.equal(ran, 1)
+  assert.equal(hidden, null)
 })
 
 test("listPlayAllControl", () => {

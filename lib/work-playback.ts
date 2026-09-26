@@ -6,6 +6,7 @@ export type WorkPlayback = {
   title: string
   configured: boolean
   recordingId: string | null
+  albumId: string | null
   uris: string[]
   /** Set when the quota circuit is open and no cached recording was available. */
   unavailable?: boolean
@@ -24,6 +25,7 @@ export async function playbackForWorkId(
       title: match.title,
       configured: match.spotify.configured,
       recordingId: null,
+      albumId: null,
       uris: [],
       unavailable: true,
     }
@@ -34,6 +36,7 @@ export async function playbackForWorkId(
     title: match.title,
     configured: match.spotify.configured,
     recordingId: primary?.recordingId ?? null,
+    albumId: primary?.albumId ?? null,
     uris: primary?.uris ?? [],
   }
 }

@@ -4,6 +4,7 @@ export type WorkPlaybackHit = {
   configured: boolean
   title: string
   uris: string[]
+  albumId: string | null
 }
 
 export type FetchWorkPlayback = { ok: true; hit: WorkPlaybackHit } | { ok: false; message: string }
@@ -50,6 +51,7 @@ async function loadWorkPlayback(id: string): Promise<FetchWorkPlayback> {
         configured: Boolean(data.configured),
         title: typeof data.title === "string" ? data.title : "",
         uris,
+        albumId: typeof data.albumId === "string" && data.albumId.length > 0 ? data.albumId : null,
       },
     }
   } catch {

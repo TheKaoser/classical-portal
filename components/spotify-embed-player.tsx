@@ -19,6 +19,7 @@ import {
   type EmbedPlaybackUpdate,
   type MovementQueue,
 } from "@/lib/spotify-embed-queue"
+import { installIframeHistoryGuard } from "@/lib/iframe-history"
 import { loadSpotifyIframeApi } from "@/lib/spotify-iframe-api"
 
 export type EmbedPlaybackIssue = {
@@ -26,15 +27,26 @@ export type EmbedPlaybackIssue = {
   message?: string
 }
 
-type StartCommand = (uris: string[], index: number, generation: number) => void
+type StartCommand = (uris: string[], index: number, generation: number, contextUri: string | null) => void
 
-type PendingStart = { uris: string[]; index: number; generation: number }
+type PendingStart = { uris: string[]; index: number; generation: number; contextUri: string | null }
 
 function pageIsDark(): boolean {
   const root = document.documentElement
   if (root.classList.contains("dark") || root.dataset.theme === "dark") return true
   if (root.classList.contains("light") || root.dataset.theme === "light") return false
   return false
+}
+
+function publishMediaSession(state: "playing" | "paused") {
+  const session = navigator.mediaSession
+  if (!session) return
+  try {
+    session.playbackState = state
+    if (!session.metadata) session.metadata = new MediaMetadata({ title: "Classical Portal" })
+  } catch {
+    // A browser without Media Session metadata still plays.
+  }
 }
 
 function readUpdate(event: SpotifyEmbedPlaybackEvent | EmbedPlaybackUpdate): EmbedPlaybackUpdate | null {
@@ -80,7 +92,12 @@ export function SpotifyEmbedPlayer({
   generation: number
   visible: boolean
   needsGesture: boolean
-  onRegisterCommands: (commands: { start: StartCommand; pause: () => void; resume: () => void; arm: () => void }) => void
+  onRegisterCommands: (commands: {
+    start: StartCommand
+    pause: () => void
+    resume: () => void
+    arm: () => void
+  }) => void
   onPhase?: (phase: "connecting" | "playing" | "paused") => void
   onTrackUri?: (uri: string | null) => void
   onContextEnded?: (uri: string) => void
@@ -135,70 +152,70 @@ export function SpotifyEmbedPlayer({
     []
   )
 
-  const ensureController = useCallback(
-    (initialUri: string | undefined) => {
-      if (controllerRef.current) return Promise.resolve()
-      if (creatingRef.current) return creatingRef.current
-      const host = hostRef.current
-      if (!host) return Promise.resolve()
+  const ensureController = useCallback(() => {
+    if (controllerRef.current) return Promise.resolve()
+    if (creatingRef.current) return creatingRef.current
+    const host = hostRef.current
+    if (!host) return Promise.resolve()
 
-      creatingRef.current = loadSpotifyIframeApi()
-        .then(
-          (iframeApi) =>
-            new Promise<void>((resolve) => {
-              if (controllerRef.current) {
-                resolve()
-                return
-              }
-              const mount = hostRef.current
-              if (!mount) {
-                creatingRef.current = null
-                resolve()
-                return
-              }
-              const placeholder = document.createElement("div")
-              mount.replaceChildren(placeholder)
-              let settled = false
-              const finish = () => {
-                if (settled) return
-                settled = true
-                resolve()
-              }
-              iframeApi.createController(
-                placeholder,
-                {
-                  width: Math.max(320, mount.clientWidth || 640),
-                  height: SPOTIFY_EMBED_HEIGHT_PX,
-                  ...(initialUri ? { uri: initialUri } : {}),
-                },
-                (controller) => {
-                  controllerRef.current = controller
-                  controller.addListener("playback_update", (event) => {
-                    const update = readUpdate(event)
-                    if (update) queueRef.current?.onPlaybackUpdate(update)
-                  })
-                  controller.addListener("ready", () => {
-                    const node = hostRef.current
-                    if (node) fitIframe(node)
-                    finish()
-                  })
-                  flushController()
+    creatingRef.current = loadSpotifyIframeApi()
+      .then(
+        (iframeApi) =>
+          new Promise<void>((resolve) => {
+            if (controllerRef.current) {
+              resolve()
+              return
+            }
+            const mount = hostRef.current
+            if (!mount) {
+              creatingRef.current = null
+              resolve()
+              return
+            }
+            const placeholder = document.createElement("div")
+            mount.replaceChildren(placeholder)
+            let settled = false
+            const finish = () => {
+              if (settled) return
+              settled = true
+              resolve()
+            }
+            iframeApi.createController(
+              placeholder,
+              {
+                width: Math.max(320, mount.clientWidth || 640),
+                height: SPOTIFY_EMBED_HEIGHT_PX,
+              },
+              (controller) => {
+                // Guard before any loadUri. The API assigns iframe.src, which
+                // would otherwise push a joint session history entry per track.
+                const frame = mount.querySelector("iframe")
+                if (frame instanceof HTMLIFrameElement) installIframeHistoryGuard(frame)
+                controllerRef.current = controller
+                controller.addListener("playback_update", (event) => {
+                  const update = readUpdate(event)
+                  if (update) queueRef.current?.onPlaybackUpdate(update)
+                })
+                controller.addListener("ready", () => {
                   const node = hostRef.current
                   if (node) fitIframe(node)
-                  window.setTimeout(finish, 1_500)
-                }
-              )
-            })
-        )
-        .catch(() => {
-          creatingRef.current = null
-          onIssueRef.current?.({ code: "browser", message: EMBED_PLAYER_LOAD_FAILED })
-        })
+                  finish()
+                })
+                flushController()
+                const node = hostRef.current
+                if (node) fitIframe(node)
+                window.setTimeout(finish, 1_500)
+              }
+            )
+          })
+      )
+      .catch(() => {
+        creatingRef.current = null
+        onIssueRef.current?.({ code: "browser", message: EMBED_PLAYER_LOAD_FAILED })
+      })
 
-      return creatingRef.current
-    },
-    [flushController]
-  )
+    return creatingRef.current
+  }, [flushController])
 
   const playPending = useCallback(
     (pending: PendingStart) => {
@@ -206,11 +223,10 @@ export function SpotifyEmbedPlayer({
       if (!queue) return
       if (appliedGenerationRef.current !== pending.generation) {
         appliedGenerationRef.current = pending.generation
-        queue.start(pending.uris, pending.index)
+        queue.start(pending.uris, pending.index, pending.contextUri)
       }
       flushController()
-      const uri = pending.uris[pending.index] ?? pending.uris[0]
-      void ensureController(uri)?.then(() => flushController())
+      void ensureController()?.then(() => flushController())
     },
     [ensureController, flushController]
   )
@@ -246,21 +262,48 @@ export function SpotifyEmbedPlayer({
           const id = window.setTimeout(callback, delayMs)
           return () => window.clearTimeout(id)
         },
-        onPhase: (phase) => onPhaseRef.current?.(phase),
-        onTrack: (uri) => onTrackUriRef.current?.(uri),
+        hidden: () => document.hidden,
+        subscribeHidden(listener) {
+          const onChange = () => {
+            if (document.hidden) listener()
+          }
+          document.addEventListener("visibilitychange", onChange)
+          return () => document.removeEventListener("visibilitychange", onChange)
+        },
+        onPhase: (phase) => {
+          onPhaseRef.current?.(phase)
+          publishMediaSession(phase === "playing" ? "playing" : "paused")
+        },
+        onTrack: (uri) => {
+          onTrackUriRef.current?.(uri)
+          publishMediaSession("playing")
+        },
         onWorkEnded: (uri) => onContextEndedRef.current?.(uri),
         onNeedsGesture: (needed) => onNeedsGestureRef.current?.(needed),
         onUserTransport: () => onUserTransportRef.current?.(),
       }
     )
     queueRef.current = queue
+    const onVisible = () => {
+      if (!document.hidden) queue.nudgeIfWaiting()
+    }
+    document.addEventListener("visibilitychange", onVisible)
+    const session = navigator.mediaSession
+    if (session) {
+      try {
+        session.setActionHandler("nexttrack", () => queue.next())
+        session.setActionHandler("previoustrack", () => queue.previous())
+      } catch {
+        // The action is unsupported in this browser.
+      }
+    }
     commandsRef.current = {
       pause: () => queue.pause(),
       resume: () => queue.resume(),
     }
 
-    const start: StartCommand = (nextUris, index, nextGeneration) => {
-      const pending = { uris: nextUris, index, generation: nextGeneration }
+    const start: StartCommand = (nextUris, index, nextGeneration, contextUri) => {
+      const pending = { uris: nextUris, index, generation: nextGeneration, contextUri }
       pendingRef.current = pending
       const host = hostRef.current
       const measurable = Boolean(host && host.clientWidth > 0 && !host.closest("[hidden]"))
@@ -283,8 +326,17 @@ export function SpotifyEmbedPlayer({
     if (pending) playPending(pending)
 
     return () => {
+      document.removeEventListener("visibilitychange", onVisible)
       queue.destroy()
       if (queueRef.current === queue) queueRef.current = null
+      const media = navigator.mediaSession
+      if (!media) return
+      try {
+        media.setActionHandler("nexttrack", null)
+        media.setActionHandler("previoustrack", null)
+      } catch {
+        // Ignore unsupported actions on the way out.
+      }
     }
   }, [playPending, runOnController])
 

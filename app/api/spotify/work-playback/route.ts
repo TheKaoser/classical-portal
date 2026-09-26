@@ -30,6 +30,7 @@ export async function GET(request: Request) {
         title: "",
         configured: isSpotifyConfigured(),
         recordingId: null,
+        albumId: null,
         uris: [],
         skipped: "crawler",
       },

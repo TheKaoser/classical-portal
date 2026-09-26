@@ -1,4 +1,4 @@
-import { orderedTrackUris } from "./spotify-playback.ts"
+import { orderedTrackUris, spotifyAlbumUri } from "./spotify-playback.ts"
 
 /**
  * List playback resolves Spotify the same way a work page does, but only for
@@ -31,6 +31,23 @@ export const LIST_PLAY_GAP_ATTEMPTS = 8
  * and a pause or resume during the wait cancels it.
  */
 export const LIST_PLAY_ADVANCE_DELAY_MS = 700
+
+/**
+ * Chain the next Play all work. A visible tab waits briefly so a gap between
+ * movements is not treated as the end of the work. A background tab runs the
+ * chain in the end event itself: Chrome freezes timers until the tab returns.
+ */
+export function runListChain(
+  hidden: boolean,
+  chain: () => void,
+  schedule: (chain: () => void, delayMs: number) => number
+): number | null {
+  if (hidden) {
+    chain()
+    return null
+  }
+  return schedule(chain, LIST_PLAY_ADVANCE_DELAY_MS)
+}
 
 export const LIST_SHUFFLE_STORAGE_KEY = "cp_list_shuffle"
 export const PENDING_LIST_PLAYBACK_KEY = "cp_pending_list_playback"
@@ -74,12 +91,17 @@ export function shuffleWorkIds(ids: readonly string[], random: () => number = Ma
 
 /** First recording that has playable tracks — the same default the work page selects. */
 export function primaryRecordingUris(
-  recordings: readonly { id: string; tracks: readonly { uri: string }[] }[]
-): { recordingId: string; uris: string[] } | null {
+  recordings: readonly { id: string; albumId?: string | null; tracks: readonly { uri: string }[] }[]
+): { recordingId: string; albumId: string | null; uris: string[] } | null {
   for (const recording of recordings) {
     const uris = orderedTrackUris([...recording.tracks])
     if (uris.length === 0) continue
-    return { recordingId: recording.id, uris }
+    const albumUri = spotifyAlbumUri(recording.albumId)
+    return {
+      recordingId: recording.id,
+      albumId: albumUri ? albumUri.slice("spotify:album:".length) : null,
+      uris,
+    }
   }
   return null
 }

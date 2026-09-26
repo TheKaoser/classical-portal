@@ -8,7 +8,6 @@ import { Switch } from "@/components/ui/switch"
 import { useSpotifyPlayer } from "@/components/spotify-player-provider"
 import { fetchWorkPlayback, hasPlayableWorkPlayback } from "@/lib/fetch-work-playback"
 import {
-  LIST_PLAY_ADVANCE_DELAY_MS,
   LIST_PLAY_GAP_ATTEMPTS,
   LIST_PLAY_GAP_STOPPED,
   LIST_PLAY_LOOKAHEAD,
@@ -19,6 +18,7 @@ import {
   idsToPrefetch,
   listPlayAllControl,
   listStoppedEarly,
+  runListChain,
   readShufflePreference,
   shouldAdvanceList,
   shouldChainListWork,
@@ -42,7 +42,7 @@ type Session = {
   finished: boolean
 }
 
-type Found = { index: number; id: string; uris: string[] }
+type Found = { index: number; id: string; uris: string[]; albumId: string | null }
 
 function serverIdleRow() {
   return IDLE_ROW
@@ -138,7 +138,7 @@ function PlaybackMachine({ store, workIds }: { store: ListPlaybackStore; workIds
         session.skipped.add(id)
         continue
       }
-      return { index, id, uris: result.hit.uris }
+      return { index, id, uris: result.hit.uris, albumId: result.hit.albumId }
     }
     return null
   }
@@ -159,7 +159,7 @@ function PlaybackMachine({ store, workIds }: { store: ListPlaybackStore; workIds
       noticeKind: null,
     })
     apiRef.current.armPlayback()
-    apiRef.current.beginPlayback(workRecordingId(found.id), found.uris, 0)
+    apiRef.current.beginPlayback(workRecordingId(found.id), found.uris, 0, found.albumId)
     if (session.mode === "list") void prefetch(session)
   }
 
@@ -411,14 +411,16 @@ function PlaybackMachine({ store, workIds }: { store: ListPlaybackStore; workIds
     const last = lastUriRef.current
     const cursor = session.cursor
     const transport = transportGenerationRef.current
-    advanceTimerRef.current = window.setTimeout(() => {
+    const chain = () => {
       clearAdvanceTimers()
       if (transportGenerationRef.current !== transport) return
       if (lastUriRef.current !== last) return
       const current = sessionRef.current
       if (!current || current !== session || current.cursor !== cursor) return
       void continueListRef.current(generation)
-    }, LIST_PLAY_ADVANCE_DELAY_MS)
+    }
+    const timer = runListChain(document.hidden, chain, (fn, delayMs) => window.setTimeout(fn, delayMs))
+    if (timer != null) advanceTimerRef.current = timer
     return () => {
       if (advanceTimerRef.current != null) {
         window.clearTimeout(advanceTimerRef.current)
@@ -442,14 +444,16 @@ function PlaybackMachine({ store, workIds }: { store: ListPlaybackStore; workIds
       const cursor = session.cursor
       const transport = transportGenerationRef.current
       if (contextEndTimerRef.current != null) window.clearTimeout(contextEndTimerRef.current)
-      contextEndTimerRef.current = window.setTimeout(() => {
+      const chain = () => {
         clearAdvanceTimers()
         if (transportGenerationRef.current !== transport) return
         const current = sessionRef.current
         if (!current || current !== session || current.generation !== generation || current.finished) return
         if (current.cursor !== cursor) return
         void continueListRef.current(generation)
-      }, LIST_PLAY_ADVANCE_DELAY_MS)
+      }
+      const timer = runListChain(document.hidden, chain, (fn, delayMs) => window.setTimeout(fn, delayMs))
+      contextEndTimerRef.current = timer
     })
   }, [spotify.registerContextEnded])
 
