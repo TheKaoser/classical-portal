@@ -232,6 +232,10 @@ export function SpotifyEmbedPlayer({
                     const update = readUpdate(event)
                     if (update) queueRef.current?.onPlaybackUpdate(update)
                   })
+                  controller.addListener("playback_started", (event) => {
+                    const uri = event?.data?.playingURI
+                    if (typeof uri === "string" && uri.length > 0) queueRef.current?.notePlayingUri(uri)
+                  })
                   controller.addListener("ready", () => {
                     const node = hostRef.current
                     if (node) fitIframe(node)
