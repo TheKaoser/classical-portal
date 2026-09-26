@@ -27,9 +27,9 @@ export type EmbedPlaybackIssue = {
   message?: string
 }
 
-type StartCommand = (uris: string[], index: number, generation: number) => void
+type StartCommand = (uris: string[], index: number, generation: number, contextUri: string | null) => void
 
-type PendingStart = { uris: string[]; index: number; generation: number }
+type PendingStart = { uris: string[]; index: number; generation: number; contextUri: string | null }
 
 function pageIsDark(): boolean {
   const root = document.documentElement
@@ -92,7 +92,12 @@ export function SpotifyEmbedPlayer({
   generation: number
   visible: boolean
   needsGesture: boolean
-  onRegisterCommands: (commands: { start: StartCommand; pause: () => void; resume: () => void; arm: () => void }) => void
+  onRegisterCommands: (commands: {
+    start: StartCommand
+    pause: () => void
+    resume: () => void
+    arm: () => void
+  }) => void
   onPhase?: (phase: "connecting" | "playing" | "paused") => void
   onTrackUri?: (uri: string | null) => void
   onContextEnded?: (uri: string) => void
@@ -218,7 +223,7 @@ export function SpotifyEmbedPlayer({
       if (!queue) return
       if (appliedGenerationRef.current !== pending.generation) {
         appliedGenerationRef.current = pending.generation
-        queue.start(pending.uris, pending.index)
+        queue.start(pending.uris, pending.index, pending.contextUri)
       }
       flushController()
       void ensureController()?.then(() => flushController())
@@ -279,6 +284,10 @@ export function SpotifyEmbedPlayer({
       }
     )
     queueRef.current = queue
+    const onVisible = () => {
+      if (!document.hidden) queue.nudgeIfWaiting()
+    }
+    document.addEventListener("visibilitychange", onVisible)
     const session = navigator.mediaSession
     if (session) {
       try {
@@ -293,8 +302,8 @@ export function SpotifyEmbedPlayer({
       resume: () => queue.resume(),
     }
 
-    const start: StartCommand = (nextUris, index, nextGeneration) => {
-      const pending = { uris: nextUris, index, generation: nextGeneration }
+    const start: StartCommand = (nextUris, index, nextGeneration, contextUri) => {
+      const pending = { uris: nextUris, index, generation: nextGeneration, contextUri }
       pendingRef.current = pending
       const host = hostRef.current
       const measurable = Boolean(host && host.clientWidth > 0 && !host.closest("[hidden]"))
@@ -317,6 +326,7 @@ export function SpotifyEmbedPlayer({
     if (pending) playPending(pending)
 
     return () => {
+      document.removeEventListener("visibilitychange", onVisible)
       queue.destroy()
       if (queueRef.current === queue) queueRef.current = null
       const media = navigator.mediaSession

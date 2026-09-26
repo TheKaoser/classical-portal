@@ -220,12 +220,71 @@ test("a hidden tab advances on the playback update without waiting", () => {
   assert.deepEqual(calls, [`loadUri:${FIRST}`, "play", `loadUri:${SECOND}`, "play"])
 })
 
-test("a hidden tab advances once playback is in the last moments", () => {
+test("a hidden tab does not cut the track in the last moments", () => {
   const { queue, calls, update } = harness({ hidden: () => true })
   queue.start([FIRST, SECOND], 0)
   update({ isPaused: false, position: 1_000, playingURI: FIRST })
   update({ isPaused: false, position: DURATION - 1_000, playingURI: FIRST })
+  assert.deepEqual(calls, [`loadUri:${FIRST}`, "play"])
+  update({ isPaused: false, position: DURATION, playingURI: FIRST })
   assert.deepEqual(calls, [`loadUri:${FIRST}`, "play", `loadUri:${SECOND}`, "play"])
+})
+
+test("an album document advances movements without another load", () => {
+  const ALBUM = "spotify:album:5Z9iiGl2FcIfa3BMiv6OIw"
+  const { queue, calls, events, update } = harness()
+  queue.start([FIRST, SECOND], 0, ALBUM)
+  assert.deepEqual(calls, [`loadUri:${ALBUM}`, "play"])
+  update({ isPaused: false, position: 1_000, playingURI: FIRST })
+  update({ isPaused: false, position: 2_000, playingURI: SECOND })
+  assert.deepEqual(calls, [`loadUri:${ALBUM}`, "play"])
+  assert.equal(events.includes(`track:${SECOND}`), true)
+  update({ isPaused: false, position: 1_000, playingURI: "spotify:track:extra" })
+  assert.deepEqual(calls, [`loadUri:${ALBUM}`, "play", "pause"])
+  assert.equal(events.includes(`ended:${SECOND}`), true)
+})
+
+test("an album that does not open on the first movement falls back to that track", () => {
+  const ALBUM = "spotify:album:5Z9iiGl2FcIfa3BMiv6OIw"
+  const { queue, calls, update } = harness()
+  queue.start([FIRST, SECOND], 0, ALBUM)
+  update({ isPaused: false, isBuffering: true, position: 0, duration: 0, playingURI: "" })
+  update({ isPaused: false, position: 1_000, playingURI: "spotify:track:other" })
+  assert.deepEqual(calls, [`loadUri:${ALBUM}`, "play", `loadUri:${FIRST}`, "play"])
+})
+
+test("the last album track ends the work without loading another document", () => {
+  const ALBUM = "spotify:album:5Z9iiGl2FcIfa3BMiv6OIw"
+  const { queue, calls, events, update } = harness({ hidden: () => true })
+  queue.start([FIRST], 0, ALBUM)
+  update({ isPaused: false, position: 1_000, playingURI: FIRST })
+  update({ isPaused: false, position: DURATION, playingURI: FIRST })
+  assert.deepEqual(calls, [`loadUri:${ALBUM}`, "play", "pause"])
+  assert.equal(events.includes(`ended:${FIRST}`), true)
+})
+
+test("a leftover update is not treated as the album's first track", () => {
+  const ALBUM = "spotify:album:5Z9iiGl2FcIfa3BMiv6OIw"
+  const { queue, calls, update } = harness()
+  queue.start([FIRST, SECOND], 0, ALBUM)
+  update({ isPaused: false, position: 1_000, playingURI: "spotify:track:previous" })
+  assert.deepEqual(calls, [`loadUri:${ALBUM}`, "play"])
+})
+
+test("a later movement does not use the album document", () => {
+  const ALBUM = "spotify:album:5Z9iiGl2FcIfa3BMiv6OIw"
+  const { queue, calls } = harness()
+  queue.start([FIRST, SECOND], 1, ALBUM)
+  assert.deepEqual(calls, [`loadUri:${SECOND}`, "play"])
+})
+
+test("nudge replays only while the load has not started", () => {
+  const { queue, calls, update } = harness()
+  queue.start([FIRST], 0)
+  queue.nudgeIfWaiting()
+  update({ isPaused: false, position: 1_000, playingURI: FIRST })
+  queue.nudgeIfWaiting()
+  assert.deepEqual(calls, [`loadUri:${FIRST}`, "play", "play"])
 })
 
 test("reaching the duration advances even while the embed still says playing", () => {

@@ -1,4 +1,4 @@
-import { orderedTrackUris } from "./spotify-playback.ts"
+import { orderedTrackUris, spotifyAlbumUri } from "./spotify-playback.ts"
 
 /**
  * List playback resolves Spotify the same way a work page does, but only for
@@ -91,12 +91,17 @@ export function shuffleWorkIds(ids: readonly string[], random: () => number = Ma
 
 /** First recording that has playable tracks — the same default the work page selects. */
 export function primaryRecordingUris(
-  recordings: readonly { id: string; tracks: readonly { uri: string }[] }[]
-): { recordingId: string; uris: string[] } | null {
+  recordings: readonly { id: string; albumId?: string | null; tracks: readonly { uri: string }[] }[]
+): { recordingId: string; albumId: string | null; uris: string[] } | null {
   for (const recording of recordings) {
     const uris = orderedTrackUris([...recording.tracks])
     if (uris.length === 0) continue
-    return { recordingId: recording.id, uris }
+    const albumUri = spotifyAlbumUri(recording.albumId)
+    return {
+      recordingId: recording.id,
+      albumId: albumUri ? albumUri.slice("spotify:album:".length) : null,
+      uris,
+    }
   }
   return null
 }

@@ -4,9 +4,19 @@
  */
 
 const TRACK_URI = /^spotify:track:[A-Za-z0-9]+$/
+const ALBUM_ID = /^[A-Za-z0-9]{10,32}$/
 
 export function isSpotifyTrackUri(uri: string): boolean {
   return TRACK_URI.test(uri)
+}
+
+/**
+ * Album context for the embed. A Spotify album id only — catalog ids such as
+ * `work:123` are not albums and must not be loaded.
+ */
+export function spotifyAlbumUri(albumId: string | null | undefined): string | null {
+  if (!albumId || !ALBUM_ID.test(albumId)) return null
+  return `spotify:album:${albumId}`
 }
 
 /** Keep valid track URIs in the order they were matched. */

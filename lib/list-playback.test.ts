@@ -34,7 +34,25 @@ test("primaryRecordingUris uses the first recording that has tracks", () => {
       { id: "empty", tracks: [{ uri: "not-a-track" }] },
       { id: "album", tracks: [{ uri: "spotify:track:aaa" }, { uri: "spotify:track:aaa" }, { uri: "spotify:track:bbb" }] },
     ]),
-    { recordingId: "album", uris: ["spotify:track:aaa", "spotify:track:bbb"] }
+    { recordingId: "album", albumId: null, uris: ["spotify:track:aaa", "spotify:track:bbb"] }
+  )
+  assert.deepEqual(
+    primaryRecordingUris([
+      {
+        id: "album:track",
+        albumId: "5Z9iiGl2FcIfa3BMiv6OIw",
+        tracks: [{ uri: "spotify:track:aaa" }],
+      },
+    ]),
+    {
+      recordingId: "album:track",
+      albumId: "5Z9iiGl2FcIfa3BMiv6OIw",
+      uris: ["spotify:track:aaa"],
+    }
+  )
+  assert.equal(
+    primaryRecordingUris([{ id: "row", albumId: "work:9231", tracks: [{ uri: "spotify:track:aaa" }] }])?.albumId,
+    null
   )
 })
 

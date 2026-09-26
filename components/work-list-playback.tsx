@@ -42,7 +42,7 @@ type Session = {
   finished: boolean
 }
 
-type Found = { index: number; id: string; uris: string[] }
+type Found = { index: number; id: string; uris: string[]; albumId: string | null }
 
 function serverIdleRow() {
   return IDLE_ROW
@@ -138,7 +138,7 @@ function PlaybackMachine({ store, workIds }: { store: ListPlaybackStore; workIds
         session.skipped.add(id)
         continue
       }
-      return { index, id, uris: result.hit.uris }
+      return { index, id, uris: result.hit.uris, albumId: result.hit.albumId }
     }
     return null
   }
@@ -159,7 +159,7 @@ function PlaybackMachine({ store, workIds }: { store: ListPlaybackStore; workIds
       noticeKind: null,
     })
     apiRef.current.armPlayback()
-    apiRef.current.beginPlayback(workRecordingId(found.id), found.uris, 0)
+    apiRef.current.beginPlayback(workRecordingId(found.id), found.uris, 0, found.albumId)
     if (session.mode === "list") void prefetch(session)
   }
 
