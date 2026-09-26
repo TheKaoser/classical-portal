@@ -8,6 +8,13 @@
  * playback_update is followed, and no further loadUri runs until the work ends.
  * The next work is a different album, so that handoff is requested immediately
  * but does not become audible until the tab is visible again.
+ *
+ * The embed reports `playingURI` on each playback_update (about once a second)
+ * and again on playback_started when the track changes. At the end of a track
+ * it first reports `position === duration` for the old URI, still playing, and
+ * only then the next URI. A pause issued on that duration tick is ignored —
+ * the next album track is already queued — so the last movement is paused
+ * while it is still the current URI, a fraction of a second before duration.
  */
 
 /** Paused this close to the duration counts as the end of the track. */
@@ -31,10 +38,25 @@ export const EMBED_END_REACHED_MS = 100
 
 /**
  * After play() is issued, wait this long for an unpaused playback_update.
- * Safari (and other autoplay blocks) leave the embed paused; the UI then asks
- * for a tap instead of advancing the queue.
+ * Safari (and other autoplay blocks) leave the embed paused. The queue does
+ * not skip ahead; the embed stays loaded and the next visibility or play
+ * control starts it.
  */
 export const EMBED_AUTOPLAY_GRACE_MS = 2_000
+
+/**
+ * Album `playback_update` events arrive about once a second (observed ~1060ms).
+ * While the tab is hidden, timers are clamped or frozen, so the last movement
+ * is paused on the update that falls inside this window of the duration.
+ */
+export const EMBED_ALBUM_UPDATE_GAP_MS = 1_200
+
+/**
+ * Pause this long before the last movement's duration. A pause any closer,
+ * including on the `position === duration` tick, does not stick: the embed
+ * has already committed to the next album track.
+ */
+export const EMBED_ALBUM_END_LEAD_MS = 400
 
 export const SPOTIFY_EMBED_HEIGHT_PX = 152
 
@@ -70,7 +92,6 @@ export type MovementQueueOptions = {
   onPhase?: (phase: EmbedQueuePhase) => void
   onTrack?: (uri: string) => void
   onWorkEnded?: (uri: string) => void
-  onNeedsGesture?: (needed: boolean) => void
   onUserTransport?: () => void
 }
 
@@ -90,6 +111,8 @@ export type MovementQueue = {
   notePlayDispatched: () => void
   /** Re-issue play when the tab becomes visible and this load never started. */
   nudgeIfWaiting: () => void
+  /** `playback_started` URI, which can arrive without a full playback_update. */
+  notePlayingUri: (uri: string) => void
   onPlaybackUpdate: (update: EmbedPlaybackUpdate) => void
   destroy: () => void
 }
@@ -147,11 +170,16 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
   let cancelEnd: CancelTimer | null = null
   let cancelHidden: CancelTimer | null = null
   let cancelGesture: CancelTimer | null = null
+  let cancelBoundary: CancelTimer | null = null
   let destroyed = false
   /** Album document is loading, accepted, or not in use. */
   let contextMode: "off" | "pending" | "accepted" = "off"
   /** Saw the new album document (empty URI) so a leftover update is not the album. */
   let contextArmed = false
+  /** The work already ended inside an album document. Further unpaused updates are paused. */
+  let albumEnded = false
+  /** Last track URI the embed reported. An update that omits playingURI keeps it. */
+  let reportedUri: string | null = null
   let release: () => void = () => {}
 
   function clearEndTimer() {
@@ -166,6 +194,11 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
     cancelGesture = null
   }
 
+  function clearBoundary() {
+    cancelBoundary?.()
+    cancelBoundary = null
+  }
+
   function resetProgress() {
     sawPlaying = false
     playedIntoTrack = false
@@ -175,8 +208,10 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
     advancedFor = null
     lastPlaying = null
     lastUpdate = null
+    reportedUri = null
     clearEndTimer()
     clearGestureTimer()
+    clearBoundary()
   }
 
   function currentUri(): string | null {
@@ -213,22 +248,96 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
     resetProgress()
     options.onTrack?.(nextUri)
     options.onPhase?.("connecting")
-    options.onNeedsGesture?.(false)
     transport.loadUri(nextUri)
     transport.play()
   }
 
-  /** Stop an album document so it does not continue into tracks outside this work. */
-  function finishAlbum() {
+  /**
+   * Stop the album document. Always pauses: a pause issued on the duration
+   * tick is ignored, so a later update for the next track must pause again.
+   * `onWorkEnded` runs once. Returns true so the caller stops handling this update.
+   * The callback may start the next work and clear `albumEnded`.
+   */
+  function stopAlbum(): boolean {
+    clearBoundary()
+    transport.pause()
+    if (albumEnded) return true
     const uri = currentUri()
-    if (!uri || advancedFor === uri) return
+    albumEnded = true
+    if (!uri) return true
     advancedFor = uri
     candidateAt = null
     clearEndTimer()
     leaveContext()
     options.onPhase?.("paused")
-    transport.pause()
     options.onWorkEnded?.(uri)
+    return true
+  }
+
+  /** Track URI from this update. An album URI is not a track. */
+  function trackUri(update: EmbedPlaybackUpdate): string {
+    const uri = update.playingURI ?? ""
+    if (!uri || uri.startsWith("spotify:album:")) return ""
+    return uri
+  }
+
+  function adoptIndex(next: number) {
+    if (uris[next] == null || next === index) return
+    index = next
+    playedIntoTrack = false
+    reachedNearEnd = false
+    candidateAt = null
+    advancedFor = null
+    lastPlaying = null
+    clearEndTimer()
+    clearBoundary()
+    options.onTrack?.(uris[index])
+  }
+
+  /**
+   * The playhead jumped back to the start after sitting in the last update
+   * gap of the previous track. That is the album advancing when `playingURI`
+   * was omitted.
+   */
+  function boundaryRewind(update: EmbedPlaybackUpdate): boolean {
+    const previous = lastPlaying
+    if (!previous || update.isBuffering || !(update.duration > 0)) return false
+    if (!(previous.durationMs > EMBED_ALBUM_UPDATE_GAP_MS)) return false
+    if (!(update.position >= 0 && update.position <= EMBED_END_REWIND_MS)) return false
+    if (!(update.position < previous.positionMs)) return false
+    return previous.positionMs >= previous.durationMs - EMBED_ALBUM_UPDATE_GAP_MS
+  }
+
+  /**
+   * Pause the last movement while it is still the current URI.
+   * Returns true when the work was stopped in this call.
+   */
+  function armAlbumBoundary(update: EmbedPlaybackUpdate): boolean {
+    if (userPaused || albumEnded) return false
+    if (!(update.duration > EMBED_ALBUM_END_LEAD_MS) || !(update.position > 0)) {
+      clearBoundary()
+      return false
+    }
+    const remaining = update.duration - update.position
+    if (remaining <= 0) {
+      // position === duration still carries the old URI, and pause does not stick.
+      clearBoundary()
+      return false
+    }
+    if (hidden() || remaining <= EMBED_ALBUM_END_LEAD_MS) {
+      if (remaining <= EMBED_ALBUM_UPDATE_GAP_MS) return stopAlbum()
+      clearBoundary()
+      return false
+    }
+    const delay = remaining - EMBED_ALBUM_END_LEAD_MS
+    clearBoundary()
+    const armedIndex = index
+    cancelBoundary = schedule(() => {
+      cancelBoundary = null
+      if (destroyed || userPaused || albumEnded || index !== armedIndex) return
+      stopAlbum()
+    }, delay)
+    return false
   }
 
   function confirmEnd(force: boolean) {
@@ -259,8 +368,8 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
   function loadCurrent() {
     const uri = currentUri()
     if (!uri) return
+    albumEnded = false
     resetProgress()
-    options.onNeedsGesture?.(false)
     options.onTrack?.(uri)
     options.onPhase?.("connecting")
     transport.loadUri(uri)
@@ -288,11 +397,11 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       const bounded = Number.isInteger(startIndex) && startIndex >= 0 && startIndex < uris.length ? startIndex : 0
       index = bounded
       userPaused = false
+      albumEnded = false
       leaveContext()
       resetProgress()
       const uri = uris[index]
       const album = bounded === 0 && typeof contextUri === "string" && contextUri.length > 0 ? contextUri : null
-      options.onNeedsGesture?.(false)
       options.onTrack?.(uri)
       options.onPhase?.("connecting")
       if (album && album !== uri) {
@@ -308,18 +417,21 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       if (destroyed) return
       const uri = currentUri()
       if (!uri) return
-      const wasAlbum = contextMode !== "off"
       userPaused = false
       candidateAt = null
       clearEndTimer()
-      leaveContext()
+      clearBoundary()
       const nextIndex = index + 1
       if (nextIndex >= uris.length) {
-        options.onPhase?.("paused")
-        if (wasAlbum) transport.pause()
-        options.onWorkEnded?.(uri)
+        if (contextMode !== "off") stopAlbum()
+        else {
+          options.onPhase?.("paused")
+          options.onWorkEnded?.(uri)
+        }
         return
       }
+      leaveContext()
+      albumEnded = false
       index = nextIndex
       loadCurrent()
     },
@@ -329,7 +441,9 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       userPaused = false
       candidateAt = null
       clearEndTimer()
+      clearBoundary()
       leaveContext()
+      albumEnded = false
       if (index > 0) index -= 1
       loadCurrent()
     },
@@ -339,7 +453,7 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       candidateAt = null
       clearEndTimer()
       clearGestureTimer()
-      options.onNeedsGesture?.(false)
+      clearBoundary()
       options.onUserTransport?.()
       options.onPhase?.("paused")
       transport.pause()
@@ -351,7 +465,7 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       candidateAt = null
       lastPlaying = null
       clearEndTimer()
-      options.onNeedsGesture?.(false)
+      clearBoundary()
       options.onUserTransport?.()
       options.onPhase?.("connecting")
       transport.resume()
@@ -365,24 +479,40 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       cancelGesture = schedule(() => {
         cancelGesture = null
         if (destroyed || userPaused || sawPlaying || playIssuedAt !== issuedAt) return
-        options.onNeedsGesture?.(true)
         options.onPhase?.("paused")
       }, EMBED_AUTOPLAY_GRACE_MS)
     },
     nudgeIfWaiting() {
-      if (destroyed || userPaused || sawPlaying) return
+      if (destroyed || userPaused || sawPlaying || albumEnded) return
       transport.play()
+    },
+    notePlayingUri(uri: string) {
+      if (destroyed || !uri || uri.startsWith("spotify:album:")) return
+      this.onPlaybackUpdate({
+        playingURI: uri,
+        isPaused: false,
+        isBuffering: true,
+        duration: 0,
+        position: 0,
+      })
     },
     onPlaybackUpdate(update) {
       if (destroyed || !update || typeof update.isPaused !== "boolean") return
+      if (albumEnded) {
+        // The duration-tick pause is dropped. Pause again until the embed is paused
+        // or the next work replaces this queue.
+        if (!update.isPaused) transport.pause()
+        return
+      }
       if (contextMode === "pending") {
-        const playing = update.playingURI ?? ""
+        const playing = trackUri(update)
         if (!playing) {
           contextArmed = true
           return
         }
         if (playing === uris[0]) {
           contextMode = "accepted"
+          reportedUri = playing
         } else if (contextArmed) {
           leaveContext()
           loadCurrent()
@@ -392,41 +522,52 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
         }
       }
       if (contextMode === "accepted") {
-        const playing = update.playingURI ?? ""
-        if (!playing) return
-        const at = uris.indexOf(playing)
-        if (at < 0) {
-          finishAlbum()
-          return
-        }
-        if (at !== index) {
-          index = at
-          playedIntoTrack = false
-          reachedNearEnd = false
-          candidateAt = null
-          advancedFor = null
-          lastPlaying = null
-          clearEndTimer()
-          options.onTrack?.(uris[index])
-        }
-        if (index < uris.length - 1) {
-          if (!update.isPaused && !update.isBuffering) {
-            sawPlaying = true
-            playIssuedAt = null
-            clearGestureTimer()
-            options.onNeedsGesture?.(false)
-            options.onPhase?.("playing")
-            if (update.position > 500) playedIntoTrack = true
-          } else if (update.isPaused && sawPlaying && !userPaused) {
-            options.onPhase?.("paused")
+        const playing = trackUri(update)
+        if (playing) reportedUri = playing
+        if (playing) {
+          const at = uris.indexOf(playing)
+          if (at < 0) {
+            stopAlbum()
+            return
           }
+          if (at !== index) adoptIndex(at)
+        } else if (boundaryRewind(update)) {
+          const nextIndex = index + 1
+          if (nextIndex >= uris.length) {
+            stopAlbum()
+            return
+          }
+          adoptIndex(nextIndex)
+        }
+
+        if (update.isBuffering) return
+
+        const onLast = index >= uris.length - 1
+        if (!update.isPaused) {
+          clearGestureTimer()
+          if (onLast) {
+            if (armAlbumBoundary(update)) return
+          } else {
+            clearBoundary()
+          }
+          sawPlaying = true
+          playIssuedAt = null
+          options.onPhase?.("playing")
+          if (update.position > 500) playedIntoTrack = true
+          lastPlaying = { positionMs: update.position, durationMs: update.duration, atMs: now() }
           return
         }
-        release = finishAlbum
+
+        if (sawPlaying && !userPaused) options.onPhase?.("paused")
+        if (!onLast || userPaused) {
+          clearBoundary()
+          return
+        }
+        release = stopAlbum
       } else {
         const uri = currentUri()
         if (!uri) return
-        if (update.playingURI && update.playingURI !== uri) return
+        if (update.playingURI && update.playingURI !== uri && !update.playingURI.startsWith("spotify:album:")) return
         release = advance
       }
       lastUpdate = update
@@ -435,7 +576,6 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
         sawPlaying = true
         playIssuedAt = null
         clearGestureTimer()
-        options.onNeedsGesture?.(false)
         options.onPhase?.("playing")
         const near = playbackUpdateIsNearEnd(update.position, update.duration)
         const reached = playbackUpdateReachedDuration(update.position, update.duration)
@@ -482,6 +622,7 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       destroyed = true
       clearEndTimer()
       clearGestureTimer()
+      clearBoundary()
     },
   }
 }

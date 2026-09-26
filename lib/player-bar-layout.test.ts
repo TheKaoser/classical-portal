@@ -60,18 +60,14 @@ test("footer clearance equals measured player height", () => {
   assert.equal(PLAYER_BAR_HEIGHT_VAR, "--player-bar-height")
 })
 
-test("player controls sit on the shell and accept clicks", () => {
+test("the player shell is the embed, with no gesture prompt", () => {
   const source = readFileSync(new URL("../components/spotify-embed-player.tsx", import.meta.url), "utf8")
   assert.match(source, /className=\{visible \? PLAYER_BAR_DOCK_CLASS : "hidden"\}/)
   assert.match(source, /className=\{PLAYER_BAR_SHELL_CLASS\}/)
   assert.match(source, /style=\{PLAYER_BAR_SHELL_STYLE\}/)
   assert.match(source, /data-player-shell/)
-  assert.match(source, /Tap play to continue/)
-  assert.match(
-    source,
-    /pointer-events-auto flex items-center justify-between gap-3 border-b border-border bg-card/,
-  )
-  assert.match(source, /pointer-events-auto shrink-0 cursor-pointer rounded-full bg-primary/)
+  assert.doesNotMatch(source, /Tap play to continue/)
+  assert.doesNotMatch(source, /needsGesture/)
   assert.match(source, /pointer-events-auto h-\[152px\] w-full overflow-hidden bg-card/)
 })
 

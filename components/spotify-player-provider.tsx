@@ -45,7 +45,6 @@ type SpotifyPlayerContextValue = {
   playRequest: PlayRequest | null
   playerPhase: PlayerPhase
   activeUri: string | null
-  needsGesture: boolean
   armPlayback: () => void
   pausePlayback: () => void
   resumePlayback: () => void
@@ -77,7 +76,6 @@ export function SpotifyPlayerProvider({
   const [playRequest, setPlayRequest] = useState<PlayRequest | null>(null)
   const [playerPhase, setPlayerPhase] = useState<PlayerPhase>("idle")
   const [activeUri, setActiveUri] = useState<string | null>(null)
-  const [needsGesture, setNeedsGesture] = useState(false)
   const [lastIssue, setLastIssue] = useState<PlaybackIssue | null>(null)
   const generationRef = useRef(0)
   const commandsRef = useRef<PlayerCommands>(idleCommands)
@@ -106,7 +104,6 @@ export function SpotifyPlayerProvider({
     setPlayRequest(null)
     setPlayerPhase("idle")
     setActiveUri(null)
-    setNeedsGesture(false)
   }, [])
 
   const registerContextEnded = useCallback((listener: (uri: string) => void) => {
@@ -141,7 +138,6 @@ export function SpotifyPlayerProvider({
     const generation = generationRef.current
     const contextUri = bounded === 0 ? spotifyAlbumUri(albumId) : null
     setLastIssue(null)
-    setNeedsGesture(false)
     setPlayerPhase("connecting")
     setActiveUri(uris[bounded] ?? null)
     setPlayRequest({ recordingId, uris, position: bounded, generation, contextUri })
@@ -160,7 +156,6 @@ export function SpotifyPlayerProvider({
       playRequest,
       playerPhase,
       activeUri,
-      needsGesture,
       armPlayback,
       pausePlayback,
       resumePlayback,
@@ -176,7 +171,6 @@ export function SpotifyPlayerProvider({
       playRequest,
       playerPhase,
       activeUri,
-      needsGesture,
       armPlayback,
       pausePlayback,
       resumePlayback,
@@ -199,13 +193,11 @@ export function SpotifyPlayerProvider({
         startIndex={playRequest?.position ?? 0}
         generation={playRequest?.generation ?? 0}
         visible={sessionActive}
-        needsGesture={needsGesture}
         onRegisterCommands={registerCommands}
         onPhase={setPlayerPhase}
         onTrackUri={setActiveUri}
         onContextEnded={noteContextEnded}
         onUserTransport={noteUserTransport}
-        onNeedsGesture={setNeedsGesture}
         onIssue={handleIssue}
       />
     </SpotifyPlayerContext.Provider>
