@@ -208,7 +208,8 @@ body:has(.home-portal) {
 /* The embed dock stays in the DOM while hidden. :has() matches hidden
    elements, so clearance must require a dock that is actually showing.
    Padding is on the footer (not the body) so it is part of the footer's
-   box: the text clears the fixed bar, and nothing scrolls past the footer.
+   box: the text clears the fixed player, and nothing scrolls past the footer.
+   The dock wrapper is transparent; this clearance follows its measured height.
    Unlayered so it wins over the footer's pb-8 utility. 2rem is that pb-8. */
 body:has([data-player-dock="flush"]:not([hidden])) footer {
   padding-bottom: calc(2rem + var(--player-bar-height, 9.5rem));
