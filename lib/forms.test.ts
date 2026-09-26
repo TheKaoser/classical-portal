@@ -8,6 +8,7 @@ import {
   FORM_GROUPS,
   KEYBOARD_FORMS,
   KEYBOARD_INSTRUMENTS,
+  browsePageForForm,
   catalogGenreFromSlug,
   classifyKeyboardInstrument,
   classifyWork,
@@ -85,16 +86,57 @@ test("real genre labels keep their genre route", () => {
 })
 
 test("folded forms become chips on one genre page", () => {
-  assert.deepEqual(formsForBrowseSlug("chamber"), ["trio", "quartet", "quintet", "sextet"])
-  assert.deepEqual(formsForBrowseSlug("choral"), ["requiem", "mass", "oratorio", "motet", "cantata"])
-  assert.deepEqual(formsForBrowseSlug("keyboard"), [...KEYBOARD_FORMS])
+  assert.deepEqual(formsForBrowseSlug("chamber"), [
+    "trio",
+    "quartet",
+    "quintet",
+    "sextet",
+    "septet",
+    "octet",
+    "nonet",
+    "duo",
+    "suite",
+    "partita",
+    "serenade",
+    "divertimento",
+    "overture",
+  ])
+  assert.deepEqual(formsForBrowseSlug("choral"), [
+    "requiem",
+    "mass",
+    "oratorio",
+    "motet",
+    "cantata",
+    "passion",
+    "stabat-mater",
+    "magnificat",
+    "te-deum",
+  ])
+  assert.deepEqual(formsForBrowseSlug("keyboard"), [
+    ...KEYBOARD_FORMS.flatMap((slug) => (slug === "partita" ? [slug, "suite"] : [slug])),
+    "overture",
+    "trio",
+  ])
   assert.deepEqual(formsForBrowseSlug("piano"), [])
   assert.deepEqual(formsForBrowseSlug("harpsichord"), [])
   assert.deepEqual(formsForBrowseSlug("organ"), [])
   assert.deepEqual(formsForBrowseSlug("baroque-keyboard"), [])
   assert.deepEqual(formsForBrowseSlug("stage"), ["opera", "ballet", "overture"])
-  assert.deepEqual(formsForBrowseSlug("orchestral"), ["symphony", "suite", "serenade", "divertimento"])
-  assert.equal(formsForBrowseSlug("orchestral").includes("overture"), false)
+  assert.deepEqual(formsForBrowseSlug("orchestral"), [
+    "symphony",
+    "symphonic-poem",
+    "suite",
+    "overture",
+    "serenade",
+    "divertimento",
+    "variations",
+    "prelude",
+    "rhapsody",
+    "waltz",
+    "mazurka",
+    "polonaise",
+  ])
+  assert.equal(formsForBrowseSlug("orchestral").includes("overture"), true)
   assert.deepEqual(formsForBrowseSlug("concerto"), ["concerto"])
   assert.deepEqual(formsForBrowseSlug("sonata"), ["sonata"])
   assert.deepEqual(formsForBrowseSlug("song"), ["song"])
@@ -149,13 +191,26 @@ test("folded forms become chips on one genre page", () => {
   assert.equal(genreHrefForLabel("Requiems"), "/genres/choral?filter=requiem")
   assert.equal(genreHrefForLabel("Motets"), "/genres/choral?filter=motet")
   assert.equal(genreHrefForLabel("Cantatas"), "/genres/choral?filter=cantata")
-  const children = new Set<string>()
+  const legacyParent: Record<string, string> = {
+    suite: "orchestral",
+    partita: "keyboard",
+    overture: "stage",
+    serenade: "orchestral",
+    divertimento: "orchestral",
+    variations: "keyboard",
+    prelude: "keyboard",
+    rhapsody: "keyboard",
+    waltz: "keyboard",
+    mazurka: "keyboard",
+    trio: "chamber",
+  }
   for (const group of FORM_GROUPS) {
     assert.equal(["piano", "harpsichord", "organ"].includes(group.slug), false, group.slug)
     for (const child of group.children) {
       assert.ok(formFromSlug(child), child)
-      assert.equal(children.has(child), false, child)
-      children.add(child)
+      const parent = groupForForm(child)
+      assert.ok(parent, child)
+      if (legacyParent[child]) assert.equal(parent.slug, legacyParent[child], child)
     }
   }
   for (const form of KEYBOARD_FORMS) {
@@ -175,7 +230,7 @@ test("a sextet named before another form stays a sextet", () => {
   assert.equal(classifyWork("Mládí, suite for wind sextet"), "suite")
   assert.equal(classifyWork("Fantasia, for strings or string sextet"), "fantasia")
   assert.equal(classifyWork("Threnody and Scherzo, for bassoon, harp, and string sextet"), "scherzo")
-  assert.equal(classifyWork("Octet, for horn, piano, and string sextet"), null)
+  assert.equal(classifyWork("Octet, for horn, piano, and string sextet"), "octet")
 })
 
 test("a form named in the title wins over a conflicting subtitle", () => {
@@ -204,6 +259,108 @@ test("trio sonatas, piano trios, and string trios are chamber trios", () => {
     ),
     "sonata"
   )
+})
+
+test("Open Opus genre chooses the page and the title chooses the chip", () => {
+  const place = (title: string, subtitle: string, genre: string) => {
+    const form = classifyWork(title, subtitle, genre)
+    return { form, page: form ? browsePageForForm(form, genre) : null }
+  }
+
+  const partita = place("Partita no. 2 for Solo Violin in D minor, BWV.1004", "", "Chamber")
+  assert.equal(partita.form, "partita")
+  assert.equal(partita.page, "chamber")
+
+  const cello = place("Cello Suite no. 1 in G major, BWV.1007", "", "Chamber")
+  assert.equal(cello.form, "suite")
+  assert.equal(cello.page, "chamber")
+
+  const french = place("French Suite no. 1 in D minor, BWV.812", "", "Keyboard")
+  assert.equal(french.form, "suite")
+  assert.equal(french.page, "keyboard")
+
+  const orchestralSuite = place("Carmen, suite for orchestra from the opera", "", "Orchestral")
+  assert.equal(orchestralSuite.form, "suite")
+  assert.equal(orchestralSuite.page, "orchestral")
+
+  const enigma = place("Enigma Variations, op. 36", "", "Orchestral")
+  assert.equal(enigma.form, "variations")
+  assert.equal(enigma.page, "orchestral")
+
+  const faune = place("Prélude à l'après-midi d'un faune, L.86", "", "Orchestral")
+  assert.equal(faune.form, "prelude")
+  assert.equal(faune.page, "orchestral")
+
+  const blue = place("Rhapsody in Blue", "For piano and orchestra", "Orchestral")
+  assert.equal(blue.form, "rhapsody")
+  assert.equal(blue.page, "orchestral")
+
+  const paganini = place("Rhapsody on a Theme by Paganini, op. 43", "", "Orchestral")
+  assert.equal(paganini.form, "rhapsody")
+  assert.equal(paganini.page, "orchestral")
+
+  const keyboardVariation = place("Goldberg Variations, BWV.988", "", "Keyboard")
+  assert.equal(keyboardVariation.page, "keyboard")
+
+  const waltz = place("The Blue Danube, waltz, op. 314", "", "Orchestral")
+  assert.equal(waltz.form, "waltz")
+  assert.equal(waltz.page, "orchestral")
+
+  const passion = place("Passion According to St. Matthew, BWV.244", "", "Vocal")
+  assert.equal(passion.form, "passion")
+  assert.equal(passion.page, "choral")
+  assert.equal(place("St. Matthew Passion", "", "Vocal").form, "passion")
+  assert.equal(place("Matthäus-Passion", "", "Vocal").form, "passion")
+  assert.equal(place("Johannes-Passion", "", "Vocal").form, "passion")
+  assert.equal(place("Wild with passion, song for high voice and piano", "", "Vocal").form, null)
+  assert.equal(place("If my complaints could passions move", "", "Vocal").form, null)
+  assert.equal(
+    place("Fürwahr, er trug unsere Krankheit, Passion cantata, BuxWV.31", "", "Vocal").form,
+    "cantata"
+  )
+
+  const zarathustra = place("Also sprach Zarathustra, op. 30", "Tondichtung", "Orchestral")
+  assert.equal(zarathustra.form, "symphonic-poem")
+  assert.equal(zarathustra.page, "orchestral")
+  assert.equal(place("Also sprach Zarathustra, tone poem, op. 30", "", "Orchestral").form, "symphonic-poem")
+  assert.equal(place("Les Préludes, symphonic poem", "", "Orchestral").form, "symphonic-poem")
+  assert.equal(place("Poème symphonique", "", "Orchestral").form, "symphonic-poem")
+  assert.equal(classifyWork("Also sprach Zarathustra, op. 30", "", "Orchestral"), null)
+
+  const octet = place("String Octet in E flat major, op. 20", "", "Chamber")
+  assert.equal(octet.form, "octet")
+  assert.equal(octet.page, "chamber")
+  assert.equal(place("Septet in E flat major, op. 20", "", "Chamber").form, "septet")
+  assert.equal(place("Nonet in F major, op. 31", "", "Chamber").form, "nonet")
+  assert.equal(place("Duo for 2 violins", "", "Chamber").page, "chamber")
+  assert.equal(place("Ariettas and a Duet, op. 82", "", "Vocal").page, null)
+  assert.equal(place("Duets, op. 20", "Songs", "Vocal").form, "song")
+  assert.equal(place("Duets, op. 20", "Songs", "Vocal").page, "song")
+  assert.equal(place("Duo Concertante, for violin and piano", "", "Chamber").form, "concerto")
+  assert.equal(place("Duo Sonata, for violin and piano", "", "Chamber").form, "sonata")
+  assert.equal(place("8 Magnificat Fugues in the Fourth Tone", "", "Keyboard").form, "fugue")
+  assert.equal(place("Trio Sonata no. 1 in E flat major, BWV.525", "", "Keyboard").page, "keyboard")
+  assert.equal(place("Trio Sonata in C major", "", "Chamber").page, "chamber")
+
+  const festival = place("1812 Festival Overture, in E flat major, op. 49", "", "Orchestral")
+  assert.equal(festival.form, "overture")
+  assert.equal(festival.page, "orchestral")
+  const tragic = place("Tragic Overture, op. 81", "", "Orchestral")
+  assert.equal(tragic.page, "orchestral")
+  const operaOverture = place("Overture to La gazza ladra", "", "Stage")
+  assert.equal(operaOverture.form, "overture")
+  assert.equal(operaOverture.page, "stage")
+
+  assert.equal(place("Stabat Mater, op. 58", "", "Vocal").form, "stabat-mater")
+  assert.equal(place("Stabat Mater, op. 58", "", "Vocal").page, "choral")
+  assert.equal(place("Magnificat in D major, BWV.243", "", "Vocal").page, "choral")
+  assert.equal(place("Te Deum, op. 22", "", "Vocal").form, "te-deum")
+  assert.equal(place("Magnificat primi toni", "", "Keyboard").page, null)
+
+  assert.equal(place("Piano Concerto no. 5", "", "Keyboard").page, "concerto")
+  assert.equal(place("Piano Sonata no. 14", "", "Orchestral").page, "sonata")
+  assert.equal(place("Symphony no. 5", "", "Chamber").page, null)
+  assert.equal(place("Messiah", "Oratorio", "Stage").page, "choral")
 })
 
 test("character pieces use the named instrument, then the composer's era", () => {
@@ -254,7 +411,7 @@ test("the catalog files trio sonatas under trios and keeps Keyboard as one genre
 
   const counts = { piano: 0, harpsichord: 0, organ: 0 }
   for (const work of works) {
-    if (groupForForm(work.form)?.slug !== "keyboard") continue
+    if (browsePageForForm(work.form, work.genre) !== "keyboard") continue
     const instrument = classifyKeyboardInstrument(work.title, work.subtitle, epochs[work.composerId] ?? null)
     counts[instrument] += 1
     if (instrument === "organ") {

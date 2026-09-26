@@ -2,7 +2,8 @@ import catalog from "@/data/form-works.json"
 import {
   FORM_GROUPS,
   WORK_FORMS,
-  formsForBrowseSlug,
+  browsePageForForm,
+  catalogGenreFromSlug,
   groupForForm,
   type CatalogGenre,
 } from "@/lib/forms"
@@ -36,18 +37,20 @@ function bump(counts: Map<string, { total: number; popular: number }>, slug: str
   counts.set(slug, row)
 }
 
-/** Genre that owns this form. Keyboard lists forms, not piano, harpsichord, or organ. */
-export function browseSlugForWork(work: FormWork): string {
-  const group = groupForForm(work.form)
-  if (!group) return work.form
-  return group.slug
+/**
+ * Genre page for this work. Open Opus genre chooses the page; the stored
+ * form is only the chip. Null when the title form has no compatible page.
+ */
+export function browseSlugForWork(work: FormWork): string | null {
+  return browsePageForForm(work.form, work.genre)
 }
 
 export function formSummaries(): FormSummary[] {
   const counts = new Map<string, { total: number; popular: number }>()
 
   for (const work of loadFormWorks()) {
-    bump(counts, browseSlugForWork(work), isPopular(work))
+    const slug = browseSlugForWork(work)
+    if (slug) bump(counts, slug, isPopular(work))
   }
 
   const summaries: FormSummary[] = []
@@ -69,7 +72,8 @@ export function formSummaries(): FormSummary[] {
 }
 
 export function worksForForm(slug: string): FormWork[] {
-  const forms = new Set(formsForBrowseSlug(slug))
-  if (!forms.size) return []
-  return dedupeWorks(loadFormWorks().filter((work) => forms.has(work.form))).sort(compareWorksByPopularity)
+  if (!catalogGenreFromSlug(slug)) return []
+  return dedupeWorks(loadFormWorks().filter((work) => browseSlugForWork(work) === slug)).sort(
+    compareWorksByPopularity
+  )
 }
