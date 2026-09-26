@@ -11,10 +11,17 @@ export const EMBED_END_NEAR_MS = 1_500
 export const EMBED_END_REWIND_MS = 1_000
 
 /**
- * The end state must hold this long. A one-frame pause at the tail is not
- * treated as the track finishing.
+ * The end state must hold this long while the tab is visible. A one-frame
+ * pause at the tail is not treated as the track finishing.
+ * Background tabs freeze timers, so a hidden tab does not wait on this.
  */
 export const EMBED_END_DEBOUNCE_MS = 400
+
+/**
+ * Playing into the last moments counts as the end even when the embed never
+ * flips `isPaused`. Small enough that a mid-phrase pause is not the end.
+ */
+export const EMBED_END_REACHED_MS = 100
 
 /**
  * After play() is issued, wait this long for an unpaused playback_update.
@@ -50,6 +57,10 @@ export type CancelTimer = () => void
 export type MovementQueueOptions = {
   now?: () => number
   schedule?: (callback: () => void, delayMs: number) => CancelTimer
+  /** True when this tab is in the background. Timers there do not run promptly. */
+  hidden?: () => boolean
+  /** Fired when the tab goes to the background, so a pending end can flush. */
+  subscribeHidden?: (listener: () => void) => CancelTimer
   onPhase?: (phase: EmbedQueuePhase) => void
   onTrack?: (uri: string) => void
   onWorkEnded?: (uri: string) => void
@@ -61,6 +72,10 @@ export type MovementQueue = {
   start: (uris: readonly string[], index: number) => void
   pause: () => void
   resume: () => void
+  /** Skip to the next movement, or end the work on the last one. */
+  next: () => void
+  /** Restart the previous movement, or the current one when already on the first. */
+  previous: () => void
   /** Call when play() or resume() has actually been issued to the controller. */
   notePlayDispatched: () => void
   onPlaybackUpdate: (update: EmbedPlaybackUpdate) => void
@@ -86,6 +101,11 @@ export function playbackUpdateIsNearEnd(positionMs: number, durationMs: number):
   return positionMs >= durationMs - EMBED_END_NEAR_MS
 }
 
+export function playbackUpdateReachedDuration(positionMs: number, durationMs: number): boolean {
+  if (!(durationMs > EMBED_END_REACHED_MS) || !(positionMs > 0)) return false
+  return positionMs >= durationMs - EMBED_END_REACHED_MS
+}
+
 export function playbackUpdateIsRewoundEnd(positionMs: number, reachedNearEnd: boolean): boolean {
   return reachedNearEnd && positionMs >= 0 && positionMs <= EMBED_END_REWIND_MS
 }
@@ -98,11 +118,14 @@ function defaultSchedule(callback: () => void, delayMs: number): CancelTimer {
 export function createMovementQueue(transport: EmbedTransport, options: MovementQueueOptions = {}): MovementQueue {
   const now = options.now ?? (() => Date.now())
   const schedule = options.schedule ?? defaultSchedule
+  const hidden = options.hidden ?? (() => typeof document !== "undefined" && document.hidden)
 
   let uris: string[] = []
   let index = 0
   let userPaused = false
   let sawPlaying = false
+  /** Heard this load actually moving, so a stale end update cannot skip again. */
+  let playedIntoTrack = false
   let reachedNearEnd = false
   let candidateAt: number | null = null
   let playIssuedAt: number | null = null
@@ -110,12 +133,15 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
   let lastPlaying: PlayingSample | null = null
   let lastUpdate: EmbedPlaybackUpdate | null = null
   let cancelEnd: CancelTimer | null = null
+  let cancelHidden: CancelTimer | null = null
   let cancelGesture: CancelTimer | null = null
   let destroyed = false
 
   function clearEndTimer() {
     cancelEnd?.()
     cancelEnd = null
+    cancelHidden?.()
+    cancelHidden = null
   }
 
   function clearGestureTimer() {
@@ -125,6 +151,7 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
 
   function resetProgress() {
     sawPlaying = false
+    playedIntoTrack = false
     reachedNearEnd = false
     candidateAt = null
     playIssuedAt = null
@@ -169,9 +196,9 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
     transport.play()
   }
 
-  function confirmEnd() {
+  function confirmEnd(force: boolean) {
     if (destroyed || userPaused || candidateAt == null) return
-    if (now() - candidateAt < EMBED_END_DEBOUNCE_MS) return
+    if (!force && now() - candidateAt < EMBED_END_DEBOUNCE_MS) return
     const update = lastUpdate
     const uri = currentUri()
     if (!update || !uri || !sawPlaying || !looksEnded(update)) return
@@ -184,8 +211,25 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
     cancelEnd = schedule(() => {
       cancelEnd = null
       if (candidateAt !== startedAt) return
-      confirmEnd()
+      confirmEnd(false)
     }, EMBED_END_DEBOUNCE_MS)
+    if (options.subscribeHidden) {
+      cancelHidden = options.subscribeHidden(() => {
+        if (candidateAt !== startedAt) return
+        confirmEnd(true)
+      })
+    }
+  }
+
+  function loadCurrent() {
+    const uri = currentUri()
+    if (!uri) return
+    resetProgress()
+    options.onNeedsGesture?.(false)
+    options.onTrack?.(uri)
+    options.onPhase?.("connecting")
+    transport.loadUri(uri)
+    transport.play()
   }
 
   function noteNearEndFromEstimate(update: EmbedPlaybackUpdate) {
@@ -216,6 +260,31 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       options.onPhase?.("connecting")
       transport.loadUri(uri)
       transport.play()
+    },
+    next() {
+      if (destroyed) return
+      const uri = currentUri()
+      if (!uri) return
+      userPaused = false
+      candidateAt = null
+      clearEndTimer()
+      const nextIndex = index + 1
+      if (nextIndex >= uris.length) {
+        options.onPhase?.("paused")
+        options.onWorkEnded?.(uri)
+        return
+      }
+      index = nextIndex
+      loadCurrent()
+    },
+    previous() {
+      if (destroyed) return
+      if (uris.length === 0) return
+      userPaused = false
+      candidateAt = null
+      clearEndTimer()
+      if (index > 0) index -= 1
+      loadCurrent()
     },
     pause() {
       if (destroyed) return
@@ -266,11 +335,17 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
         clearGestureTimer()
         options.onNeedsGesture?.(false)
         options.onPhase?.("playing")
-        if (playbackUpdateIsNearEnd(update.position, update.duration)) reachedNearEnd = true
+        const near = playbackUpdateIsNearEnd(update.position, update.duration)
+        const reached = playbackUpdateReachedDuration(update.position, update.duration)
+        if (near) reachedNearEnd = true
         else reachedNearEnd = false
+        if (!near && !reached && update.position > 500) playedIntoTrack = true
         candidateAt = null
         clearEndTimer()
         lastPlaying = { positionMs: update.position, durationMs: update.duration, atMs: now() }
+        // Finish in this message. A timer would not run while the tab is hidden,
+        // and the embed often stays "playing" with position at the duration.
+        if (playedIntoTrack && (reached || (hidden() && near))) advance()
         return
       }
 
@@ -288,6 +363,10 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       if (!looksEnded(update)) {
         candidateAt = null
         clearEndTimer()
+        return
+      }
+      if (hidden() || playbackUpdateReachedDuration(update.position, update.duration)) {
+        advance()
         return
       }
       if (candidateAt == null) {

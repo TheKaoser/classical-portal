@@ -9,6 +9,7 @@ import {
   type EmbedPlaybackUpdate,
   type EmbedTransport,
   type MovementQueue,
+  type MovementQueueOptions,
 } from "./spotify-embed-queue.ts"
 
 const FIRST = "spotify:track:i"
@@ -16,7 +17,7 @@ const SECOND = "spotify:track:ii"
 const THIRD = "spotify:track:iii"
 const DURATION = 180_000
 
-function harness() {
+function harness(options: Pick<MovementQueueOptions, "hidden" | "subscribeHidden"> = {}) {
   let time = 0
   const calls: string[] = []
   const events: string[] = []
@@ -57,6 +58,8 @@ function harness() {
   queue = createMovementQueue(controller, {
     now: () => time,
     schedule,
+    hidden: options.hidden,
+    subscribeHidden: options.subscribeHidden,
     onPhase: (phase) => events.push(`phase:${phase}`),
     onTrack: (uri) => events.push(`track:${uri}`),
     onWorkEnded: (uri) => events.push(`ended:${uri}`),
@@ -207,6 +210,72 @@ test("starting another queue cancels the previous end timer", () => {
   setTime(300 + EMBED_END_DEBOUNCE_MS)
   flush()
   assert.deepEqual(calls, [`loadUri:${FIRST}`, "play", `loadUri:${THIRD}`, "play"])
+})
+
+test("a hidden tab advances on the playback update without waiting", () => {
+  const { queue, calls, update } = harness({ hidden: () => true })
+  queue.start([FIRST, SECOND], 0)
+  update({ isPaused: false, position: 40_000, playingURI: FIRST })
+  update({ isPaused: true, position: 179_200, playingURI: FIRST })
+  assert.deepEqual(calls, [`loadUri:${FIRST}`, "play", `loadUri:${SECOND}`, "play"])
+})
+
+test("a hidden tab advances once playback is in the last moments", () => {
+  const { queue, calls, update } = harness({ hidden: () => true })
+  queue.start([FIRST, SECOND], 0)
+  update({ isPaused: false, position: 1_000, playingURI: FIRST })
+  update({ isPaused: false, position: DURATION - 1_000, playingURI: FIRST })
+  assert.deepEqual(calls, [`loadUri:${FIRST}`, "play", `loadUri:${SECOND}`, "play"])
+})
+
+test("reaching the duration advances even while the embed still says playing", () => {
+  const { queue, calls, update } = harness()
+  queue.start([FIRST, SECOND], 0)
+  update({ isPaused: false, position: 1_000, playingURI: FIRST })
+  update({ isPaused: false, position: DURATION, playingURI: FIRST })
+  assert.deepEqual(calls, [`loadUri:${FIRST}`, "play", `loadUri:${SECOND}`, "play"])
+})
+
+test("hiding the tab flushes a pending end without the debounce", () => {
+  let listener: (() => void) | null = null
+  const { queue, calls, update } = harness({
+    subscribeHidden(fn) {
+      listener = fn
+      return () => {
+        listener = null
+      }
+    },
+  })
+  queue.start([FIRST, SECOND], 0)
+  update({ isPaused: false, position: 179_000, playingURI: FIRST })
+  update({ isPaused: true, position: 179_200, playingURI: FIRST })
+  assert.deepEqual(calls, [`loadUri:${FIRST}`, "play"])
+  listener?.()
+  assert.deepEqual(calls, [`loadUri:${FIRST}`, "play", `loadUri:${SECOND}`, "play"])
+})
+
+test("next and previous load another movement on the same controller", () => {
+  const { queue, calls, events } = harness()
+  queue.start([FIRST, SECOND, THIRD], 0)
+  queue.next()
+  queue.previous()
+  queue.next()
+  queue.next()
+  assert.deepEqual(calls, [
+    `loadUri:${FIRST}`,
+    "play",
+    `loadUri:${SECOND}`,
+    "play",
+    `loadUri:${FIRST}`,
+    "play",
+    `loadUri:${SECOND}`,
+    "play",
+    `loadUri:${THIRD}`,
+    "play",
+  ])
+  queue.next()
+  assert.equal(events.includes(`ended:${THIRD}`), true)
+  assert.equal(calls.filter((call) => call.startsWith("loadUri:")).length, 5)
 })
 
 test("buffering at the end is not treated as the end", () => {

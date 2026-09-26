@@ -32,6 +32,23 @@ export const LIST_PLAY_GAP_ATTEMPTS = 8
  */
 export const LIST_PLAY_ADVANCE_DELAY_MS = 700
 
+/**
+ * Chain the next Play all work. A visible tab waits briefly so a gap between
+ * movements is not treated as the end of the work. A background tab runs the
+ * chain in the end event itself: Chrome freezes timers until the tab returns.
+ */
+export function runListChain(
+  hidden: boolean,
+  chain: () => void,
+  schedule: (chain: () => void, delayMs: number) => number
+): number | null {
+  if (hidden) {
+    chain()
+    return null
+  }
+  return schedule(chain, LIST_PLAY_ADVANCE_DELAY_MS)
+}
+
 export const LIST_SHUFFLE_STORAGE_KEY = "cp_list_shuffle"
 export const PENDING_LIST_PLAYBACK_KEY = "cp_pending_list_playback"
 

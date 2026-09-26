@@ -38,6 +38,17 @@ function pageIsDark(): boolean {
   return false
 }
 
+function publishMediaSession(state: "playing" | "paused") {
+  const session = navigator.mediaSession
+  if (!session) return
+  try {
+    session.playbackState = state
+    if (!session.metadata) session.metadata = new MediaMetadata({ title: "Classical Portal" })
+  } catch {
+    // A browser without Media Session metadata still plays.
+  }
+}
+
 function readUpdate(event: SpotifyEmbedPlaybackEvent | EmbedPlaybackUpdate): EmbedPlaybackUpdate | null {
   if (!event || typeof event !== "object") return null
   if ("isPaused" in event && typeof event.isPaused === "boolean" && "position" in event && "duration" in event) {
@@ -246,14 +257,37 @@ export function SpotifyEmbedPlayer({
           const id = window.setTimeout(callback, delayMs)
           return () => window.clearTimeout(id)
         },
-        onPhase: (phase) => onPhaseRef.current?.(phase),
-        onTrack: (uri) => onTrackUriRef.current?.(uri),
+        hidden: () => document.hidden,
+        subscribeHidden(listener) {
+          const onChange = () => {
+            if (document.hidden) listener()
+          }
+          document.addEventListener("visibilitychange", onChange)
+          return () => document.removeEventListener("visibilitychange", onChange)
+        },
+        onPhase: (phase) => {
+          onPhaseRef.current?.(phase)
+          publishMediaSession(phase === "playing" ? "playing" : "paused")
+        },
+        onTrack: (uri) => {
+          onTrackUriRef.current?.(uri)
+          publishMediaSession("playing")
+        },
         onWorkEnded: (uri) => onContextEndedRef.current?.(uri),
         onNeedsGesture: (needed) => onNeedsGestureRef.current?.(needed),
         onUserTransport: () => onUserTransportRef.current?.(),
       }
     )
     queueRef.current = queue
+    const session = navigator.mediaSession
+    if (session) {
+      try {
+        session.setActionHandler("nexttrack", () => queue.next())
+        session.setActionHandler("previoustrack", () => queue.previous())
+      } catch {
+        // The action is unsupported in this browser.
+      }
+    }
     commandsRef.current = {
       pause: () => queue.pause(),
       resume: () => queue.resume(),
@@ -285,6 +319,14 @@ export function SpotifyEmbedPlayer({
     return () => {
       queue.destroy()
       if (queueRef.current === queue) queueRef.current = null
+      const media = navigator.mediaSession
+      if (!media) return
+      try {
+        media.setActionHandler("nexttrack", null)
+        media.setActionHandler("previoustrack", null)
+      } catch {
+        // Ignore unsupported actions on the way out.
+      }
     }
   }, [playPending, runOnController])
 

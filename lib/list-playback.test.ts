@@ -5,8 +5,10 @@ import {
   idsToPrefetch,
   isCatalogWorkId,
   isLastTrack,
+  LIST_PLAY_ADVANCE_DELAY_MS,
   listPlayAllControl,
   listStoppedEarly,
+  runListChain,
   parsePendingListPlayback,
   primaryRecordingUris,
   readShufflePreference,
@@ -124,6 +126,28 @@ test("listStoppedEarly reports an unfinished tail", () => {
   assert.equal(listStoppedEarly(["a", "b", "c"], 0, new Set(["b"])), true)
   assert.equal(listStoppedEarly(["a", "b", "c"], 0, new Set(["b", "c"])), false)
   assert.equal(listStoppedEarly(["a", "b"], 1, new Set()), false)
+})
+
+test("runListChain waits while the tab is visible and runs immediately in the background", () => {
+  let ran = 0
+  const scheduled: number[] = []
+  const visible = runListChain(false, () => {
+    ran += 1
+  }, (_chain, delayMs) => {
+    scheduled.push(delayMs)
+    return 4
+  })
+  assert.equal(ran, 0)
+  assert.deepEqual(scheduled, [LIST_PLAY_ADVANCE_DELAY_MS])
+  assert.equal(visible, 4)
+
+  const hidden = runListChain(true, () => {
+    ran += 1
+  }, () => {
+    throw new Error("background chaining must not schedule a timer")
+  })
+  assert.equal(ran, 1)
+  assert.equal(hidden, null)
 })
 
 test("listPlayAllControl", () => {
