@@ -19,6 +19,11 @@ import {
   type EmbedPlaybackUpdate,
   type MovementQueue,
 } from "@/lib/spotify-embed-queue"
+import {
+  applyMergedIframeAllow,
+  instrumentEmbedIframeCreation,
+  patchEmbedIframeElement,
+} from "@/lib/iframe-allow"
 import { installIframeHistoryGuard } from "@/lib/iframe-history"
 import { loadSpotifyIframeApi } from "@/lib/spotify-iframe-api"
 
@@ -68,9 +73,10 @@ function fitIframe(host: HTMLElement) {
   iframe.style.border = "0"
   iframe.style.display = "block"
   iframe.title = "Spotify player"
-  if (!iframe.getAttribute("allow")) {
-    iframe.setAttribute("allow", "autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture")
-  }
+  // Re-apply in case the attribute was reset after the frame was created.
+  // The value has to be in place before a navigation starts; the src guard
+  // and the creation patch do that for the first load and each loadUri.
+  applyMergedIframeAllow(iframe)
 }
 
 export function SpotifyEmbedPlayer({
@@ -133,6 +139,18 @@ export function SpotifyEmbedPlayer({
     resume: () => {},
   })
   const [portalReady, setPortalReady] = useState(false)
+  const iframeWatchRef = useRef<MutationObserver | null>(null)
+
+  const armEmbedIframe = useCallback((host: HTMLElement) => {
+    const iframe = host.querySelector("iframe")
+    if (!(iframe instanceof HTMLIFrameElement)) return
+    // Spotify inserts the iframe before setting src. Patching here, and from
+    // the creation hook below, puts the merged allow list on the element
+    // before that navigation. A later loadUri goes through the src guard.
+    patchEmbedIframeElement(iframe)
+    applyMergedIframeAllow(iframe)
+    installIframeHistoryGuard(iframe)
+  }, [])
 
   const flushController = useCallback(() => {
     const controller = controllerRef.current
@@ -172,6 +190,19 @@ export function SpotifyEmbedPlayer({
               resolve()
               return
             }
+            if (!iframeWatchRef.current && typeof MutationObserver !== "undefined") {
+              const observer = new MutationObserver(() => {
+                const node = hostRef.current
+                if (node) armEmbedIframe(node)
+              })
+              observer.observe(mount, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeFilter: ["allow"],
+              })
+              iframeWatchRef.current = observer
+            }
             const placeholder = document.createElement("div")
             mount.replaceChildren(placeholder)
             let settled = false
@@ -180,33 +211,41 @@ export function SpotifyEmbedPlayer({
               settled = true
               resolve()
             }
-            iframeApi.createController(
-              placeholder,
-              {
-                width: Math.max(320, mount.clientWidth || 640),
-                height: SPOTIFY_EMBED_HEIGHT_PX,
-              },
-              (controller) => {
-                // Guard before any loadUri. The API assigns iframe.src, which
-                // would otherwise push a joint session history entry per track.
-                const frame = mount.querySelector("iframe")
-                if (frame instanceof HTMLIFrameElement) installIframeHistoryGuard(frame)
-                controllerRef.current = controller
-                controller.addListener("playback_update", (event) => {
-                  const update = readUpdate(event)
-                  if (update) queueRef.current?.onPlaybackUpdate(update)
-                })
-                controller.addListener("ready", () => {
+            // Spotify creates the iframe and sets `allow` inside this call,
+            // before the callback. Patch the element as it is created so the
+            // merged policy is in place before the first src navigation.
+            const restoreIframeCreation = instrumentEmbedIframeCreation()
+            try {
+              iframeApi.createController(
+                placeholder,
+                {
+                  width: Math.max(320, mount.clientWidth || 640),
+                  height: SPOTIFY_EMBED_HEIGHT_PX,
+                },
+                (controller) => {
+                  // Guard before any loadUri. The API assigns iframe.src, which
+                  // would otherwise push a joint session history entry per track.
+                  // The src setter also refreshes `allow` before location.replace.
+                  armEmbedIframe(mount)
+                  controllerRef.current = controller
+                  controller.addListener("playback_update", (event) => {
+                    const update = readUpdate(event)
+                    if (update) queueRef.current?.onPlaybackUpdate(update)
+                  })
+                  controller.addListener("ready", () => {
+                    const node = hostRef.current
+                    if (node) fitIframe(node)
+                    finish()
+                  })
+                  flushController()
                   const node = hostRef.current
                   if (node) fitIframe(node)
-                  finish()
-                })
-                flushController()
-                const node = hostRef.current
-                if (node) fitIframe(node)
-                window.setTimeout(finish, 1_500)
-              }
-            )
+                  window.setTimeout(finish, 1_500)
+                }
+              )
+            } finally {
+              restoreIframeCreation()
+            }
           })
       )
       .catch(() => {
@@ -215,7 +254,7 @@ export function SpotifyEmbedPlayer({
       })
 
     return creatingRef.current
-  }, [flushController])
+  }, [armEmbedIframe, flushController])
 
   const playPending = useCallback(
     (pending: PendingStart) => {
