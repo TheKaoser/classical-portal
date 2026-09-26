@@ -7,7 +7,14 @@
  * `location.replace` on the iframe's window loads the next embed in place,
  * including the first track, and does not push a history entry. If the frame
  * has no window yet, assigning `src` is the initial load and also does not push.
+ *
+ * `location.replace` re-evaluates the iframe `allow` policy for the new
+ * document, but it does not change the `src` attribute. A bare feature token
+ * allowlists only that src origin, so the guard pins the Spotify origin on
+ * `allow` before each navigation.
  */
+
+import { applyMergedIframeAllow } from "./iframe-allow.ts"
 
 export type IframeLocation = {
   replace: (url: string) => void
@@ -51,6 +58,7 @@ export function installIframeHistoryGuard(iframe: HTMLIFrameElement): void {
       return proto.get!.call(this)
     },
     set(value: string) {
+      applyMergedIframeAllow(this)
       navigateIframeWithoutHistory(this, String(value), (next) => {
         proto.set!.call(this, next)
       })
