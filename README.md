@@ -165,7 +165,7 @@ YouTube is no longer used. The match cache uses Postgres and does not read Supab
 - **Movements** — listed under the selected album. Choosing a movement loads that track. When a track ends, the next movement loads. After the last movement, the work ends.
 - **Play all / Random** — on composer and genre lists. The order is fixed when the control is pressed. Works without a match are skipped. Playback stops at the end of the list, or after a run of misses. Pausing, or choosing another play control, cancels the advance.
 - **Search on Spotify** — opens Spotify’s own search.
-- **Autoplay** — if the browser blocks `play()` (for example iOS Safari), the embed stays on screen with its own play button and a “Tap play to continue” control.
+- **Autoplay** — if the browser blocks `play()` (for example iOS Safari), the embed stays on screen. Its own play button, the page play control, or returning to the tab starts playback.
 
 ## Matching quality checks
 

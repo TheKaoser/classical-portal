@@ -64,7 +64,6 @@ function harness(options: Pick<MovementQueueOptions, "hidden" | "subscribeHidden
     onPhase: (phase) => events.push(`phase:${phase}`),
     onTrack: (uri) => events.push(`track:${uri}`),
     onWorkEnded: (uri) => events.push(`ended:${uri}`),
-    onNeedsGesture: (needed) => events.push(`gesture:${needed}`),
     onUserTransport: () => events.push("user"),
   })
 
@@ -98,7 +97,7 @@ test("play loads the first movement and plays it on the controller", () => {
   const { queue, calls, events } = harness()
   queue.start([FIRST, SECOND], 0)
   assert.deepEqual(calls, [`loadUri:${FIRST}`, "play"])
-  assert.deepEqual(events.slice(0, 2), [`gesture:false`, `track:${FIRST}`])
+  assert.deepEqual(events.slice(0, 2), [`track:${FIRST}`, "phase:connecting"])
 })
 
 test("play from a later movement starts there", () => {
@@ -174,19 +173,21 @@ test("the last movement ends the work and does not load another URI", () => {
   assert.equal(events.includes(`ended:${SECOND}`), true)
 })
 
-test("autoplay that never starts asks for a tap and does not skip ahead", () => {
+test("autoplay that never starts stays on the loaded track until play or visibility", () => {
   const { queue, calls, events, update, setTime, flush } = harness()
   queue.start([FIRST, SECOND], 0)
   update({ isPaused: true, position: 0, duration: DURATION, playingURI: FIRST })
   setTime(EMBED_AUTOPLAY_GRACE_MS)
   flush()
-  assert.equal(events.includes("gesture:true"), true)
+  assert.equal(events.includes("phase:paused"), true)
+  assert.equal(events.some((event) => event.startsWith("gesture:")), false)
   assert.deepEqual(calls, [`loadUri:${FIRST}`, "play"])
   queue.resume()
   assert.equal(calls.at(-1), "resume")
   update({ isPaused: false, position: 200, playingURI: FIRST })
   assert.equal(events.at(-1), "phase:playing")
-  assert.equal(events.includes("gesture:false"), true)
+  queue.nudgeIfWaiting()
+  assert.deepEqual(calls, [`loadUri:${FIRST}`, "play", "resume"])
 })
 
 test("a pause in the middle of a movement is not the end", () => {

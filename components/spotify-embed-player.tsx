@@ -84,20 +84,17 @@ export function SpotifyEmbedPlayer({
   startIndex,
   generation,
   visible,
-  needsGesture,
   onRegisterCommands,
   onPhase,
   onTrackUri,
   onContextEnded,
   onUserTransport,
-  onNeedsGesture,
   onIssue,
 }: {
   uris: string[]
   startIndex: number
   generation: number
   visible: boolean
-  needsGesture: boolean
   onRegisterCommands: (commands: {
     start: StartCommand
     pause: () => void
@@ -108,21 +105,18 @@ export function SpotifyEmbedPlayer({
   onTrackUri?: (uri: string | null) => void
   onContextEnded?: (uri: string) => void
   onUserTransport?: () => void
-  onNeedsGesture?: (needed: boolean) => void
   onIssue?: (issue: EmbedPlaybackIssue) => void
 }) {
   const onPhaseRef = useRef(onPhase)
   const onTrackUriRef = useRef(onTrackUri)
   const onContextEndedRef = useRef(onContextEnded)
   const onUserTransportRef = useRef(onUserTransport)
-  const onNeedsGestureRef = useRef(onNeedsGesture)
   const onIssueRef = useRef(onIssue)
   const onRegisterRef = useRef(onRegisterCommands)
   onPhaseRef.current = onPhase
   onTrackUriRef.current = onTrackUri
   onContextEndedRef.current = onContextEnded
   onUserTransportRef.current = onUserTransport
-  onNeedsGestureRef.current = onNeedsGesture
   onIssueRef.current = onIssue
   onRegisterRef.current = onRegisterCommands
 
@@ -134,10 +128,6 @@ export function SpotifyEmbedPlayer({
   const pendingRef = useRef<PendingStart | null>(null)
   const creatingRef = useRef<Promise<void> | null>(null)
   const queuedRef = useRef<Array<(controller: SpotifyEmbedController) => void>>([])
-  const commandsRef = useRef<{ pause: () => void; resume: () => void }>({
-    pause: () => {},
-    resume: () => {},
-  })
   const [portalReady, setPortalReady] = useState(false)
   const iframeWatchRef = useRef<MutationObserver | null>(null)
 
@@ -322,7 +312,6 @@ export function SpotifyEmbedPlayer({
           publishMediaSession("playing")
         },
         onWorkEnded: (uri) => onContextEndedRef.current?.(uri),
-        onNeedsGesture: (needed) => onNeedsGestureRef.current?.(needed),
         onUserTransport: () => onUserTransportRef.current?.(),
       }
     )
@@ -340,11 +329,6 @@ export function SpotifyEmbedPlayer({
         // The action is unsupported in this browser.
       }
     }
-    commandsRef.current = {
-      pause: () => queue.pause(),
-      resume: () => queue.resume(),
-    }
-
     const start: StartCommand = (nextUris, index, nextGeneration, contextUri) => {
       const pending = { uris: nextUris, index, generation: nextGeneration, contextUri }
       pendingRef.current = pending
@@ -419,7 +403,7 @@ export function SpotifyEmbedPlayer({
       if (previousVar) root.style.setProperty(PLAYER_BAR_HEIGHT_VAR, previousVar)
       else root.style.removeProperty(PLAYER_BAR_HEIGHT_VAR)
     }
-  }, [visible, portalReady, needsGesture])
+  }, [visible, portalReady])
 
   if (!portalReady) return null
 
@@ -434,18 +418,6 @@ export function SpotifyEmbedPlayer({
       style={visible ? PLAYER_BAR_DOCK_STYLE : undefined}
     >
       <div className={PLAYER_BAR_SHELL_CLASS} style={PLAYER_BAR_SHELL_STYLE} data-player-shell="">
-        {needsGesture ? (
-          <div className="pointer-events-auto flex items-center justify-between gap-3 border-b border-border bg-card px-3 py-2 sm:px-4">
-            <p className="text-sm text-foreground">Tap play to continue</p>
-            <button
-              type="button"
-              className="pointer-events-auto shrink-0 cursor-pointer rounded-full bg-primary px-3 py-1 text-sm font-medium text-primary-foreground"
-              onClick={() => commandsRef.current.resume()}
-            >
-              Play
-            </button>
-          </div>
-        ) : null}
         <div ref={hostRef} className="pointer-events-auto h-[152px] w-full overflow-hidden bg-card" />
       </div>
     </div>,

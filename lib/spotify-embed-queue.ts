@@ -38,8 +38,9 @@ export const EMBED_END_REACHED_MS = 100
 
 /**
  * After play() is issued, wait this long for an unpaused playback_update.
- * Safari (and other autoplay blocks) leave the embed paused; the UI then asks
- * for a tap instead of advancing the queue.
+ * Safari (and other autoplay blocks) leave the embed paused. The queue does
+ * not skip ahead; the embed stays loaded and the next visibility or play
+ * control starts it.
  */
 export const EMBED_AUTOPLAY_GRACE_MS = 2_000
 
@@ -91,7 +92,6 @@ export type MovementQueueOptions = {
   onPhase?: (phase: EmbedQueuePhase) => void
   onTrack?: (uri: string) => void
   onWorkEnded?: (uri: string) => void
-  onNeedsGesture?: (needed: boolean) => void
   onUserTransport?: () => void
 }
 
@@ -248,7 +248,6 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
     resetProgress()
     options.onTrack?.(nextUri)
     options.onPhase?.("connecting")
-    options.onNeedsGesture?.(false)
     transport.loadUri(nextUri)
     transport.play()
   }
@@ -371,7 +370,6 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
     if (!uri) return
     albumEnded = false
     resetProgress()
-    options.onNeedsGesture?.(false)
     options.onTrack?.(uri)
     options.onPhase?.("connecting")
     transport.loadUri(uri)
@@ -404,7 +402,6 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       resetProgress()
       const uri = uris[index]
       const album = bounded === 0 && typeof contextUri === "string" && contextUri.length > 0 ? contextUri : null
-      options.onNeedsGesture?.(false)
       options.onTrack?.(uri)
       options.onPhase?.("connecting")
       if (album && album !== uri) {
@@ -457,7 +454,6 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       clearEndTimer()
       clearGestureTimer()
       clearBoundary()
-      options.onNeedsGesture?.(false)
       options.onUserTransport?.()
       options.onPhase?.("paused")
       transport.pause()
@@ -470,7 +466,6 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       lastPlaying = null
       clearEndTimer()
       clearBoundary()
-      options.onNeedsGesture?.(false)
       options.onUserTransport?.()
       options.onPhase?.("connecting")
       transport.resume()
@@ -484,7 +479,6 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       cancelGesture = schedule(() => {
         cancelGesture = null
         if (destroyed || userPaused || sawPlaying || playIssuedAt !== issuedAt) return
-        options.onNeedsGesture?.(true)
         options.onPhase?.("paused")
       }, EMBED_AUTOPLAY_GRACE_MS)
     },
@@ -558,7 +552,6 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
           }
           sawPlaying = true
           playIssuedAt = null
-          options.onNeedsGesture?.(false)
           options.onPhase?.("playing")
           if (update.position > 500) playedIntoTrack = true
           lastPlaying = { positionMs: update.position, durationMs: update.duration, atMs: now() }
@@ -583,7 +576,6 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
         sawPlaying = true
         playIssuedAt = null
         clearGestureTimer()
-        options.onNeedsGesture?.(false)
         options.onPhase?.("playing")
         const near = playbackUpdateIsNearEnd(update.position, update.duration)
         const reached = playbackUpdateReachedDuration(update.position, update.duration)
