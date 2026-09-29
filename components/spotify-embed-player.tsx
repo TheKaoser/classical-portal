@@ -32,9 +32,9 @@ export type EmbedPlaybackIssue = {
   message?: string
 }
 
-type StartCommand = (uris: string[], index: number, generation: number, contextUri: string | null) => void
+type StartCommand = (uris: string[], index: number, generation: number) => void
 
-type PendingStart = { uris: string[]; index: number; generation: number; contextUri: string | null }
+type PendingStart = { uris: string[]; index: number; generation: number }
 
 function pageIsDark(): boolean {
   const root = document.documentElement
@@ -256,7 +256,7 @@ export function SpotifyEmbedPlayer({
       if (!queue) return
       if (appliedGenerationRef.current !== pending.generation) {
         appliedGenerationRef.current = pending.generation
-        queue.start(pending.uris, pending.index, pending.contextUri)
+        queue.start(pending.uris, pending.index)
       }
       flushController()
       void ensureController()?.then(() => flushController())
@@ -329,8 +329,8 @@ export function SpotifyEmbedPlayer({
         // The action is unsupported in this browser.
       }
     }
-    const start: StartCommand = (nextUris, index, nextGeneration, contextUri) => {
-      const pending = { uris: nextUris, index, generation: nextGeneration, contextUri }
+    const start: StartCommand = (nextUris, index, nextGeneration) => {
+      const pending = { uris: nextUris, index, generation: nextGeneration }
       pendingRef.current = pending
       const host = hostRef.current
       const measurable = Boolean(host && host.clientWidth > 0 && !host.closest("[hidden]"))

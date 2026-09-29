@@ -11,7 +11,6 @@ import {
 } from "react"
 import { SpotifyEmbedPlayer, type EmbedPlaybackIssue } from "@/components/spotify-embed-player"
 import { isPlaybackSessionActive } from "@/lib/spotify-player-session"
-import { spotifyAlbumUri } from "@/lib/spotify-playback"
 
 export type PlaybackIssue = EmbedPlaybackIssue
 
@@ -20,14 +19,12 @@ export type PlayRequest = {
   uris: string[]
   position: number
   generation: number
-  /** Album document when playback starts on the first track. */
-  contextUri: string | null
 }
 
 export type PlayerPhase = "connecting" | "playing" | "paused" | "idle"
 
 type PlayerCommands = {
-  start: (uris: string[], index: number, generation: number, contextUri: string | null) => void
+  start: (uris: string[], index: number, generation: number) => void
   pause: () => void
   resume: () => void
   arm: () => void
@@ -48,7 +45,7 @@ type SpotifyPlayerContextValue = {
   armPlayback: () => void
   pausePlayback: () => void
   resumePlayback: () => void
-  beginPlayback: (recordingId: string, uris: string[], position: number, albumId?: string | null) => void
+  beginPlayback: (recordingId: string, uris: string[], position: number) => void
   clearPlayback: () => void
   registerContextEnded: (listener: (uri: string) => void) => () => void
   registerUserTransport: (listener: () => void) => () => void
@@ -132,17 +129,16 @@ export function SpotifyPlayerProvider({
     setLastIssue(null)
   }, [])
 
-  const beginPlayback = useCallback((recordingId: string, uris: string[], position: number, albumId?: string | null) => {
+  const beginPlayback = useCallback((recordingId: string, uris: string[], position: number) => {
     const bounded = Number.isInteger(position) && position >= 0 && position < uris.length ? position : 0
     generationRef.current += 1
     const generation = generationRef.current
-    const contextUri = bounded === 0 ? spotifyAlbumUri(albumId) : null
     setLastIssue(null)
     setPlayerPhase("connecting")
     setActiveUri(uris[bounded] ?? null)
-    setPlayRequest({ recordingId, uris, position: bounded, generation, contextUri })
+    setPlayRequest({ recordingId, uris, position: bounded, generation })
     commandsRef.current.arm()
-    commandsRef.current.start(uris, bounded, generation, contextUri)
+    commandsRef.current.start(uris, bounded, generation)
   }, [])
 
   const handleIssue = useCallback((issue: PlaybackIssue) => {

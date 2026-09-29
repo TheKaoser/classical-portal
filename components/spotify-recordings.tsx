@@ -41,11 +41,11 @@ export function SpotifyRecordings({
     clearLastIssue()
   }, [lastIssue, clearLastIssue])
 
-  function requestPlayback(recordingId: string, uris: string[], position: number, albumId: string | null) {
+  function requestPlayback(recordingId: string, uris: string[], position: number) {
     setNotice(null)
     clearLastIssue()
     armPlayback()
-    beginPlayback(recordingId, uris, position, albumId)
+    beginPlayback(recordingId, uris, position)
   }
 
   function focusRecording(recording: SpotifyRecording) {
@@ -56,7 +56,7 @@ export function SpotifyRecordings({
     const uris = orderedTrackUris(recording.tracks)
     if (uris.length === 0) return
     focusRecording(recording)
-    requestPlayback(recording.id, uris, 0, recording.albumId)
+    requestPlayback(recording.id, uris, 0)
   }
 
   function handleAlbumPlaybackControl(recording: SpotifyRecording) {
@@ -82,7 +82,7 @@ export function SpotifyRecordings({
     const index = uris.indexOf(track.uri)
     if (index < 0) return
     setSelectedRecordingId(recording.id)
-    requestPlayback(recording.id, uris, index, index === 0 ? recording.albumId : null)
+    requestPlayback(recording.id, uris, index)
   }
 
   function selectAlbum(recording: SpotifyRecording) {
