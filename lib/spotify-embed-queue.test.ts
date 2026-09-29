@@ -214,22 +214,38 @@ test("starting another queue cancels the previous end timer", () => {
   assert.deepEqual(calls, [`loadUri:${FIRST}`, "play", `loadUri:${THIRD}`, "play"])
 })
 
-test("a hidden tab advances on the playback update without waiting", () => {
-  const { queue, calls, update } = harness({ hidden: () => true })
-  queue.start([FIRST, SECOND], 0)
+test("a hidden tab queues the next movement and starts it when the tab returns", () => {
+  let hidden = false
+  const { queue, calls, events, update } = harness({ hidden: () => hidden })
+  queue.start([FIRST, SECOND, THIRD], 0)
   update({ isPaused: false, position: 40_000, playingURI: FIRST })
+  hidden = true
   update({ isPaused: true, position: 179_200, playingURI: FIRST })
-  assert.deepEqual(calls, [`loadUri:${FIRST}`, "play", `loadUri:${SECOND}`, "play"])
+  assert.equal(events.includes(`track:${SECOND}`), true)
+  assert.equal(events.includes(`track:${THIRD}`), false)
+  assert.deepEqual(calls, [`loadUri:${FIRST}`, "play", "pause"])
+  hidden = false
+  queue.nudgeIfWaiting()
+  assert.deepEqual(calls, [`loadUri:${FIRST}`, "play", "pause", `loadUri:${SECOND}`, "play"])
+  assert.equal(calls.includes(`loadUri:${THIRD}`), false)
+  assert.equal(calls.some((call) => call.includes("spotify:album:")), false)
 })
 
 test("a hidden tab does not cut the track in the last moments", () => {
-  const { queue, calls, update } = harness({ hidden: () => true })
+  let hidden = false
+  const { queue, calls, events, update } = harness({ hidden: () => hidden })
   queue.start([FIRST, SECOND], 0)
   update({ isPaused: false, position: 1_000, playingURI: FIRST })
+  hidden = true
   update({ isPaused: false, position: DURATION - 1_000, playingURI: FIRST })
   assert.deepEqual(calls, [`loadUri:${FIRST}`, "play"])
+  assert.equal(events.includes(`track:${SECOND}`), false)
   update({ isPaused: false, position: DURATION, playingURI: FIRST })
-  assert.deepEqual(calls, [`loadUri:${FIRST}`, "play", `loadUri:${SECOND}`, "play"])
+  assert.equal(events.includes(`track:${SECOND}`), true)
+  assert.deepEqual(calls, [`loadUri:${FIRST}`, "play", "pause"])
+  hidden = false
+  queue.nudgeIfWaiting()
+  assert.deepEqual(calls, [`loadUri:${FIRST}`, "play", "pause", `loadUri:${SECOND}`, "play"])
 })
 
 test("a work loads its first movement track and never an album", () => {
@@ -317,9 +333,11 @@ test("reaching the duration advances even while the embed still says playing", (
 })
 
 test("hiding the tab flushes a pending end without the debounce", () => {
+  let hidden = false
   let listener: (() => void) | null = null
-  const { queue, calls, update } = harness({
-    subscribeHidden(fn) {
+  const { queue, calls, events, update } = harness({
+    hidden: () => hidden,
+    subscribeHidden(fn: () => void) {
       listener = fn
       return () => {
         listener = null
@@ -330,8 +348,13 @@ test("hiding the tab flushes a pending end without the debounce", () => {
   update({ isPaused: false, position: 179_000, playingURI: FIRST })
   update({ isPaused: true, position: 179_200, playingURI: FIRST })
   assert.deepEqual(calls, [`loadUri:${FIRST}`, "play"])
+  hidden = true
   listener?.()
-  assert.deepEqual(calls, [`loadUri:${FIRST}`, "play", `loadUri:${SECOND}`, "play"])
+  assert.equal(events.includes(`track:${SECOND}`), true)
+  assert.deepEqual(calls, [`loadUri:${FIRST}`, "play", "pause"])
+  hidden = false
+  queue.nudgeIfWaiting()
+  assert.deepEqual(calls, [`loadUri:${FIRST}`, "play", "pause", `loadUri:${SECOND}`, "play"])
 })
 
 test("next and previous load another movement on the same controller", () => {
@@ -387,26 +410,36 @@ test("spotify advancing inside the work highlights that movement and loads only 
 })
 
 test("a hidden tab does not cut a movement that is not the last", () => {
-  const { queue, calls, events, update } = harness({ hidden: () => true })
+  let hidden = false
+  const { queue, calls, events, update } = harness({ hidden: () => hidden })
   queue.start([FIRST, SECOND], 0)
   update({ isPaused: false, position: 1_000, playingURI: FIRST })
+  hidden = true
   update({ isPaused: false, position: DURATION - 200, playingURI: FIRST })
   assert.equal(calls.includes("pause"), false)
   assert.equal(events.includes(`track:${SECOND}`), false)
   update({ isPaused: false, position: DURATION, playingURI: FIRST })
   assert.equal(events.includes(`track:${SECOND}`), true)
-  assert.deepEqual(calls, [`loadUri:${FIRST}`, "play", `loadUri:${SECOND}`, "play"])
+  assert.equal(calls.includes(`loadUri:${SECOND}`), false)
+  hidden = false
+  queue.nudgeIfWaiting()
+  assert.deepEqual(calls, [`loadUri:${FIRST}`, "play", "pause", `loadUri:${SECOND}`, "play"])
 })
 
 test("a missing playingURI still stops the last movement from position", () => {
-  const { queue, calls, events, update } = harness({ hidden: () => true })
+  let hidden = false
+  const { queue, calls, events, update } = harness({ hidden: () => hidden })
   queue.start([FIRST], 0)
   update({ isPaused: false, position: 1_000, playingURI: FIRST })
+  hidden = true
   update({ isPaused: false, position: DURATION - 800, playingURI: "" })
   assert.equal(calls.includes("pause"), false)
   update({ isPaused: false, position: DURATION, playingURI: "" })
   assert.deepEqual(calls, [`loadUri:${FIRST}`, "play", "pause"])
   assert.equal(events.includes(`ended:${FIRST}`), true)
+  hidden = false
+  queue.nudgeIfWaiting()
+  assert.deepEqual(calls, [`loadUri:${FIRST}`, "play", "pause"])
 })
 
 test("a missing playingURI at the boundary advances to the next movement", () => {
@@ -461,6 +494,133 @@ test("leaving the work for another album track pauses and does not resume that t
   assert.equal(calls.at(-2), `loadUri:${FIRST}`)
   assert.equal(calls.at(-1), "play")
   assert.equal(events.includes(`track:${FIRST}`), true)
+})
+
+test("a background rewind after real playback queues the next movement", () => {
+  let hidden = false
+  const { queue, calls, events, update } = harness({ hidden: () => hidden })
+  queue.start([FIRST, SECOND], 0)
+  update({ isPaused: false, position: 40_000, playingURI: FIRST })
+  hidden = true
+  queue.notePageHidden(true)
+  update({ isPaused: true, position: 0, playingURI: FIRST })
+  assert.equal(events.includes(`track:${SECOND}`), true)
+  assert.deepEqual(calls, [`loadUri:${FIRST}`, "play", "pause"])
+  hidden = false
+  queue.notePageHidden(false)
+  queue.nudgeIfWaiting()
+  assert.deepEqual(calls, [`loadUri:${FIRST}`, "play", "pause", `loadUri:${SECOND}`, "play"])
+})
+
+test("a visible scrub back to the start does not advance", () => {
+  const { queue, calls, events, update, setTime, flush } = harness()
+  queue.start([FIRST, SECOND], 0)
+  update({ isPaused: false, position: 40_000, playingURI: FIRST })
+  setTime(2_000)
+  update({ isPaused: true, position: 0, playingURI: FIRST })
+  setTime(2_000 + EMBED_END_DEBOUNCE_MS)
+  flush()
+  assert.equal(events.includes(`track:${SECOND}`), false)
+  assert.deepEqual(calls, [`loadUri:${FIRST}`, "play"])
+})
+
+test("a rewound playhead that arrives after the tab is visible starts the next movement", () => {
+  let hidden = false
+  const { queue, calls, events, update } = harness({ hidden: () => hidden })
+  queue.start([FIRST, SECOND], 0)
+  update({ isPaused: false, position: 40_000, playingURI: FIRST })
+  hidden = true
+  queue.notePageHidden(true)
+  hidden = false
+  queue.notePageHidden(false)
+  queue.nudgeIfWaiting()
+  update({ isPaused: true, position: 0, playingURI: FIRST })
+  assert.equal(events.includes(`track:${SECOND}`), true)
+  assert.equal(calls.includes(`loadUri:${SECOND}`), true)
+  assert.equal(calls.includes(`loadUri:${THIRD}`), false)
+})
+
+test("the next queued work waits for a visible tab and does not load an album", () => {
+  let hidden = false
+  const { queue, calls, events } = harness({ hidden: () => hidden })
+  hidden = true
+  queue.start([FIRST, SECOND], 0)
+  assert.equal(events.includes(`track:${FIRST}`), true)
+  assert.deepEqual(calls, ["pause"])
+  assert.equal(calls.some((call) => call.includes("spotify:album:")), false)
+  queue.nudgeIfWaiting()
+  assert.deepEqual(calls, ["pause"])
+  hidden = false
+  queue.nudgeIfWaiting()
+  assert.deepEqual(calls, ["pause", `loadUri:${FIRST}`, "play"])
+})
+
+test("a held movement ignores an outside track and still starts the held one", () => {
+  let hidden = false
+  const { queue, calls, events, update } = harness({ hidden: () => hidden })
+  queue.start([FIRST, SECOND], 0)
+  update({ isPaused: false, position: 40_000, playingURI: FIRST })
+  hidden = true
+  update({ isPaused: false, position: DURATION, playingURI: FIRST })
+  update({ isPaused: false, position: 20_000, playingURI: "spotify:track:extra" })
+  assert.equal(events.some((event) => event.startsWith("ended:")), false)
+  assert.equal(calls.some((call) => call.includes("extra") || call.includes("spotify:album:")), false)
+  hidden = false
+  queue.nudgeIfWaiting()
+  assert.equal(events.includes(`track:${SECOND}`), true)
+  assert.equal(calls.at(-2), `loadUri:${SECOND}`)
+  assert.equal(calls.at(-1), "play")
+})
+
+test("a listener pause keeps a held movement from starting until resume", () => {
+  let hidden = false
+  const { queue, calls, events, update } = harness({ hidden: () => hidden })
+  queue.start([FIRST, SECOND], 0)
+  update({ isPaused: false, position: 40_000, playingURI: FIRST })
+  hidden = true
+  update({ isPaused: false, position: DURATION, playingURI: FIRST })
+  queue.pause()
+  hidden = false
+  queue.nudgeIfWaiting()
+  assert.equal(calls.includes(`loadUri:${SECOND}`), false)
+  queue.resume()
+  assert.equal(calls.at(-2), `loadUri:${SECOND}`)
+  assert.equal(calls.at(-1), "play")
+  assert.equal(events.includes(`track:${SECOND}`), true)
+})
+
+test("next while hidden reloads that same movement if it never starts", () => {
+  let hidden = false
+  const { queue, calls, update } = harness({ hidden: () => hidden })
+  queue.start([FIRST, SECOND, THIRD], 0)
+  update({ isPaused: false, position: 40_000, playingURI: FIRST })
+  hidden = true
+  queue.next()
+  assert.equal(calls.at(-2), `loadUri:${SECOND}`)
+  assert.equal(calls.at(-1), "play")
+  hidden = false
+  queue.nudgeIfWaiting()
+  assert.deepEqual(
+    calls.filter((call) => call.startsWith("loadUri:")),
+    [`loadUri:${FIRST}`, `loadUri:${SECOND}`, `loadUri:${SECOND}`]
+  )
+  assert.equal(calls.includes(`loadUri:${THIRD}`), false)
+})
+
+test("next while hidden is not reloaded once that movement is playing", () => {
+  let hidden = false
+  const { queue, calls, update } = harness({ hidden: () => hidden })
+  queue.start([FIRST, SECOND], 0)
+  update({ isPaused: false, position: 40_000, playingURI: FIRST })
+  hidden = true
+  queue.next()
+  update({ isPaused: false, position: 1_000, playingURI: SECOND })
+  hidden = false
+  queue.nudgeIfWaiting()
+  assert.deepEqual(
+    calls.filter((call) => call.startsWith("loadUri:")),
+    [`loadUri:${FIRST}`, `loadUri:${SECOND}`]
+  )
 })
 
 test("next on the last movement pauses and ends the work", () => {

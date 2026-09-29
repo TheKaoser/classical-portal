@@ -10,8 +10,21 @@
  *
  * Each movement is therefore its own track document. When that document
  * finishes, the next movement URI is loaded. The work then stops, or the
- * page starts the next queued work. A hidden tab may not start a newly
- * loaded document until it is visible again (`nudgeIfWaiting`).
+ * page starts the next queued work.
+ *
+ * Chrome does not start a new embed document in a hidden tab. `loadUri`
+ * navigates the iframe (`iframe.src`), and that is a new media document, so
+ * autoplay is blocked until the tab is in the foreground. A later `play()`
+ * on the document that was rejected while hidden does not reliably start
+ * when the tab returns. Album playback used to avoid this because Spotify
+ * advanced inside one document, and that also played past the work.
+ *
+ * Automatic advance therefore does not navigate while the tab is hidden. The
+ * current document can finish in the background. The next movement is
+ * recorded (the highlight follows it) and loaded from `nudgeIfWaiting` once
+ * the tab is visible. A direct next, previous, or resume still tries
+ * immediately, and if that load is never heard it is loaded again on return.
+ * Nothing here loads an album, so playback cannot continue into later works.
  *
  * The embed reports `playingURI` on `playback_update` (about once a second)
  * and on `playback_started` when the track changes. That URI is a track URI
@@ -96,8 +109,15 @@ export type MovementQueue = {
   previous: () => void
   /** Call when play() or resume() has actually been issued to the controller. */
   notePlayDispatched: () => void
-  /** Re-issue play when the tab becomes visible and this load never started. */
+  /**
+   * The tab is visible again, or the window regained focus.
+   * Loads a movement that was held while hidden, reloads a hidden `loadUri`
+   * that never became audible, or re-issues play when a visible load is
+   * still waiting.
+   */
   nudgeIfWaiting: () => void
+  /** The tab's visibility changed. A backgrounded playhead may end unseen. */
+  notePageHidden: (isHidden: boolean) => void
   /** `playback_started` URI, which can arrive without a full playback_update. */
   notePlayingUri: (uri: string) => void
   onPlaybackUpdate: (update: EmbedPlaybackUpdate) => void
@@ -164,6 +184,15 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
   let workEnded = false
   /** The embed left our track, so resume must reload the movement instead of continuing it. */
   let needsReload = false
+  /**
+   * Next movement (or next work's first movement) chosen while hidden.
+   * The embed document is left in place until the tab can start a new one.
+   */
+  let awaitingVisible: string | null = null
+  /** `loadUri` ran while hidden and this movement has not been heard playing. */
+  let unheardHiddenLoad = false
+  /** Playback had started when the tab went to the background. */
+  let leftWhilePlaying = false
   let release: () => void = () => {}
 
   function clearEndTimer() {
@@ -188,6 +217,8 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
     lastPlaying = null
     lastUpdate = null
     heardTrack = false
+    unheardHiddenLoad = false
+    leftWhilePlaying = false
     clearEndTimer()
     clearGestureTimer()
   }
@@ -198,10 +229,16 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
 
   function looksEnded(update: EmbedPlaybackUpdate): boolean {
     if (update.isPaused !== true || update.isBuffering) return false
-    return (
+    if (
       playbackUpdateIsNearEnd(update.position, update.duration) ||
       playbackUpdateIsRewoundEnd(update.position, reachedNearEnd)
-    )
+    ) {
+      return true
+    }
+    // A frozen background tab often delivers only the rewound playhead, after
+    // the near-end samples were dropped. A visible scrub to the start does not
+    // take this path: `leftWhilePlaying` is set only from a backgrounded tab.
+    return (hidden() || leftWhilePlaying) && playedIntoTrack && update.position <= EMBED_END_REWIND_MS
   }
 
   /**
@@ -221,10 +258,12 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       return
     }
     index = nextIndex
-    loadCurrent()
+    loadCurrent(false)
   }
 
   function finishWork() {
+    awaitingVisible = null
+    unheardHiddenLoad = false
     transport.pause()
     if (workEnded) return
     const uri = currentUri()
@@ -242,16 +281,49 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
     finishWork()
   }
 
-  function loadCurrent() {
-    const uri = currentUri()
-    if (!uri) return
+  /**
+   * Remember `uri` and keep the current embed document. Navigating now would
+   * be a new media document, which Chrome will not start in a hidden tab.
+   */
+  function holdForVisible(uri: string) {
+    resetProgress()
+    awaitingVisible = uri
+    unheardHiddenLoad = false
+    workEnded = false
+    needsReload = false
+    options.onTrack?.(uri)
+    options.onPhase?.("paused")
+    transport.pause()
+  }
+
+  function beginAudible(uri: string) {
+    const inBackground = hidden()
+    awaitingVisible = null
     workEnded = false
     needsReload = false
     resetProgress()
+    unheardHiddenLoad = inBackground
     options.onTrack?.(uri)
     options.onPhase?.("connecting")
     transport.loadUri(uri)
     transport.play()
+  }
+
+  function loadCurrent(force: boolean) {
+    const uri = currentUri()
+    if (!uri) return
+    if (!force && hidden()) {
+      holdForVisible(uri)
+      return
+    }
+    beginAudible(uri)
+  }
+
+  /** This playhead is the movement we loaded, and it is actually moving. */
+  function confirmsLoadedTrack(update: EmbedPlaybackUpdate, reported: string | null, uri: string): boolean {
+    if (update.isPaused || update.isBuffering) return false
+    if (reported !== uri) return false
+    return !playbackUpdateReachedDuration(update.position, update.duration)
   }
 
   /**
@@ -266,7 +338,7 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
     }
     if (at === index) return
     index = at
-    loadCurrent()
+    loadCurrent(false)
   }
 
   function confirmEnd(force: boolean) {
@@ -317,12 +389,8 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       userPaused = false
       workEnded = false
       needsReload = false
-      resetProgress()
-      const uri = uris[index]
-      options.onTrack?.(uri)
-      options.onPhase?.("connecting")
-      transport.loadUri(uri)
-      transport.play()
+      awaitingVisible = null
+      loadCurrent(false)
     },
     next() {
       if (destroyed) return
@@ -339,7 +407,7 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       workEnded = false
       needsReload = false
       index = nextIndex
-      loadCurrent()
+      loadCurrent(true)
     },
     previous() {
       if (destroyed) return
@@ -350,11 +418,12 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       workEnded = false
       needsReload = false
       if (index > 0) index -= 1
-      loadCurrent()
+      loadCurrent(true)
     },
     pause() {
       if (destroyed) return
       userPaused = true
+      unheardHiddenLoad = false
       candidateAt = null
       clearEndTimer()
       clearGestureTimer()
@@ -364,7 +433,7 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
     },
     resume() {
       if (destroyed) return
-      const reload = needsReload
+      const reload = needsReload || awaitingVisible != null || unheardHiddenLoad
       userPaused = false
       workEnded = false
       needsReload = false
@@ -374,7 +443,7 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       clearEndTimer()
       options.onUserTransport?.()
       if (reload) {
-        loadCurrent()
+        loadCurrent(true)
         return
       }
       options.onPhase?.("connecting")
@@ -392,8 +461,17 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
         options.onPhase?.("paused")
       }, EMBED_AUTOPLAY_GRACE_MS)
     },
+    notePageHidden(isHidden) {
+      if (destroyed) return
+      if (isHidden && (sawPlaying || playedIntoTrack)) leftWhilePlaying = true
+    },
     nudgeIfWaiting() {
-      if (destroyed || userPaused || sawPlaying || workEnded) return
+      if (destroyed || userPaused || workEnded || hidden()) return
+      if (awaitingVisible || unheardHiddenLoad) {
+        loadCurrent(true)
+        return
+      }
+      if (sawPlaying) return
       transport.play()
     },
     notePlayingUri(uri: string) {
@@ -412,6 +490,12 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       if (destroyed || !update || typeof update.isPaused !== "boolean") return
       if (workEnded) {
         if (!update.isPaused) transport.pause()
+        return
+      }
+      if (awaitingVisible) {
+        // Still the previous document. Starting the held movement replaces it
+        // once the tab can actually play a new one.
+        if (!hidden() && !userPaused) loadCurrent(true)
         return
       }
       const uri = currentUri()
@@ -442,13 +526,16 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
         if (near) reachedNearEnd = true
         else reachedNearEnd = false
         if (!near && !reached && update.position > 500) playedIntoTrack = true
+        if (confirmsLoadedTrack(update, reported, uri)) unheardHiddenLoad = false
+        if (hidden() && playedIntoTrack) leftWhilePlaying = true
+        if (!hidden() && playedIntoTrack && !near && !reached) leftWhilePlaying = false
         candidateAt = null
         clearEndTimer()
         lastPlaying = { positionMs: update.position, durationMs: update.duration, atMs: now() }
         // Finish in this message. A timer would not run while the tab is hidden,
         // and the embed often stays "playing" with position at the duration.
-        // The last 1.5s is not the end: navigating that early cuts the track,
-        // and the next document will not start until the tab is visible.
+        // The last 1.5s is not the end: navigating that early cuts the track.
+        // While hidden, release records the next movement and does not navigate.
         if (playedIntoTrack && reached) release()
         return
       }
@@ -469,7 +556,7 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
         clearEndTimer()
         return
       }
-      if (hidden() || playbackUpdateReachedDuration(update.position, update.duration)) {
+      if (hidden() || leftWhilePlaying || playbackUpdateReachedDuration(update.position, update.duration)) {
         release()
         return
       }
