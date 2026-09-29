@@ -29,9 +29,16 @@ import { loadSpotifyIframeApi } from "@/lib/spotify-iframe-api"
 import {
   SPOTIFY_BROWSER_LOGIN_LABEL,
   SPOTIFY_BROWSER_LOGIN_TITLE,
+  clearSpotifyBrowserLoginPending,
   embedSessionHasFullTracks,
+  markSpotifyBrowserLoginPending,
+  openSpotifyBrowserLogin,
+  shouldReloadEmbedForLogin,
   spotifyBrowserLoginHref,
+  spotifyBrowserLoginIsNewDocument,
+  spotifyBrowserLoginIsPending,
   spotifyBrowserLoginPromptDelayMs,
+  type BrowserLoginWindow,
 } from "@/lib/spotify-browser-login"
 
 export type EmbedPlaybackIssue = {
@@ -134,6 +141,8 @@ export function SpotifyEmbedPlayer({
   const appliedGenerationRef = useRef(-1)
   const pendingRef = useRef<PendingStart | null>(null)
   const creatingRef = useRef<Promise<void> | null>(null)
+  const sessionEpochRef = useRef(0)
+  const loginWindowRef = useRef<BrowserLoginWindow | null>(null)
   const queuedRef = useRef<Array<(controller: SpotifyEmbedController) => void>>([])
   const [portalReady, setPortalReady] = useState(false)
   const [hasFullTracks, setHasFullTracks] = useState(false)
@@ -146,6 +155,7 @@ export function SpotifyEmbedPlayer({
     if (hasFullTracksRef.current || !embedSessionHasFullTracks(duration)) return
     hasFullTracksRef.current = true
     setHasFullTracks(true)
+    clearSpotifyBrowserLoginPending(window.sessionStorage)
   }
 
   const armEmbedIframe = useCallback((host: HTMLElement) => {
@@ -182,18 +192,20 @@ export function SpotifyEmbedPlayer({
     if (creatingRef.current) return creatingRef.current
     const host = hostRef.current
     if (!host) return Promise.resolve()
+    const epoch = sessionEpochRef.current
+    const attempt: { current: Promise<void> | null } = { current: null }
 
-    creatingRef.current = loadSpotifyIframeApi()
+    const promise = loadSpotifyIframeApi()
       .then(
         (iframeApi) =>
           new Promise<void>((resolve) => {
-            if (controllerRef.current) {
+            if (sessionEpochRef.current !== epoch || controllerRef.current) {
               resolve()
               return
             }
             const mount = hostRef.current
             if (!mount) {
-              creatingRef.current = null
+              if (creatingRef.current === attempt.current) creatingRef.current = null
               resolve()
               return
             }
@@ -230,6 +242,16 @@ export function SpotifyEmbedPlayer({
                   height: SPOTIFY_EMBED_HEIGHT_PX,
                 },
                 (controller) => {
+                  if (sessionEpochRef.current !== epoch) {
+                    try {
+                      controller.destroy()
+                    } catch {
+                      // A controller from a discarded sign-in reload is already gone.
+                    }
+                    if (creatingRef.current === attempt.current) creatingRef.current = null
+                    finish()
+                    return
+                  }
                   // Guard before any loadUri. The API assigns iframe.src, which
                   // would otherwise push a joint session history entry per track.
                   // The src setter also refreshes `allow` before location.replace.
@@ -262,11 +284,13 @@ export function SpotifyEmbedPlayer({
           })
       )
       .catch(() => {
-        creatingRef.current = null
+        if (creatingRef.current === attempt.current) creatingRef.current = null
         onIssueRef.current?.({ code: "browser", message: EMBED_PLAYER_LOAD_FAILED })
       })
 
-    return creatingRef.current
+    attempt.current = promise
+    creatingRef.current = promise
+    return promise
   }, [armEmbedIframe, flushController])
 
   const playPending = useCallback(
@@ -282,6 +306,26 @@ export function SpotifyEmbedPlayer({
     },
     [ensureController, flushController]
   )
+
+  const reloadEmbedSession = useCallback(() => {
+    sessionEpochRef.current += 1
+    const previous = controllerRef.current
+    controllerRef.current = null
+    creatingRef.current = null
+    queuedRef.current = []
+    appliedGenerationRef.current = -1
+    hasFullTracksRef.current = false
+    setHasFullTracks(false)
+    try {
+      previous?.destroy()
+    } catch {
+      // The embed frame is replaced either way.
+    }
+    const host = hostRef.current
+    if (host) host.replaceChildren()
+    const pending = pendingRef.current
+    if (pending && queueRef.current) playPending(pending)
+  }, [playPending])
 
   useEffect(() => {
     const queue = createMovementQueue(
@@ -409,6 +453,56 @@ export function SpotifyEmbedPlayer({
   }, [])
 
   useEffect(() => {
+    if (!portalReady) return
+    let leftPage = false
+    const storage = window.sessionStorage
+    // A new document creates a new embed, which already sends whatever cookie
+    // exists. A page restored from memory keeps the same time origin and the
+    // anonymous frame; pageshow reloads that one.
+    if (spotifyBrowserLoginIsNewDocument(storage, performance.timeOrigin)) {
+      clearSpotifyBrowserLoginPending(storage)
+    }
+    const reloadIfReturning = (restoredFromCache: boolean) => {
+      const popup = loginWindowRef.current
+      const popupClosed = Boolean(popup?.closed)
+      if (
+        !shouldReloadEmbedForLogin({
+          pending: spotifyBrowserLoginIsPending(storage),
+          popupClosed,
+          becameVisible: leftPage && document.visibilityState === "visible",
+          restoredFromCache,
+        })
+      ) {
+        return
+      }
+      if (popupClosed) loginWindowRef.current = null
+      clearSpotifyBrowserLoginPending(storage)
+      leftPage = false
+      reloadEmbedSession()
+    }
+    const onVisibility = () => {
+      if (document.hidden) {
+        leftPage = true
+        return
+      }
+      reloadIfReturning(false)
+    }
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (!event.persisted) return
+      leftPage = true
+      reloadIfReturning(true)
+    }
+    document.addEventListener("visibilitychange", onVisibility)
+    window.addEventListener("pageshow", onPageShow)
+    const timer = window.setInterval(() => reloadIfReturning(false), 400)
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility)
+      window.removeEventListener("pageshow", onPageShow)
+      window.clearInterval(timer)
+    }
+  }, [portalReady, reloadEmbedSession])
+
+  useEffect(() => {
     if (!visible || hasFullTracks) {
       setShowBrowserLogin(false)
       return
@@ -471,6 +565,19 @@ export function SpotifyEmbedPlayer({
             data-spotify-browser-login=""
             title={SPOTIFY_BROWSER_LOGIN_TITLE}
             className="flex min-h-11 items-center justify-center border-b border-border bg-card px-3 text-center text-sm font-medium text-primary hover:bg-accent hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:min-h-9"
+            onClick={(event) => {
+              if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+                markSpotifyBrowserLoginPending(window.sessionStorage, Date.now(), performance.timeOrigin)
+                return
+              }
+              event.preventDefault()
+              loginWindowRef.current = openSpotifyBrowserLogin({
+                open: (url, target, features) => window.open(url, target, features),
+                assign: (url) => window.location.assign(url),
+                storage: window.sessionStorage,
+                documentOrigin: performance.timeOrigin,
+              })
+            }}
           >
             {SPOTIFY_BROWSER_LOGIN_LABEL}
           </a>
