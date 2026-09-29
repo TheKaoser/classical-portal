@@ -19,7 +19,7 @@ Browser
         └─ “Search on Spotify” deep link
 ```
 
-Open Opus is unauthenticated. Spotify’s **client secret never leaves the server** and is used only to match recordings. Playback uses the [Spotify Embed iFrame API](https://developer.spotify.com/documentation/embeds/references/iframe-api). Anyone can listen: a visitor already signed in to Spotify in the browser gets full tracks, and everyone else gets Spotify’s 30-second previews. This app does not collect a Spotify login.
+Open Opus is unauthenticated. Spotify’s **client secret never leaves the server** and is used only to match recordings. Playback uses the [Spotify Embed iFrame API](https://developer.spotify.com/documentation/embeds/references/iframe-api). This app does not collect a Spotify login and does not use the Web Playback SDK. The embed plays a full track only when its frame is loaded with a Premium cookie. Desktop Chrome and Edge do that when third-party cookies are allowed; “Sign in for full tracks” keeps this page open and builds the player again when you come back. Phones and Safari stay on 30-second previews, because Spotify’s embed forces that for those browsers even after sign-in.
 
 Open Opus work lists and work detail do not include a composition year. Detail does include `catalogue` and `catalogue_number` (for example `op` / `67`), which are used when the title itself has no catalogue number. Classical Portal fills dates from two sources, in order:
 
@@ -107,7 +107,7 @@ Create an app at [developer.spotify.com/dashboard](https://developer.spotify.com
 
 **Search / matching** uses Client Credentials. It does not need a redirect URI or a user login.
 
-**Play** loads the matched movement URIs into the official Spotify embed (iFrame API) fixed to the bottom of the page. The embed does not use this app’s Spotify Web API quota. Listeners signed in to Spotify in the browser hear full tracks; others hear 30-second previews. Play all and Random on composer and genre lists use the same embed and the same server-side match lookup.
+**Play** loads the matched movement URIs into the official Spotify embed (iFrame API) fixed to the bottom of the page. The embed does not use this app’s Spotify Web API quota. On desktop Chrome and Edge, a Premium session in this browser plays full tracks after the player frame is loaded again; everyone else, including phones and Safari, hears 30-second previews. Play all and Random on composer and genre lists use the same embed and the same server-side match lookup.
 
 Without `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` the work page still offers **Search on Spotify**, which opens Spotify’s own search for the composer + work.
 
