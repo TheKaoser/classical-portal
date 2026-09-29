@@ -36,6 +36,9 @@ export const LIST_PLAY_ADVANCE_DELAY_MS = 700
  * Chain the next Play all work. A visible tab waits briefly so a gap between
  * movements is not treated as the end of the work. A background tab runs the
  * chain in the end event itself: Chrome freezes timers until the tab returns.
+ * The embed does not load that next document until the tab is visible.
+ * `loadUri` in a hidden tab is a new media document, and Chrome will not
+ * start it.
  */
 export function runListChain(
   hidden: boolean,

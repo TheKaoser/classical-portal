@@ -316,10 +316,20 @@ export function SpotifyEmbedPlayer({
       }
     )
     queueRef.current = queue
-    const onVisible = () => {
+    const onVisibility = () => {
+      queue.notePageHidden(document.hidden)
       if (!document.hidden) queue.nudgeIfWaiting()
     }
-    document.addEventListener("visibilitychange", onVisible)
+    // Focus covers a window that is shown again without a visibility flip.
+    const onFocus = () => {
+      if (!document.hidden) queue.nudgeIfWaiting()
+    }
+    const onPageShow = () => {
+      if (!document.hidden) queue.nudgeIfWaiting()
+    }
+    document.addEventListener("visibilitychange", onVisibility)
+    window.addEventListener("focus", onFocus)
+    window.addEventListener("pageshow", onPageShow)
     const session = navigator.mediaSession
     if (session) {
       try {
@@ -353,7 +363,9 @@ export function SpotifyEmbedPlayer({
     if (pending) playPending(pending)
 
     return () => {
-      document.removeEventListener("visibilitychange", onVisible)
+      document.removeEventListener("visibilitychange", onVisibility)
+      window.removeEventListener("focus", onFocus)
+      window.removeEventListener("pageshow", onPageShow)
       queue.destroy()
       if (queueRef.current === queue) queueRef.current = null
       const media = navigator.mediaSession
