@@ -26,6 +26,13 @@ import {
 } from "@/lib/iframe-allow"
 import { installIframeHistoryGuard } from "@/lib/iframe-history"
 import { loadSpotifyIframeApi } from "@/lib/spotify-iframe-api"
+import {
+  SPOTIFY_BROWSER_LOGIN_LABEL,
+  SPOTIFY_BROWSER_LOGIN_TITLE,
+  embedSessionHasFullTracks,
+  spotifyBrowserLoginHref,
+  spotifyBrowserLoginPromptDelayMs,
+} from "@/lib/spotify-browser-login"
 
 export type EmbedPlaybackIssue = {
   code: "browser" | "playback_failed"
@@ -129,7 +136,17 @@ export function SpotifyEmbedPlayer({
   const creatingRef = useRef<Promise<void> | null>(null)
   const queuedRef = useRef<Array<(controller: SpotifyEmbedController) => void>>([])
   const [portalReady, setPortalReady] = useState(false)
+  const [hasFullTracks, setHasFullTracks] = useState(false)
+  const [showBrowserLogin, setShowBrowserLogin] = useState(false)
+  const hasFullTracksRef = useRef(false)
+  const noteEmbedDurationRef = useRef<(duration: number) => void>(() => {})
   const iframeWatchRef = useRef<MutationObserver | null>(null)
+
+  noteEmbedDurationRef.current = (duration) => {
+    if (hasFullTracksRef.current || !embedSessionHasFullTracks(duration)) return
+    hasFullTracksRef.current = true
+    setHasFullTracks(true)
+  }
 
   const armEmbedIframe = useCallback((host: HTMLElement) => {
     const iframe = host.querySelector("iframe")
@@ -220,7 +237,9 @@ export function SpotifyEmbedPlayer({
                   controllerRef.current = controller
                   controller.addListener("playback_update", (event) => {
                     const update = readUpdate(event)
-                    if (update) queueRef.current?.onPlaybackUpdate(update)
+                    if (!update) return
+                    queueRef.current?.onPlaybackUpdate(update)
+                    noteEmbedDurationRef.current(update.duration)
                   })
                   controller.addListener("playback_started", (event) => {
                     const uri = event?.data?.playingURI
@@ -389,6 +408,22 @@ export function SpotifyEmbedPlayer({
     setPortalReady(true)
   }, [])
 
+  useEffect(() => {
+    if (!visible || hasFullTracks) {
+      setShowBrowserLogin(false)
+      return
+    }
+    const coarse =
+      typeof window.matchMedia === "function" && window.matchMedia("(pointer: coarse)").matches
+    const delay = spotifyBrowserLoginPromptDelayMs(coarse)
+    if (delay === 0) {
+      setShowBrowserLogin(true)
+      return
+    }
+    const id = window.setTimeout(() => setShowBrowserLogin(true), delay)
+    return () => window.clearTimeout(id)
+  }, [visible, hasFullTracks])
+
   useLayoutEffect(() => {
     if (!visible) return
     const root = document.documentElement
@@ -430,6 +465,16 @@ export function SpotifyEmbedPlayer({
       style={visible ? PLAYER_BAR_DOCK_STYLE : undefined}
     >
       <div className={PLAYER_BAR_SHELL_CLASS} style={PLAYER_BAR_SHELL_STYLE} data-player-shell="">
+        {showBrowserLogin ? (
+          <a
+            href={spotifyBrowserLoginHref()}
+            data-spotify-browser-login=""
+            title={SPOTIFY_BROWSER_LOGIN_TITLE}
+            className="flex min-h-11 items-center justify-center border-b border-border bg-card px-3 text-center text-sm font-medium text-primary hover:bg-accent hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring sm:min-h-9"
+          >
+            {SPOTIFY_BROWSER_LOGIN_LABEL}
+          </a>
+        ) : null}
         <div ref={hostRef} className="pointer-events-auto h-[152px] w-full overflow-hidden bg-card" />
       </div>
     </div>,
