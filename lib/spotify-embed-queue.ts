@@ -14,17 +14,24 @@
  *
  * Chrome does not start a new embed document in a hidden tab. `loadUri`
  * navigates the iframe (`iframe.src`), and that is a new media document, so
- * autoplay is blocked until the tab is in the foreground. A later `play()`
- * on the document that was rejected while hidden does not reliably start
- * when the tab returns. Album playback used to avoid this because Spotify
- * advanced inside one document, and that also played past the work.
+ * autoplay is blocked until the tab is in the foreground. A `play()` issued
+ * in the same turn as `visibilitychange` — or on a document that was created
+ * while hidden — is also dropped, and Spotify does not retry it. Album
+ * playback used to avoid this because Spotify advanced inside one document,
+ * and that also played past the work. Tracksets are gone, and a second embed
+ * cannot start audible playback while hidden either, so there is no
+ * work-only document that can advance in the background.
  *
  * Automatic advance therefore does not navigate while the tab is hidden. The
  * current document can finish in the background. The next movement is
- * recorded (the highlight follows it) and loaded from `nudgeIfWaiting` once
- * the tab is visible. A direct next, previous, or resume still tries
- * immediately, and if that load is never heard it is loaded again on return.
- * Nothing here loads an album, so playback cannot continue into later works.
+ * recorded (the highlight follows it). Once the tab is visible,
+ * `nudgeIfWaiting` waits briefly so Chrome has cleared the background
+ * autoplay block, then loads that movement and keeps calling `play()` until
+ * it is heard or the retries run out. The same delay applies when the end
+ * update itself arrives only as the tab becomes visible. A direct next,
+ * previous, or resume still tries immediately, and if that load is never
+ * heard it is loaded again on return. Nothing here loads an album, so
+ * playback cannot continue into later works.
  *
  * The embed reports `playingURI` on `playback_update` (about once a second)
  * and on `playback_started` when the track changes. That URI is a track URI
@@ -60,6 +67,19 @@ export const EMBED_END_REACHED_MS = 100
  * control starts it.
  */
 export const EMBED_AUTOPLAY_GRACE_MS = 2_000
+
+/**
+ * Wait this long after the tab becomes visible before creating the next
+ * embed document. `visibilitychange` runs while Chrome can still treat the
+ * frame as background, and a document created in that turn never starts.
+ */
+export const EMBED_FOREGROUND_DELAY_MS = 200
+
+/**
+ * Extra `play()` calls after a resumed load whose document stays paused.
+ * The first `play()`, queued across `loadUri`, is the one Chrome drops.
+ */
+export const EMBED_PLAY_RETRY_DELAYS_MS = [450, 1_000, 1_600] as const
 
 export const SPOTIFY_EMBED_HEIGHT_PX = 152
 
@@ -113,9 +133,11 @@ export type MovementQueue = {
    * The tab is visible again, or the window regained focus.
    * Loads a movement that was held while hidden, reloads a hidden `loadUri`
    * that never became audible, or re-issues play when a visible load is
-   * still waiting.
+   * still waiting. A new document waits `EMBED_FOREGROUND_DELAY_MS`.
    */
   nudgeIfWaiting: () => void
+  /** The embed document finished loading. A resumed movement may still be paused. */
+  noteEmbedReady: () => void
   /** The tab's visibility changed. A backgrounded playhead may end unseen. */
   notePageHidden: (isHidden: boolean) => void
   /** `playback_started` URI, which can arrive without a full playback_update. */
@@ -177,6 +199,8 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
   let cancelEnd: CancelTimer | null = null
   let cancelHidden: CancelTimer | null = null
   let cancelGesture: CancelTimer | null = null
+  let cancelForeground: CancelTimer | null = null
+  let cancelPlayRetry: CancelTimer | null = null
   let destroyed = false
   /** The embed has reported this load's track URI, so a different URI is a real change. */
   let heardTrack = false
@@ -193,6 +217,11 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
   let unheardHiddenLoad = false
   /** Playback had started when the tab went to the background. */
   let leftWhilePlaying = false
+  /** This visible load should keep calling play() until the movement is heard. */
+  let resumeArmed = false
+  let playRetriesIssued = 0
+  /** A foreground load is already waiting out `EMBED_FOREGROUND_DELAY_MS`. */
+  let foregroundArmed = false
   let release: () => void = () => {}
 
   function clearEndTimer() {
@@ -207,6 +236,17 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
     cancelGesture = null
   }
 
+  function clearForegroundTimer() {
+    cancelForeground?.()
+    cancelForeground = null
+    foregroundArmed = false
+  }
+
+  function clearPlayRetry() {
+    cancelPlayRetry?.()
+    cancelPlayRetry = null
+  }
+
   function resetProgress() {
     sawPlaying = false
     playedIntoTrack = false
@@ -219,8 +259,12 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
     heardTrack = false
     unheardHiddenLoad = false
     leftWhilePlaying = false
+    resumeArmed = false
+    playRetriesIssued = 0
     clearEndTimer()
     clearGestureTimer()
+    clearForegroundTimer()
+    clearPlayRetry()
   }
 
   function currentUri(): string | null {
@@ -284,6 +328,8 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
   /**
    * Remember `uri` and keep the current embed document. Navigating now would
    * be a new media document, which Chrome will not start in a hidden tab.
+   * `pause()` applies to that finished document only; the next document is
+   * loaded later and play() is retried if it stays paused.
    */
   function holdForVisible(uri: string) {
     resetProgress()
@@ -296,27 +342,76 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
     transport.pause()
   }
 
-  function beginAudible(uri: string) {
+  /**
+   * Play again after a resumed load. Stop once the movement is heard, the
+   * listener paused, or the tab is hidden (a hidden play() is discarded and
+   * would use up the retries).
+   */
+  function armPlayRetry() {
+    clearPlayRetry()
+    if (!resumeArmed) return
+    const delay = EMBED_PLAY_RETRY_DELAYS_MS[playRetriesIssued]
+    if (delay == null) return
+    cancelPlayRetry = schedule(() => {
+      cancelPlayRetry = null
+      if (destroyed || userPaused || workEnded || hidden() || sawPlaying || !resumeArmed) return
+      playRetriesIssued += 1
+      transport.play()
+      armPlayRetry()
+    }, delay)
+  }
+
+  /**
+   * Create the held document only after the tab has been visible for a moment.
+   * Repeated visibility, focus, and pageshow events share one wait.
+   */
+  function scheduleForegroundLoad() {
+    if (foregroundArmed || destroyed) return
+    foregroundArmed = true
+    cancelForeground = schedule(() => {
+      cancelForeground = null
+      foregroundArmed = false
+      if (destroyed || userPaused || workEnded || hidden()) return
+      if (awaitingVisible || unheardHiddenLoad) {
+        loadCurrent(true, true)
+        return
+      }
+      if (!sawPlaying && currentUri()) transport.play()
+    }, EMBED_FOREGROUND_DELAY_MS)
+  }
+
+  function beginAudible(uri: string, retry: boolean) {
     const inBackground = hidden()
     awaitingVisible = null
     workEnded = false
     needsReload = false
     resetProgress()
     unheardHiddenLoad = inBackground
+    resumeArmed = retry && !inBackground
+    playRetriesIssued = 0
     options.onTrack?.(uri)
     options.onPhase?.("connecting")
     transport.loadUri(uri)
     transport.play()
+    if (resumeArmed) armPlayRetry()
   }
 
-  function loadCurrent(force: boolean) {
+  function loadCurrent(force: boolean, retry = false) {
     const uri = currentUri()
     if (!uri) return
     if (!force && hidden()) {
       holdForVisible(uri)
       return
     }
-    beginAudible(uri)
+    // The movement ended in the background and this update arrived only as
+    // the tab became visible. Navigating in that turn is still a background
+    // document. Hold the highlight, then load once the foreground delay elapses.
+    if (!force && leftWhilePlaying) {
+      holdForVisible(uri)
+      scheduleForegroundLoad()
+      return
+    }
+    beginAudible(uri, retry)
   }
 
   /** This playhead is the movement we loaded, and it is actually moving. */
@@ -333,6 +428,14 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
   function followReported(reported: string) {
     const at = uris.indexOf(reported)
     if (at < 0) {
+      // A hidden tab often drops the near-end samples. The next update is
+      // then some other Spotify track (the embed's own follow-on), not the
+      // next movement. Queue ours. The last movement still stops, so playback
+      // cannot continue past the work. A visible mid-track jump still stops.
+      if ((hidden() || leftWhilePlaying) && playedIntoTrack && index + 1 < uris.length) {
+        advance()
+        return
+      }
       stopOutside()
       return
     }
@@ -423,16 +526,20 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
     pause() {
       if (destroyed) return
       userPaused = true
+      resumeArmed = false
       unheardHiddenLoad = false
       candidateAt = null
       clearEndTimer()
       clearGestureTimer()
+      clearForegroundTimer()
+      clearPlayRetry()
       options.onUserTransport?.()
       options.onPhase?.("paused")
       transport.pause()
     },
     resume() {
       if (destroyed) return
+      if (!currentUri() && awaitingVisible == null) return
       const reload = needsReload || awaitingVisible != null || unheardHiddenLoad
       userPaused = false
       workEnded = false
@@ -443,11 +550,16 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       clearEndTimer()
       options.onUserTransport?.()
       if (reload) {
-        loadCurrent(true)
+        // A media-key or button resume is a user gesture, so load now.
+        // Retries cover a play() that the new document still ignores.
+        loadCurrent(true, true)
         return
       }
       options.onPhase?.("connecting")
+      resumeArmed = true
+      playRetriesIssued = 0
       transport.resume()
+      armPlayRetry()
     },
     notePlayDispatched() {
       if (destroyed || userPaused) return
@@ -467,11 +579,20 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
     },
     nudgeIfWaiting() {
       if (destroyed || userPaused || workEnded || hidden()) return
+      if (!currentUri() && !awaitingVisible) return
       if (awaitingVisible || unheardHiddenLoad) {
-        loadCurrent(true)
+        scheduleForegroundLoad()
         return
       }
       if (sawPlaying) return
+      transport.play()
+      if (resumeArmed && !cancelPlayRetry) {
+        playRetriesIssued = 0
+        armPlayRetry()
+      }
+    },
+    noteEmbedReady() {
+      if (destroyed || userPaused || workEnded || hidden() || sawPlaying || !resumeArmed) return
       transport.play()
     },
     notePlayingUri(uri: string) {
@@ -494,8 +615,8 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       }
       if (awaitingVisible) {
         // Still the previous document. Starting the held movement replaces it
-        // once the tab can actually play a new one.
-        if (!hidden() && !userPaused) loadCurrent(true)
+        // once the tab has been visible long enough for a new one to play.
+        if (!hidden() && !userPaused) scheduleForegroundLoad()
         return
       }
       const uri = currentUri()
@@ -518,6 +639,9 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
 
       if (!update.isPaused && !update.isBuffering) {
         sawPlaying = true
+        resumeArmed = false
+        playRetriesIssued = 0
+        clearPlayRetry()
         playIssuedAt = null
         clearGestureTimer()
         options.onPhase?.("playing")
@@ -569,6 +693,8 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       destroyed = true
       clearEndTimer()
       clearGestureTimer()
+      clearForegroundTimer()
+      clearPlayRetry()
     },
   }
 }

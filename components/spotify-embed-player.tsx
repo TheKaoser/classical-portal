@@ -229,6 +229,10 @@ export function SpotifyEmbedPlayer({
                   controller.addListener("ready", () => {
                     const node = hostRef.current
                     if (node) fitIframe(node)
+                    // The resumed document is loaded. play() from loadUri was
+                    // queued across that navigation and Chrome may already have
+                    // dropped it; try again now that this document exists.
+                    queueRef.current?.noteEmbedReady()
                     finish()
                   })
                   flushController()
@@ -321,18 +325,25 @@ export function SpotifyEmbedPlayer({
       if (!document.hidden) queue.nudgeIfWaiting()
     }
     // Focus covers a window that is shown again without a visibility flip.
+    // `resume` covers a tab Chrome had frozen; it can still be hidden.
     const onFocus = () => {
       if (!document.hidden) queue.nudgeIfWaiting()
     }
     const onPageShow = () => {
       if (!document.hidden) queue.nudgeIfWaiting()
     }
+    const onPageResume = () => {
+      queue.notePageHidden(document.hidden)
+      if (!document.hidden) queue.nudgeIfWaiting()
+    }
     document.addEventListener("visibilitychange", onVisibility)
     window.addEventListener("focus", onFocus)
     window.addEventListener("pageshow", onPageShow)
+    document.addEventListener("resume", onPageResume)
     const session = navigator.mediaSession
     if (session) {
       try {
+        session.setActionHandler("play", () => queue.resume())
         session.setActionHandler("nexttrack", () => queue.next())
         session.setActionHandler("previoustrack", () => queue.previous())
       } catch {
@@ -366,11 +377,13 @@ export function SpotifyEmbedPlayer({
       document.removeEventListener("visibilitychange", onVisibility)
       window.removeEventListener("focus", onFocus)
       window.removeEventListener("pageshow", onPageShow)
+      document.removeEventListener("resume", onPageResume)
       queue.destroy()
       if (queueRef.current === queue) queueRef.current = null
       const media = navigator.mediaSession
       if (!media) return
       try {
+        media.setActionHandler("play", null)
         media.setActionHandler("nexttrack", null)
         media.setActionHandler("previoustrack", null)
       } catch {
