@@ -12,6 +12,8 @@ function source(path: string): string {
 
 const SEO_PATHS = [
   "app/sitemap.ts",
+  "app/sitemap.xml/route.ts",
+  "lib/sitemap-catalog.ts",
   "app/robots.ts",
   "app/opengraph-image.tsx",
   "app/twitter-image.tsx",
@@ -26,6 +28,16 @@ test("metadata, sitemap, and page renders do not call the Spotify Web API", () =
     const text = source(path)
     assert.equal(text.includes("searchSpotifyForWork"), false, path)
     assert.equal(text.includes("api.spotify.com"), false, path)
+  }
+})
+
+test("sitemap files read the local catalog and do not import recording search", () => {
+  for (const path of ["app/sitemap.ts", "app/sitemap.xml/route.ts", "lib/sitemap-catalog.ts"]) {
+    const text = source(path)
+    assert.equal(text.includes("form-catalog"), false, path)
+    assert.equal(text.includes("openopus"), false, path)
+    assert.equal(text.includes("lib/spotify"), false, path)
+    assert.equal(text.includes("searchSpotify"), false, path)
   }
 })
 
