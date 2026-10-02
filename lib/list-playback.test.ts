@@ -8,6 +8,7 @@ import {
   LIST_PLAY_ADVANCE_DELAY_MS,
   listPlayAllControl,
   listStoppedEarly,
+  showListNext,
   runListChain,
   parsePendingListPlayback,
   primaryRecordingUris,
@@ -168,6 +169,15 @@ test("runListChain waits while the tab is visible and runs immediately in the ba
   assert.equal(hidden, null)
 })
 
+test("showListNext only while Play all is playing", () => {
+  assert.equal(showListNext({ listActive: true, starting: false, phase: "playing" }), true)
+  assert.equal(showListNext({ listActive: true, starting: false, phase: "paused" }), false)
+  assert.equal(showListNext({ listActive: true, starting: false, phase: "connecting" }), false)
+  assert.equal(showListNext({ listActive: true, starting: true, phase: "playing" }), false)
+  assert.equal(showListNext({ listActive: false, starting: false, phase: "playing" }), false)
+  assert.equal(showListNext({ listActive: false, starting: false, phase: "idle" }), false)
+})
+
 test("listPlayAllControl", () => {
   assert.deepEqual(listPlayAllControl({ listActive: false, starting: false, phase: "idle" }), {
     label: "Play all",
@@ -246,4 +256,33 @@ test("row snapshots stay stable for works that are not playing", () => {
   assert.equal(store.getToolbar(), toolbar)
   assert.equal(store.getRow("3"), IDLE_ROW)
   assert.notEqual(store.getRow("1"), active)
+})
+
+test("toolbar snapshot tracks an in-flight work match", () => {
+  const store = createListPlaybackStore(true)
+  assert.equal(store.getToolbar().resolving, false)
+  const idle = store.getToolbar()
+  store.patch({ resolvingWorkId: "1" })
+  assert.equal(store.getToolbar().resolving, true)
+  assert.notEqual(store.getToolbar(), idle)
+  const resolving = store.getToolbar()
+  store.patch({ resolvingWorkId: "2" })
+  assert.equal(store.getToolbar(), resolving)
+  store.patch({ resolvingWorkId: null })
+  assert.equal(store.getToolbar().resolving, false)
+})
+
+test("nextWork reaches the playback handler", () => {
+  const store = createListPlaybackStore(true)
+  let calls = 0
+  store.setHandlers({
+    playWork: () => {},
+    playAll: () => {},
+    setRandom: () => {},
+    nextWork: () => {
+      calls += 1
+    },
+  })
+  store.nextWork()
+  assert.equal(calls, 1)
 })

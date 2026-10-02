@@ -20,9 +20,11 @@ export type ToolbarPlayback = {
   noticeAction: NoticeAction
   random: boolean
   oauthConfigured: boolean
+  /** True while a work's Spotify match is in flight (row play, Play all, or Next). */
+  resolving: boolean
 }
 
-type State = ToolbarPlayback & {
+type State = Omit<ToolbarPlayback, "resolving"> & {
   activeWorkId: string | null
   resolvingWorkId: string | null
 }
@@ -31,12 +33,14 @@ export type PlaybackHandlers = {
   playWork: (workId: string) => void
   playAll: () => void
   setRandom: (on: boolean) => void
+  nextWork: () => void
 }
 
 const noopHandlers: PlaybackHandlers = {
   playWork: () => {},
   playAll: () => {},
   setRandom: () => {},
+  nextWork: () => {},
 }
 
 export type ListPlaybackStore = {
@@ -50,6 +54,7 @@ export type ListPlaybackStore = {
   playWork: (workId: string) => void
   playAll: () => void
   setRandom: (on: boolean) => void
+  nextWork: () => void
 }
 
 function toToolbar(state: State): ToolbarPlayback {
@@ -62,6 +67,7 @@ function toToolbar(state: State): ToolbarPlayback {
     noticeAction: state.noticeAction,
     random: state.random,
     oauthConfigured: state.oauthConfigured,
+    resolving: state.resolvingWorkId !== null,
   }
 }
 
@@ -74,7 +80,8 @@ function toolbarEqual(a: ToolbarPlayback, b: ToolbarPlayback): boolean {
     a.noticeKind === b.noticeKind &&
     a.noticeAction === b.noticeAction &&
     a.random === b.random &&
-    a.oauthConfigured === b.oauthConfigured
+    a.oauthConfigured === b.oauthConfigured &&
+    a.resolving === b.resolving
   )
 }
 
@@ -156,6 +163,9 @@ export function createListPlaybackStore(oauthConfigured: boolean): ListPlaybackS
     },
     setRandom(on) {
       handlers.setRandom(on)
+    },
+    nextWork() {
+      handlers.nextWork()
     },
   }
 }

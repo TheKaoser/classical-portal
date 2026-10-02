@@ -9,8 +9,9 @@ import { orderedTrackUris, spotifyAlbumUri } from "./spotify-playback.ts"
  * are matched in the background. When its last movement ends, the next work
  * starts through the in-page Spotify embed. That next work is the following
  * id in this Play all order: list order, or the shuffle chosen when Play all
- * started with Random on. A list of thousands never fans out into thousands
- * of Spotify searches up front.
+ * started with Random on. The Next control walks that same order; it does not
+ * roll a new shuffle on each click. A list of thousands never fans out into
+ * thousands of Spotify searches up front.
  *
  * Matching stops after a bounded number of misses so an unmatched stretch
  * cannot walk the whole catalog. The next Play all, or a row play, continues.
@@ -190,6 +191,18 @@ export function listPlayAllControl(input: {
   if (input.phase === "playing") return { label: "Pause", action: "pause" }
   if (input.phase === "paused") return { label: "Play all", action: "resume" }
   return { label: "Play all", action: "start" }
+}
+
+/**
+ * Next sits beside Pause, and only then. Play all, resume, and the
+ * finding/connecting labels keep the control hidden.
+ */
+export function showListNext(input: {
+  listActive: boolean
+  starting: boolean
+  phase: ListPlayerPhase
+}): boolean {
+  return listPlayAllControl(input).action === "pause"
 }
 
 export function readShufflePreference(storage: { getItem(key: string): string | null } | null): boolean {

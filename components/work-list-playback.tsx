@@ -1,10 +1,8 @@
 "use client"
 
-import { createContext, useContext, useEffect, useId, useRef, useSyncExternalStore, type ReactNode } from "react"
-import { Loader2, Pause, Play, Shuffle } from "lucide-react"
+import { createContext, useContext, useEffect, useRef, useSyncExternalStore, type ReactNode } from "react"
+import { Loader2, Pause, Play, Shuffle, SkipForward } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
 import { useSpotifyPlayer } from "@/components/spotify-player-provider"
 import { fetchWorkPlayback, hasPlayableWorkPlayback } from "@/lib/fetch-work-playback"
 import {
@@ -22,6 +20,7 @@ import {
   readShufflePreference,
   shouldAdvanceList,
   shouldChainListWork,
+  showListNext,
   shuffleWorkIds,
   workRecordingId,
   writeShufflePreference,
@@ -297,7 +296,7 @@ function PlaybackMachine({ store, workIds }: { store: ListPlaybackStore; workIds
     beginFound(session, found)
   }
 
-  async function continueList(generation: number) {
+  async function continueList(generation: number, manual = false) {
     const session = sessionRef.current
     if (!session || session.generation !== generation || session.mode !== "list" || session.finished) return
     if (advancingRef.current) return
@@ -320,6 +319,8 @@ function PlaybackMachine({ store, workIds }: { store: ListPlaybackStore; workIds
           session,
           early ? { notice: LIST_PLAY_GAP_STOPPED, noticeKind: "error", noticeAction: null } : {}
         )
+        // Next asked to leave this work. Auto-advance only gets here after it has already ended.
+        if (manual) apiRef.current.pausePlayback()
         return
       }
       beginFound(session, found)
@@ -366,6 +367,17 @@ function PlaybackMachine({ store, workIds }: { store: ListPlaybackStore; workIds
     setRandom: (on) => {
       store.patch({ random: on })
       writeShufflePreference(typeof window === "undefined" ? null : window.localStorage, on)
+    },
+    nextWork: () => {
+      const session = sessionRef.current
+      if (!session || session.mode !== "list" || session.finished || advancingRef.current) return
+      const state = store.getState()
+      if (!showListNext({ listActive: state.listActive, starting: state.starting, phase: state.phase })) return
+      // Drop a pending auto-advance so it cannot move the cursor as well.
+      // The order stays the one fixed when Play all started: list order, or that shuffle.
+      transportGenerationRef.current += 1
+      clearAdvanceTimers()
+      void continueListRef.current(session.generation, true)
     },
   })
 
@@ -474,7 +486,6 @@ function WorkListToolbar({ count }: { count: number }) {
 }
 
 function WorkListToolbarInner({ store, count }: { store: ListPlaybackStore; count: number }) {
-  const randomId = useId()
   const toolbar = useSyncExternalStore(store.subscribe, store.getToolbar, store.getServerToolbar)
   const control = listPlayAllControl({
     listActive: toolbar.listActive,
@@ -484,6 +495,11 @@ function WorkListToolbarInner({ store, count }: { store: ListPlaybackStore; coun
   const notice = toolbar.notice ?? (toolbar.oauthConfigured ? null : LIST_PLAY_NOT_CONFIGURED)
   const noticeIsQuiet = toolbar.noticeKind === "premium" || (!toolbar.notice && !toolbar.oauthConfigured)
   const showPause = control.action === "pause"
+  const showNext = showListNext({
+    listActive: toolbar.listActive,
+    starting: toolbar.starting,
+    phase: toolbar.phase,
+  })
   const playAllTitle =
     control.action === "pause"
       ? "Pause playback"
@@ -495,7 +511,7 @@ function WorkListToolbarInner({ store, count }: { store: ListPlaybackStore; coun
 
   return (
     <div className="mb-4">
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button
           type="button"
           size="sm"
@@ -508,21 +524,32 @@ function WorkListToolbarInner({ store, count }: { store: ListPlaybackStore; coun
           {control.action === "none" ? <Loader2 className="animate-spin" /> : showPause ? <Pause /> : <Play />}
           {control.label}
         </Button>
-        <div className="flex cursor-pointer items-center gap-2">
-          <Shuffle
-            className={cn("size-4", toolbar.random ? "text-primary" : "text-muted-foreground")}
-            aria-hidden
-          />
-          <Label htmlFor={randomId} className="cursor-pointer font-normal text-muted-foreground">
-            Random
-          </Label>
-          <Switch
-            id={randomId}
+        {showNext ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
             className="cursor-pointer"
-            checked={toolbar.random}
-            onCheckedChange={(on) => store.setRandom(on)}
-          />
-        </div>
+            disabled={!toolbar.oauthConfigured || toolbar.resolving}
+            title="Next work"
+            onClick={() => store.nextWork()}
+          >
+            {toolbar.resolving ? <Loader2 className="animate-spin" /> : <SkipForward />}
+            Next
+          </Button>
+        ) : null}
+        <Button
+          type="button"
+          size="sm"
+          variant={toolbar.random ? "default" : "outline"}
+          className="ml-auto cursor-pointer"
+          aria-pressed={toolbar.random}
+          title={toolbar.random ? "Random order is on" : "Random order is off"}
+          onClick={() => store.setRandom(!toolbar.random)}
+        >
+          <Shuffle />
+          Random
+        </Button>
       </div>
       {notice ? (
         <p className={cn("mt-3 text-sm", noticeIsQuiet ? "text-muted-foreground" : "text-destructive")}>{notice}</p>
