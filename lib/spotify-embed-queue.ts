@@ -30,8 +30,18 @@
  * it is heard or the retries run out. The same delay applies when the end
  * update itself arrives only as the tab becomes visible. A direct next,
  * previous, or resume still tries immediately, and if that load is never
- * heard it is loaded again on return. Nothing here loads an album, so
- * playback cannot continue into later works.
+ * heard it is loaded again on return.
+ *
+ * A visible advance can fail the same way. `loadUri` navigates the iframe,
+ * and `play()` in that turn is dropped when the new document is not ready
+ * yet. `ready` may not arrive, and `play()` does not reject — the movement
+ * simply stays paused. After a movement has already been heard (the next
+ * movement, Next, Previous, or the next work), the queue calls `play()`
+ * again when the document reports ready, then on a short backoff. If the
+ * movement is still unheard, the same track URI is loaded again a few times.
+ * That does not skip ahead. The first play of a session, which may be an
+ * autoplay block, is not reloaded; the listener starts it. Nothing here
+ * loads an album, so playback cannot continue into later works.
  *
  * The embed reports `playingURI` on `playback_update` (about once a second)
  * and on `playback_started` when the track changes. That URI is a track URI
@@ -76,10 +86,20 @@ export const EMBED_AUTOPLAY_GRACE_MS = 2_000
 export const EMBED_FOREGROUND_DELAY_MS = 200
 
 /**
- * Extra `play()` calls after a resumed load whose document stays paused.
+ * Extra `play()` calls after a load whose document stays paused.
  * The first `play()`, queued across `loadUri`, is the one Chrome drops.
+ * Used for a hidden-tab resume and for a visible advance, Next, or next work.
  */
 export const EMBED_PLAY_RETRY_DELAYS_MS = [450, 1_000, 1_600] as const
+
+/**
+ * How many times to load the same movement again when those `play()` calls
+ * never become audible. The following movement is not substituted.
+ */
+export const EMBED_LOAD_RETRY_LIMIT = 2
+
+/** Wait after the last `play()` retry before loading that movement again. */
+export const EMBED_LOAD_RETRY_DELAY_MS = 800
 
 export const SPOTIFY_EMBED_HEIGHT_PX = 152
 
@@ -136,7 +156,11 @@ export type MovementQueue = {
    * still waiting. A new document waits `EMBED_FOREGROUND_DELAY_MS`.
    */
   nudgeIfWaiting: () => void
-  /** The embed document finished loading. A resumed movement may still be paused. */
+  /**
+   * The embed document finished loading. If this movement is not audible yet,
+   * `play()` is issued again — the attempt made in the same turn as `loadUri`
+   * is not enough on its own.
+   */
   noteEmbedReady: () => void
   /** The tab's visibility changed. A backgrounded playhead may end unseen. */
   notePageHidden: (isHidden: boolean) => void
@@ -220,6 +244,13 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
   /** This visible load should keep calling play() until the movement is heard. */
   let resumeArmed = false
   let playRetriesIssued = 0
+  /**
+   * This attempt followed playback that had already started, so a silent
+   * document is reloaded. A first play that never starts is not.
+   */
+  let reloadOnMiss = false
+  /** Reloads of the movement currently being started. Reset on a new URI load. */
+  let loadRetriesIssued = 0
   /** A foreground load is already waiting out `EMBED_FOREGROUND_DELAY_MS`. */
   let foregroundArmed = false
   let release: () => void = () => {}
@@ -260,6 +291,7 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
     unheardHiddenLoad = false
     leftWhilePlaying = false
     resumeArmed = false
+    reloadOnMiss = false
     playRetriesIssued = 0
     clearEndTimer()
     clearGestureTimer()
@@ -308,6 +340,9 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
   function finishWork() {
     awaitingVisible = null
     unheardHiddenLoad = false
+    resumeArmed = false
+    reloadOnMiss = false
+    clearPlayRetry()
     transport.pause()
     if (workEnded) return
     const uri = currentUri()
@@ -343,15 +378,19 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
   }
 
   /**
-   * Play again after a resumed load. Stop once the movement is heard, the
-   * listener paused, or the tab is hidden (a hidden play() is discarded and
-   * would use up the retries).
+   * Play again after a load that should already be audible. Stop once the
+   * movement is heard, the listener paused, or the tab is hidden (a hidden
+   * play() is discarded and would use up the retries). When the play attempts
+   * are spent, load the same track again instead of moving on.
    */
   function armPlayRetry() {
     clearPlayRetry()
     if (!resumeArmed) return
     const delay = EMBED_PLAY_RETRY_DELAYS_MS[playRetriesIssued]
-    if (delay == null) return
+    if (delay == null) {
+      scheduleLoadRetry()
+      return
+    }
     cancelPlayRetry = schedule(() => {
       cancelPlayRetry = null
       if (destroyed || userPaused || workEnded || hidden() || sawPlaying || !resumeArmed) return
@@ -359,6 +398,19 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       transport.play()
       armPlayRetry()
     }, delay)
+  }
+
+  /** The document never started. Load this movement again, still not the next one. */
+  function scheduleLoadRetry() {
+    if (!reloadOnMiss || loadRetriesIssued >= EMBED_LOAD_RETRY_LIMIT) return
+    cancelPlayRetry = schedule(() => {
+      cancelPlayRetry = null
+      if (destroyed || userPaused || workEnded || hidden() || sawPlaying || !resumeArmed || !reloadOnMiss) return
+      const uri = currentUri()
+      if (!uri || loadRetriesIssued >= EMBED_LOAD_RETRY_LIMIT) return
+      loadRetriesIssued += 1
+      beginAudible(uri, true, true)
+    }, EMBED_LOAD_RETRY_DELAY_MS)
   }
 
   /**
@@ -380,17 +432,24 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
     }, EMBED_FOREGROUND_DELAY_MS)
   }
 
-  function beginAudible(uri: string, retry: boolean) {
+  function beginAudible(uri: string, retry: boolean, reload = false) {
     const inBackground = hidden()
+    // Read before resetProgress. A later movement, Next, or the next work
+    // already had audible playback. The first play of a session has not.
+    const continuing = retry || sawPlaying || playedIntoTrack
+    if (!reload) loadRetriesIssued = 0
     awaitingVisible = null
     workEnded = false
     needsReload = false
     resetProgress()
     unheardHiddenLoad = inBackground
-    resumeArmed = retry && !inBackground
+    resumeArmed = continuing && !inBackground
+    reloadOnMiss = resumeArmed
     playRetriesIssued = 0
     options.onTrack?.(uri)
     options.onPhase?.("connecting")
+    // play() here is best-effort. The new document often drops it. The attempt
+    // that counts is noteEmbedReady, then the backoff below, then a reload.
     transport.loadUri(uri)
     transport.play()
     if (resumeArmed) armPlayRetry()
@@ -510,7 +569,7 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       workEnded = false
       needsReload = false
       index = nextIndex
-      loadCurrent(true)
+      loadCurrent(true, true)
     },
     previous() {
       if (destroyed) return
@@ -521,12 +580,13 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       workEnded = false
       needsReload = false
       if (index > 0) index -= 1
-      loadCurrent(true)
+      loadCurrent(true, true)
     },
     pause() {
       if (destroyed) return
       userPaused = true
       resumeArmed = false
+      reloadOnMiss = false
       unheardHiddenLoad = false
       candidateAt = null
       clearEndTimer()
@@ -592,7 +652,10 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       }
     },
     noteEmbedReady() {
-      if (destroyed || userPaused || workEnded || hidden() || sawPlaying || !resumeArmed) return
+      // The previous document's ready event must not start a movement that is
+      // still waiting for a visible tab, and a hidden play() would be dropped.
+      if (destroyed || userPaused || workEnded || hidden() || sawPlaying || awaitingVisible) return
+      if (!currentUri()) return
       transport.play()
     },
     notePlayingUri(uri: string) {
@@ -640,7 +703,9 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       if (!update.isPaused && !update.isBuffering) {
         sawPlaying = true
         resumeArmed = false
+        reloadOnMiss = false
         playRetriesIssued = 0
+        loadRetriesIssued = 0
         clearPlayRetry()
         playIssuedAt = null
         clearGestureTimer()

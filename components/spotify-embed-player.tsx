@@ -218,6 +218,10 @@ export function SpotifyEmbedPlayer({
                   // The src setter also refreshes `allow` before location.replace.
                   armEmbedIframe(mount)
                   controllerRef.current = controller
+                  // The embed logs its own social-connect 404 when there is no
+                  // Connect session, and it closes the dealer websocket with
+                  // "Page entered Back-Forward Cache". Those stay inside the
+                  // iframe. They are not playback failures and are not reported.
                   controller.addListener("playback_update", (event) => {
                     const update = readUpdate(event)
                     if (update) queueRef.current?.onPlaybackUpdate(update)
@@ -229,9 +233,10 @@ export function SpotifyEmbedPlayer({
                   controller.addListener("ready", () => {
                     const node = hostRef.current
                     if (node) fitIframe(node)
-                    // The resumed document is loaded. play() from loadUri was
-                    // queued across that navigation and Chrome may already have
-                    // dropped it; try again now that this document exists.
+                    // loadUri navigates the iframe. play() from that turn is
+                    // dropped when the new document is not ready yet. Try again
+                    // now that this document exists; the queue retries if it
+                    // still does not start.
                     queueRef.current?.noteEmbedReady()
                     finish()
                   })
