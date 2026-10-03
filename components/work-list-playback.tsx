@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useRef, useSyncExternalStore, typ
 import { Loader2, Pause, Play, Shuffle, SkipForward } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { useSpotifyPlayer } from "@/components/spotify-player-provider"
-import { fetchWorkPlayback, hasPlayableWorkPlayback } from "@/lib/fetch-work-playback"
+import { fetchWorkPlayback, hasPlayableWorkPlayback, peekWorkPlayback } from "@/lib/fetch-work-playback"
 import {
   LIST_PLAY_GAP_ATTEMPTS,
   LIST_PLAY_GAP_STOPPED,
@@ -13,9 +13,11 @@ import {
   LIST_PLAY_NO_LIST_MATCH,
   LIST_PLAY_NO_MATCH,
   LIST_PLAY_START_ATTEMPTS,
+  LIST_PLAY_WARM_ATTEMPTS,
   idsToPrefetch,
   listPlayAllControl,
   listStoppedEarly,
+  resolveCachedStart,
   runListChain,
   readShufflePreference,
   shouldAdvanceList,
@@ -77,6 +79,7 @@ function PlaybackMachine({ store, workIds }: { store: ListPlaybackStore; workIds
   const spotify = useSpotifyPlayer()
   const idsRef = useRef(workIds)
   idsRef.current = workIds
+  const workKey = workIds.join(",")
   const apiRef = useRef(spotify)
   apiRef.current = spotify
   const sessionRef = useRef<Session | null>(null)
@@ -187,7 +190,43 @@ function PlaybackMachine({ store, workIds }: { store: ListPlaybackStore; workIds
 
   function stopSession(session: Session, patch: Parameters<ListPlaybackStore["patch"]>[0]) {
     session.finished = true
+    // Drop the shell opened for this click. A session that already has a
+    // play request stays visible; this only clears the pre-start prime.
+    apiRef.current.releasePrime()
     store.patch({ starting: false, resolvingWorkId: null, listActive: false, ...patch })
+  }
+
+  /**
+   * Start from matches this tab already has, still inside the click.
+   * An unknown work falls through to the network. `beginPlayback` then runs
+   * before any await, same as a work page.
+   */
+  function startIfCached(session: Session, maxAttempts: number): "started" | "fetch" | "stopped" {
+    const cached = resolveCachedStart(session.order, 0, maxAttempts, session.skipped, (id) => {
+      const hit = peekWorkPlayback(id)
+      return hit ? { configured: hit.configured, uris: hit.uris } : null
+    })
+    for (const id of cached.skip) session.skipped.add(id)
+    if (cached.action === "play") {
+      beginFound(session, { index: cached.index, id: cached.id, uris: cached.uris })
+      return "started"
+    }
+    if (cached.action === "stop") {
+      const notice =
+        cached.reason === "unconfigured"
+          ? LIST_PLAY_NOT_CONFIGURED
+          : session.mode === "list"
+            ? LIST_PLAY_NO_LIST_MATCH
+            : LIST_PLAY_NO_MATCH
+      stopSession(session, {
+        activeWorkId: null,
+        notice,
+        noticeKind: "error",
+        noticeAction: null,
+      })
+      return "stopped"
+    }
+    return "fetch"
   }
 
   async function playWork(workId: string) {
@@ -214,6 +253,14 @@ function PlaybackMachine({ store, workIds }: { store: ListPlaybackStore; workIds
       finished: false,
     }
     sessionRef.current = session
+    if (!preparePlayback()) {
+      stopSession(session, { activeWorkId: null })
+      return
+    }
+    // Open the embed during this click. A cached match then calls play()
+    // before any await; a cold match overlaps the iframe startup with the fetch.
+    apiRef.current.primePlayback()
+    if (startIfCached(session, 1) !== "fetch") return
     store.patch({
       listActive: false,
       starting: true,
@@ -223,12 +270,6 @@ function PlaybackMachine({ store, workIds }: { store: ListPlaybackStore; workIds
       noticeAction: null,
       noticeKind: null,
     })
-    if (!preparePlayback()) {
-      stopSession(session, { activeWorkId: null })
-      return
-    }
-    // Unlock browser audio in this click, before the Spotify match returns.
-    apiRef.current.armPlayback()
     const found = await takePlayable(session, 0, 1)
     if (sessionRef.current !== session) return
     if (found === "stop") {
@@ -263,6 +304,14 @@ function PlaybackMachine({ store, workIds }: { store: ListPlaybackStore; workIds
       finished: false,
     }
     sessionRef.current = session
+    if (!preparePlayback()) {
+      stopSession(session, { activeWorkId: null })
+      return
+    }
+    // Open the embed during this click. A cached match then calls play()
+    // before any await; a cold match overlaps the iframe startup with the fetch.
+    apiRef.current.primePlayback()
+    if (startIfCached(session, LIST_PLAY_START_ATTEMPTS) !== "fetch") return
     store.patch({
       listActive: true,
       starting: true,
@@ -272,12 +321,6 @@ function PlaybackMachine({ store, workIds }: { store: ListPlaybackStore; workIds
       noticeAction: null,
       noticeKind: null,
     })
-    if (!preparePlayback()) {
-      stopSession(session, { activeWorkId: null })
-      return
-    }
-    // Unlock browser audio in this click, before the Spotify match returns.
-    apiRef.current.armPlayback()
     const found = await takePlayable(session, 0, LIST_PLAY_START_ATTEMPTS)
     if (sessionRef.current !== session) return
     if (found === "stop") {
@@ -388,6 +431,35 @@ function PlaybackMachine({ store, workIds }: { store: ListPlaybackStore; workIds
   useEffect(() => {
     store.patch({ random: readShufflePreference(window.localStorage) })
   }, [store])
+
+  useEffect(() => {
+    if (!apiRef.current.oauthConfigured) return
+    const ids = idsRef.current
+    if (ids.length === 0) return
+    let cancelled = false
+    // Resolve the first playable work while the list is on screen so Play all
+    // can start inside the click instead of after the Spotify match.
+    void (async () => {
+      let attempts = 0
+      for (const id of ids) {
+        if (cancelled || attempts >= LIST_PLAY_WARM_ATTEMPTS) return
+        const peeked = peekWorkPlayback(id)
+        if (peeked) {
+          if (!peeked.configured) return
+          if (peeked.uris.length > 0) return
+          continue
+        }
+        attempts += 1
+        const result = await fetchWorkPlayback(id)
+        if (cancelled) return
+        if (!result.ok || !result.hit.configured) return
+        if (result.hit.uris.length > 0) return
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [workKey])
 
   useEffect(() => {
     if (!lastIssue) return

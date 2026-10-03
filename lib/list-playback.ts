@@ -23,6 +23,13 @@ export const LIST_PLAY_LOOKAHEAD = 2
 /** Spotify searches while starting Play all, including misses. */
 export const LIST_PLAY_START_ATTEMPTS = 40
 
+/**
+ * Spotify searches after a composer or genre list is shown, before Play all.
+ * Stops at the first playable work. The click can then start that work
+ * without waiting, in the same turn as the gesture.
+ */
+export const LIST_PLAY_WARM_ATTEMPTS = 8
+
 /** Spotify searches between works before playback stops and reports the gap. */
 export const LIST_PLAY_GAP_ATTEMPTS = 8
 
@@ -166,6 +173,45 @@ export function idsToPrefetch(
     if (!cached.has(id)) needed.push(id)
   }
   return needed
+}
+
+export type CachedWorkHit = { configured: boolean; uris: readonly string[] }
+
+/**
+ * How far a Play all click can get with matches already resolved in this tab.
+ * An unknown id stops the walk (`fetch`) so a later work is not skipped.
+ * Known misses are listed in `skip`. A hit is played in the click, with no
+ * await, so the embed receives `play()` on the user gesture.
+ */
+export type CachedStart =
+  | { action: "play"; index: number; id: string; uris: string[]; skip: string[] }
+  | { action: "fetch"; skip: string[] }
+  | { action: "stop"; skip: string[]; reason: "unconfigured" | "none" }
+
+export function resolveCachedStart(
+  order: readonly string[],
+  from: number,
+  maxAttempts: number,
+  skipped: ReadonlySet<string>,
+  lookup: (id: string) => CachedWorkHit | null
+): CachedStart {
+  const skip: string[] = []
+  let attempts = 0
+  for (let index = Math.max(0, from); index < order.length; index += 1) {
+    const id = order[index]
+    if (!id || skipped.has(id) || skip.includes(id)) continue
+    if (attempts >= maxAttempts) return { action: "stop", skip, reason: "none" }
+    const hit = lookup(id)
+    if (!hit) return { action: "fetch", skip }
+    attempts += 1
+    if (!hit.configured) return { action: "stop", skip, reason: "unconfigured" }
+    if (hit.uris.length === 0) {
+      skip.push(id)
+      continue
+    }
+    return { action: "play", index, id, uris: [...hit.uris], skip }
+  }
+  return { action: "stop", skip, reason: "none" }
 }
 
 /** True when works after `cursor` were never resolved (the miss cap stopped the scan). */

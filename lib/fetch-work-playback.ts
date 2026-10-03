@@ -18,6 +18,11 @@ export function hasPlayableWorkPlayback(id: string): boolean {
   return Boolean(hit?.configured && hit.uris.length > 0)
 }
 
+/** The match already stored for this tab, if Play all or a row play fetched it. */
+export function peekWorkPlayback(id: string): WorkPlaybackHit | null {
+  return memory.get(id) ?? null
+}
+
 export async function fetchWorkPlayback(id: string): Promise<FetchWorkPlayback> {
   const cached = memory.get(id)
   if (cached) return { ok: true, hit: cached }
