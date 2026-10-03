@@ -8,6 +8,7 @@ import {
   LIST_PLAY_ADVANCE_DELAY_MS,
   listPlayAllControl,
   listStoppedEarly,
+  resolveCachedStart,
   showListNext,
   runListChain,
   parsePendingListPlayback,
@@ -167,6 +168,37 @@ test("runListChain waits while the tab is visible and runs immediately in the ba
   })
   assert.equal(ran, 1)
   assert.equal(hidden, null)
+})
+
+test("resolveCachedStart plays a known hit inside the click and does not skip an unknown work", () => {
+  const known = new Map<string, { configured: boolean; uris: string[] }>([
+    ["a", { configured: true, uris: [] }],
+    ["b", { configured: true, uris: ["spotify:track:bbb"] }],
+  ])
+  const lookup = (id: string) => known.get(id) ?? null
+  assert.deepEqual(resolveCachedStart(["a", "b", "c"], 0, 40, new Set(), lookup), {
+    action: "play",
+    index: 1,
+    id: "b",
+    uris: ["spotify:track:bbb"],
+    skip: ["a"],
+  })
+  assert.deepEqual(resolveCachedStart(["c", "b"], 0, 40, new Set(), lookup), {
+    action: "fetch",
+    skip: [],
+  })
+  assert.deepEqual(resolveCachedStart(["a"], 0, 40, new Set(), lookup), {
+    action: "stop",
+    skip: ["a"],
+    reason: "none",
+  })
+  known.set("d", { configured: false, uris: [] })
+  assert.deepEqual(resolveCachedStart(["d"], 0, 40, new Set(), lookup), {
+    action: "stop",
+    skip: [],
+    reason: "unconfigured",
+  })
+  assert.deepEqual(resolveCachedStart(["a", "b"], 0, 1, new Set(), lookup).action, "stop")
 })
 
 test("showListNext only while Play all is playing", () => {

@@ -369,6 +369,14 @@ export function SpotifyEmbedPlayer({
       pause: () => queue.pause(),
       resume: () => queue.resume(),
       arm: () => {
+        const host = hostRef.current
+        // A hidden dock has no size, and an iframe created there does not become
+        // ready. Load the script only. List playback shows the dock first.
+        const measurable = Boolean(host && host.clientWidth > 0 && !host.closest("[hidden]"))
+        if (measurable) {
+          void ensureController()
+          return
+        }
         void loadSpotifyIframeApi().catch(() => {
           // The play attempt reports a missing script.
         })
@@ -395,7 +403,7 @@ export function SpotifyEmbedPlayer({
         // Ignore unsupported actions on the way out.
       }
     }
-  }, [playPending, runOnController])
+  }, [ensureController, playPending, runOnController])
 
   useLayoutEffect(() => {
     const pending = pendingRef.current

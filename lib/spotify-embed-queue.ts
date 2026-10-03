@@ -32,16 +32,16 @@
  * previous, or resume still tries immediately, and if that load is never
  * heard it is loaded again on return.
  *
- * A visible advance can fail the same way. `loadUri` navigates the iframe,
- * and `play()` in that turn is dropped when the new document is not ready
- * yet. `ready` may not arrive, and `play()` does not reject — the movement
- * simply stays paused. After a movement has already been heard (the next
- * movement, Next, Previous, or the next work), the queue calls `play()`
- * again when the document reports ready, then on a short backoff. If the
- * movement is still unheard, the same track URI is loaded again a few times.
- * That does not skip ahead. The first play of a session, which may be an
- * autoplay block, is not reloaded; the listener starts it. Nothing here
- * loads an album, so playback cannot continue into later works.
+ * A visible load can fail the same way, including the first play of a session.
+ * `loadUri` navigates the iframe, and `play()` in that turn is dropped when
+ * the new document is not ready yet. `ready` may not arrive, and `play()` does
+ * not reject — the movement simply stays paused. List pages hit this on Play
+ * all: the Spotify match returns before `loadUri`, so that first `play()` is
+ * not the click itself. The queue calls `play()` again when the document
+ * reports ready, then on a short backoff. If the movement is still unheard,
+ * the same track URI is loaded again a few times. That does not skip ahead.
+ * A hidden tab does not spend those retries. Nothing here loads an album, so
+ * playback cannot continue into later works.
  *
  * The embed reports `playingURI` on `playback_update` (about once a second)
  * and on `playback_started` when the track changes. That URI is a track URI
@@ -88,7 +88,8 @@ export const EMBED_FOREGROUND_DELAY_MS = 200
 /**
  * Extra `play()` calls after a load whose document stays paused.
  * The first `play()`, queued across `loadUri`, is the one Chrome drops.
- * Used for a hidden-tab resume and for a visible advance, Next, or next work.
+ * Used for the first play of a session, a hidden-tab resume, and a visible
+ * advance, Next, or next work.
  */
 export const EMBED_PLAY_RETRY_DELAYS_MS = [450, 1_000, 1_600] as const
 
@@ -253,6 +254,8 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
   let loadRetriesIssued = 0
   /** A foreground load is already waiting out `EMBED_FOREGROUND_DELAY_MS`. */
   let foregroundArmed = false
+  /** This load already restarted `play()` from the embed `ready` event. */
+  let readyRetried = false
   let release: () => void = () => {}
 
   function clearEndTimer() {
@@ -293,6 +296,7 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
     resumeArmed = false
     reloadOnMiss = false
     playRetriesIssued = 0
+    readyRetried = false
     clearEndTimer()
     clearGestureTimer()
     clearForegroundTimer()
@@ -432,18 +436,18 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
     }, EMBED_FOREGROUND_DELAY_MS)
   }
 
-  function beginAudible(uri: string, retry: boolean, reload = false) {
+  function beginAudible(uri: string, _retry: boolean, reload = false) {
     const inBackground = hidden()
-    // Read before resetProgress. A later movement, Next, or the next work
-    // already had audible playback. The first play of a session has not.
-    const continuing = retry || sawPlaying || playedIntoTrack
     if (!reload) loadRetriesIssued = 0
     awaitingVisible = null
     workEnded = false
     needsReload = false
     resetProgress()
     unheardHiddenLoad = inBackground
-    resumeArmed = continuing && !inBackground
+    // Every visible load retries, including the first play of a session.
+    // `play()` in the loadUri turn is the one the new document drops. A hidden
+    // tab does not spend the retries; the document is loaded once it is visible.
+    resumeArmed = !inBackground
     reloadOnMiss = resumeArmed
     playRetriesIssued = 0
     options.onTrack?.(uri)
@@ -657,6 +661,15 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       if (destroyed || userPaused || workEnded || hidden() || sawPlaying || awaitingVisible) return
       if (!currentUri()) return
       transport.play()
+      // Plays issued before this document existed were dropped, including the
+      // one from the loadUri turn and any retry that fired while the iframe
+      // was still being created. Start the backoff from this moment, once.
+      if (readyRetried) return
+      readyRetried = true
+      resumeArmed = true
+      reloadOnMiss = true
+      playRetriesIssued = 0
+      armPlayRetry()
     },
     notePlayingUri(uri: string) {
       if (destroyed || !uri || uri.startsWith("spotify:album:")) return

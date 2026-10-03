@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react"
+import { flushSync } from "react-dom"
 import { SpotifyEmbedPlayer, type EmbedPlaybackIssue } from "@/components/spotify-embed-player"
 import { isPlaybackSessionActive } from "@/lib/spotify-player-session"
 
@@ -43,6 +44,10 @@ type SpotifyPlayerContextValue = {
   playerPhase: PlayerPhase
   activeUri: string | null
   armPlayback: () => void
+  /** Show the embed and create its controller during the click, before a match fetch. */
+  primePlayback: () => void
+  /** Hide that shell when playback never started. An active session stays up. */
+  releasePrime: () => void
   pausePlayback: () => void
   resumePlayback: () => void
   beginPlayback: (recordingId: string, uris: string[], position: number) => void
@@ -71,6 +76,7 @@ export function SpotifyPlayerProvider({
   children: ReactNode
 }) {
   const [playRequest, setPlayRequest] = useState<PlayRequest | null>(null)
+  const [primed, setPrimed] = useState(false)
   const [playerPhase, setPlayerPhase] = useState<PlayerPhase>("idle")
   const [activeUri, setActiveUri] = useState<string | null>(null)
   const [lastIssue, setLastIssue] = useState<PlaybackIssue | null>(null)
@@ -87,6 +93,18 @@ export function SpotifyPlayerProvider({
     commandsRef.current.arm()
   }, [])
 
+  const primePlayback = useCallback(() => {
+    // The dock has to be measurable before the controller is created. The
+    // click is still on the stack here, so the iframe starts during the gesture
+    // instead of after the Spotify match returns.
+    flushSync(() => setPrimed(true))
+    commandsRef.current.arm()
+  }, [])
+
+  const releasePrime = useCallback(() => {
+    setPrimed(false)
+  }, [])
+
   const pausePlayback = useCallback(() => {
     commandsRef.current.pause()
   }, [])
@@ -99,6 +117,7 @@ export function SpotifyPlayerProvider({
   const clearPlayback = useCallback(() => {
     commandsRef.current.pause()
     setPlayRequest(null)
+    setPrimed(false)
     setPlayerPhase("idle")
     setActiveUri(null)
   }, [])
@@ -153,6 +172,8 @@ export function SpotifyPlayerProvider({
       playerPhase,
       activeUri,
       armPlayback,
+      primePlayback,
+      releasePrime,
       pausePlayback,
       resumePlayback,
       beginPlayback,
@@ -168,6 +189,8 @@ export function SpotifyPlayerProvider({
       playerPhase,
       activeUri,
       armPlayback,
+      primePlayback,
+      releasePrime,
       pausePlayback,
       resumePlayback,
       beginPlayback,
@@ -188,7 +211,7 @@ export function SpotifyPlayerProvider({
         uris={playRequest?.uris ?? []}
         startIndex={playRequest?.position ?? 0}
         generation={playRequest?.generation ?? 0}
-        visible={sessionActive}
+        visible={sessionActive || primed}
         onRegisterCommands={registerCommands}
         onPhase={setPlayerPhase}
         onTrackUri={setActiveUri}
