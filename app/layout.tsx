@@ -3,6 +3,8 @@ import type { ReactNode } from "react"
 import { Newsreader } from "next/font/google"
 import "./globals.css"
 import { AppNavigationMarker } from "@/components/app-navigation-marker"
+import { InstallPrompt } from "@/components/install-prompt"
+import { ServiceWorkerRegister } from "@/components/service-worker-register"
 import { SiteHeader } from "@/components/site-header"
 import { SpotifyPlayerProvider } from "@/components/spotify-player-provider"
 import { isSpotifyOAuthConfigured } from "@/lib/spotify-model"
@@ -39,6 +41,11 @@ export const metadata: Metadata = {
     description: SITE_DESCRIPTION,
     images: ["/twitter-image"],
   },
+  appleWebApp: {
+    capable: true,
+    title: SITE_NAME,
+    statusBarStyle: "default",
+  },
   robots: {
     index: true,
     follow: true,
@@ -50,6 +57,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  themeColor: "#ffffff",
 }
 
 const footerLinkClassName =
@@ -70,11 +78,20 @@ export default function RootLayout({
 
   return (
     <html lang="en">
+      {/* Next streams metadata into <body> for browsers, but Chrome only
+          detects an installable manifest (and iOS its home-screen icon)
+          from <head>. */}
+      <head>
+        <link rel="manifest" href="/manifest.webmanifest" />
+        <link rel="apple-touch-icon" href="/apple-icon.png" sizes="180x180" />
+      </head>
       <body
         className={`${newsreader.variable} relative flex min-h-screen min-h-dvh flex-col font-sans antialiased`}
       >
         <SpotifyPlayerProvider oauthConfigured={oauthConfigured}>
           <AppNavigationMarker />
+          <ServiceWorkerRegister />
+          <InstallPrompt />
           <SiteHeader />
           <main className="relative z-10 mx-auto w-full max-w-4xl flex-1 px-4 py-10 sm:px-6">
             {children}
