@@ -318,3 +318,16 @@ test("nextWork reaches the playback handler", () => {
   store.nextWork()
   assert.equal(calls, 1)
 })
+
+test("resolveCachedStart from the next index plays a cached next work and skips known misses", () => {
+  const lookup = (id: string) =>
+    id === "b" ? { configured: true, uris: [] } : id === "c" ? { configured: true, uris: ["t"] } : null
+  assert.deepEqual(resolveCachedStart(["a", "b", "c"], 1, 8, new Set(), lookup), {
+    action: "play",
+    index: 2,
+    id: "c",
+    uris: ["t"],
+    skip: ["b"],
+  })
+  assert.deepEqual(resolveCachedStart(["a", "d"], 1, 8, new Set(), lookup), { action: "fetch", skip: [] })
+})
