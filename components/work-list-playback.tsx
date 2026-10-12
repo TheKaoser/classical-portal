@@ -343,6 +343,18 @@ function PlaybackMachine({ store, workIds }: { store: ListPlaybackStore; workIds
     const session = sessionRef.current
     if (!session || session.generation !== generation || session.mode !== "list" || session.finished) return
     if (advancingRef.current) return
+    // A work whose match this tab already has starts in this turn. Awaiting a
+    // fetch first would move loadUri and play() out of the Next click, and the
+    // embed can refuse a play() that is no longer tied to the gesture.
+    const cached = resolveCachedStart(session.order, session.cursor + 1, LIST_PLAY_GAP_ATTEMPTS, session.skipped, (id) => {
+      const hit = peekWorkPlayback(id)
+      return hit ? { configured: hit.configured, uris: hit.uris } : null
+    })
+    if (cached.action === "play") {
+      for (const id of cached.skip) session.skipped.add(id)
+      beginFound(session, { index: cached.index, id: cached.id, uris: cached.uris })
+      return
+    }
     const transport = transportGenerationRef.current
     advancingRef.current = true
     try {

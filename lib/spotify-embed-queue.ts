@@ -102,6 +102,14 @@ export const EMBED_LOAD_RETRY_LIMIT = 2
 /** Wait after the last `play()` retry before loading that movement again. */
 export const EMBED_LOAD_RETRY_DELAY_MS = 800
 
+/**
+ * A visible load that has not been heard playing this long after it began is
+ * "loaded but not playing", even if the embed sent no update and the retry
+ * chain was dropped. The watchdog restarts the retries for that load only.
+ */
+export const EMBED_STUCK_WATCHDOG_MS = 4_000
+export const EMBED_STUCK_WATCHDOG_LIMIT = 3
+
 export const SPOTIFY_EMBED_HEIGHT_PX = 152
 
 export const EMBED_PLAYER_LOAD_FAILED = "The Spotify player could not be loaded."
@@ -226,6 +234,9 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
   let cancelGesture: CancelTimer | null = null
   let cancelForeground: CancelTimer | null = null
   let cancelPlayRetry: CancelTimer | null = null
+  let cancelWatchdog: CancelTimer | null = null
+  /** Watchdog restarts for this movement, across its same-URI reloads. */
+  let watchdogFires = 0
   let destroyed = false
   /** The embed has reported this load's track URI, so a different URI is a real change. */
   let heardTrack = false
@@ -257,6 +268,12 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
   /** This load already restarted `play()` from the embed `ready` event. */
   let readyRetried = false
   let release: () => void = () => {}
+  /** Bumped on every load. Timers from an earlier load compare it and do nothing. */
+  let loadToken = 0
+  /** This load's own document reported `ready`, so its updates are not the previous document's. */
+  let docReady = false
+  /** Duration the previous document last reported. A URI-less update that repeats it is still that document. */
+  let priorDurationMs: number | null = null
 
   function clearEndTimer() {
     cancelEnd?.()
@@ -281,7 +298,46 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
     cancelPlayRetry = null
   }
 
+  function clearWatchdog() {
+    cancelWatchdog?.()
+    cancelWatchdog = null
+  }
+
+  /**
+   * Per-load "loaded but not playing" check. If the retry chain is gone (it was
+   * cancelled, or the embed never sent an update) and this load was still not
+   * heard, play again and restart the retries, which end in a reload of the
+   * same URI. Timers from an earlier load do nothing.
+   */
+  function armWatchdog() {
+    clearWatchdog()
+    const token = loadToken
+    cancelWatchdog = schedule(() => {
+      cancelWatchdog = null
+      if (token !== loadToken) return
+      if (destroyed || userPaused || workEnded || hidden() || sawPlaying || awaitingVisible || unheardHiddenLoad) return
+      if (!currentUri()) return
+      if (cancelPlayRetry) {
+        armWatchdog()
+        return
+      }
+      if (watchdogFires >= EMBED_STUCK_WATCHDOG_LIMIT) return
+      watchdogFires += 1
+      transport.play()
+      resumeArmed = true
+      reloadOnMiss = true
+      playRetriesIssued = 0
+      armPlayRetry()
+      armWatchdog()
+    }, EMBED_STUCK_WATCHDOG_MS)
+  }
+
   function resetProgress() {
+    loadToken += 1
+    // A reload before anything was heard keeps the duration of the document
+    // that was replaced earlier; lastUpdate is empty then.
+    if (lastUpdate) priorDurationMs = lastUpdate.duration
+    docReady = false
     sawPlaying = false
     playedIntoTrack = false
     reachedNearEnd = false
@@ -301,6 +357,7 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
     clearGestureTimer()
     clearForegroundTimer()
     clearPlayRetry()
+    clearWatchdog()
   }
 
   function currentUri(): string | null {
@@ -347,6 +404,7 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
     resumeArmed = false
     reloadOnMiss = false
     clearPlayRetry()
+    clearWatchdog()
     transport.pause()
     if (workEnded) return
     const uri = currentUri()
@@ -395,8 +453,10 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       scheduleLoadRetry()
       return
     }
+    const token = loadToken
     cancelPlayRetry = schedule(() => {
       cancelPlayRetry = null
+      if (token !== loadToken) return
       if (destroyed || userPaused || workEnded || hidden() || sawPlaying || !resumeArmed) return
       playRetriesIssued += 1
       transport.play()
@@ -407,8 +467,10 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
   /** The document never started. Load this movement again, still not the next one. */
   function scheduleLoadRetry() {
     if (!reloadOnMiss || loadRetriesIssued >= EMBED_LOAD_RETRY_LIMIT) return
+    const token = loadToken
     cancelPlayRetry = schedule(() => {
       cancelPlayRetry = null
+      if (token !== loadToken) return
       if (destroyed || userPaused || workEnded || hidden() || sawPlaying || !resumeArmed || !reloadOnMiss) return
       const uri = currentUri()
       if (!uri || loadRetriesIssued >= EMBED_LOAD_RETRY_LIMIT) return
@@ -438,7 +500,10 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
 
   function beginAudible(uri: string, _retry: boolean, reload = false) {
     const inBackground = hidden()
-    if (!reload) loadRetriesIssued = 0
+    if (!reload) {
+      loadRetriesIssued = 0
+      watchdogFires = 0
+    }
     awaitingVisible = null
     workEnded = false
     needsReload = false
@@ -456,7 +521,10 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
     // that counts is noteEmbedReady, then the backoff below, then a reload.
     transport.loadUri(uri)
     transport.play()
-    if (resumeArmed) armPlayRetry()
+    if (resumeArmed) {
+      armPlayRetry()
+      armWatchdog()
+    }
   }
 
   function loadCurrent(force: boolean, retry = false) {
@@ -597,6 +665,7 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       clearGestureTimer()
       clearForegroundTimer()
       clearPlayRetry()
+      clearWatchdog()
       options.onUserTransport?.()
       options.onPhase?.("paused")
       transport.pause()
@@ -660,6 +729,7 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       // still waiting for a visible tab, and a hidden play() would be dropped.
       if (destroyed || userPaused || workEnded || hidden() || sawPlaying || awaitingVisible) return
       if (!currentUri()) return
+      docReady = true
       transport.play()
       // Plays issued before this document existed were dropped, including the
       // one from the loadUri turn and any retry that fired while the iframe
@@ -706,6 +776,12 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
         followReported(reported)
         return
       }
+      if (!heardTrack && !reported && !docReady && priorDurationMs != null && update.duration === priorDurationMs) {
+        // No track id, and the same length as the document this load replaced:
+        // that is the previous track still reporting, not this one starting.
+        // Counting it as heard would cancel the retries for the new movement.
+        return
+      }
       if (reported === uri) heardTrack = true
       // A missing or album URI does not name a movement. Position still advances
       // the queue, which is what keeps the highlight moving when Spotify omits
@@ -720,6 +796,7 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
         playRetriesIssued = 0
         loadRetriesIssued = 0
         clearPlayRetry()
+        clearWatchdog()
         playIssuedAt = null
         clearGestureTimer()
         options.onPhase?.("playing")
@@ -743,6 +820,27 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       }
 
       if (!update.isPaused) return
+
+      // Watchdog: this load is reported paused at its start and nothing is
+      // retrying it (the retries were cancelled or never armed). Start the
+      // play retries and same-URI reloads for this load.
+      if (
+        !sawPlaying &&
+        !update.isBuffering &&
+        !resumeArmed &&
+        !userPaused &&
+        !hidden() &&
+        !unheardHiddenLoad &&
+        !cancelPlayRetry &&
+        update.position <= EMBED_END_REWIND_MS
+      ) {
+        resumeArmed = true
+        reloadOnMiss = true
+        playRetriesIssued = 0
+        transport.play()
+        armPlayRetry()
+        return
+      }
 
       if (sawPlaying) options.onPhase?.("paused")
       if (userPaused || update.isBuffering || !sawPlaying) {
@@ -773,6 +871,7 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       clearGestureTimer()
       clearForegroundTimer()
       clearPlayRetry()
+      clearWatchdog()
     },
   }
 }

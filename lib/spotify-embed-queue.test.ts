@@ -5,6 +5,8 @@ import {
   EMBED_END_DEBOUNCE_MS,
   EMBED_FOREGROUND_DELAY_MS,
   EMBED_LOAD_RETRY_DELAY_MS,
+  EMBED_STUCK_WATCHDOG_LIMIT,
+  EMBED_STUCK_WATCHDOG_MS,
   EMBED_LOAD_RETRY_LIMIT,
   EMBED_PLAY_RETRY_DELAYS_MS,
   createMovementQueue,
@@ -216,6 +218,8 @@ test("autoplay that never starts stays on the loaded track until play or visibil
     advance(EMBED_LOAD_RETRY_DELAY_MS)
     stepDelays(advance, EMBED_PLAY_RETRY_DELAYS_MS)
   }
+  // The watchdog may still replay a few times; it never reloads past the limit.
+  for (let i = 0; i < 40; i += 1) advance(EMBED_STUCK_WATCHDOG_MS)
   advance(EMBED_AUTOPLAY_GRACE_MS)
   assert.equal(events.includes("phase:paused"), true)
   assert.equal(events.some((event) => event.startsWith("gesture:")), false)
@@ -940,4 +944,104 @@ test("playback_started while buffering does not cancel advance retries", () => {
   assert.ok(calls.filter((call) => call === "play").length > plays)
   assert.deepEqual(loadsOf(calls, SECOND), [`loadUri:${SECOND}`])
   assert.equal(calls.includes(`loadUri:${THIRD}`), false)
+})
+
+test("next ignores a previous-track update without a track id and keeps retrying the new movement", () => {
+  const { queue, calls, update, advance } = harness()
+  queue.start([FIRST, SECOND, THIRD], 0)
+  update({ isPaused: false, position: 5_000, playingURI: FIRST })
+  queue.next()
+  // The old document is still reporting, with no URI, as it unloads.
+  update({ isPaused: false, position: 6_000, playingURI: undefined })
+  stepDelays(advance, EMBED_PLAY_RETRY_DELAYS_MS)
+  assert.equal(calls.filter((call) => call === "play").length, 2 + EMBED_PLAY_RETRY_DELAYS_MS.length)
+  advance(EMBED_LOAD_RETRY_DELAY_MS)
+  assert.deepEqual(loadsOf(calls, SECOND), [`loadUri:${SECOND}`, `loadUri:${SECOND}`])
+  assert.equal(calls.includes(`loadUri:${THIRD}`), false)
+})
+
+test("the next work after a heard track retries and reloads when play is dropped", () => {
+  const { queue, calls, update, advance } = harness()
+  queue.start([FIRST, SECOND], 0)
+  update({ isPaused: false, position: 5_000, playingURI: FIRST })
+  queue.start([THIRD, FOURTH], 0)
+  update({ isPaused: false, position: 7_000, playingURI: undefined })
+  stepDelays(advance, EMBED_PLAY_RETRY_DELAYS_MS)
+  advance(EMBED_LOAD_RETRY_DELAY_MS)
+  assert.equal(loadsOf(calls, THIRD).length, 2)
+  assert.equal(calls.includes(`loadUri:${FOURTH}`), false)
+  assert.equal(calls.some((call) => call.includes("spotify:album:")), false)
+})
+
+test("a stale old-track retry timer does not fire after the queue moves to a new URI", () => {
+  const { queue, calls, advance } = harness()
+  queue.start([FIRST, SECOND], 0)
+  advance(EMBED_PLAY_RETRY_DELAYS_MS[0] - 50)
+  queue.next()
+  const playsBefore = calls.filter((call) => call === "play").length
+  advance(50)
+  assert.equal(calls.filter((call) => call === "play").length, playsBefore)
+  advance(EMBED_PLAY_RETRY_DELAYS_MS[0])
+  assert.equal(calls.filter((call) => call === "play").length, playsBefore + 1)
+})
+
+test("a hearing of the new track after next still cancels the retries", () => {
+  const { queue, calls, update, advance } = harness()
+  queue.start([FIRST, SECOND], 0)
+  update({ isPaused: false, position: 5_000, playingURI: FIRST })
+  queue.next()
+  update({ isPaused: false, position: 500, playingURI: SECOND })
+  stepDelays(advance, EMBED_PLAY_RETRY_DELAYS_MS)
+  advance(EMBED_LOAD_RETRY_DELAY_MS)
+  assert.deepEqual(loadsOf(calls, SECOND), [`loadUri:${SECOND}`])
+  assert.equal(calls.filter((call) => call === "play").length, 2)
+})
+
+test("a paused update for the loaded movement restarts retries that were not running", () => {
+  const { queue, calls, update, advance } = harness()
+  queue.start([FIRST, SECOND], 0)
+  update({ isPaused: false, position: 5_000, playingURI: FIRST })
+  queue.next()
+  queue.nudgeIfWaiting()
+  update({ isPaused: true, position: 0, playingURI: SECOND })
+  advance(EMBED_PLAY_RETRY_DELAYS_MS[0])
+  assert.ok(calls.filter((call) => call === "play").length >= 3)
+})
+
+test("watchdog replays a new URI whose retry chain ran out, without skipping ahead", () => {
+  const { queue, calls, update, advance } = harness()
+  queue.start([FIRST, SECOND, THIRD], 0)
+  update({ isPaused: false, position: 5_000, playingURI: FIRST })
+  queue.next()
+  // Embed sends nothing for the new document. Let the whole retry chain run out.
+  advance(EMBED_PLAY_RETRY_DELAYS_MS.reduce((a, b) => a + b, 0) * 4 + EMBED_LOAD_RETRY_DELAY_MS * 4)
+  const playsAfterChain = calls.filter((call) => call === "play").length
+  advance(EMBED_STUCK_WATCHDOG_MS * 4)
+  assert.ok(calls.filter((call) => call === "play").length >= playsAfterChain)
+  assert.ok(loadsOf(calls, SECOND).length >= 1)
+  assert.ok(loadsOf(calls, SECOND).length <= 1 + EMBED_LOAD_RETRY_LIMIT)
+  assert.equal(calls.includes(`loadUri:${THIRD}`), false)
+})
+
+test("watchdog restarts retries that were dropped for a paused, silent new load", () => {
+  const { queue, calls, advance } = harness()
+  queue.start([FIRST, SECOND], 0)
+  // Simulate a dropped chain: user nudge cannot help; only the watchdog is armed.
+  for (let i = 0; i < 40; i += 1) advance(EMBED_STUCK_WATCHDOG_MS)
+  const before = calls.filter((call) => call === "play").length
+  assert.ok(before >= 1 + EMBED_PLAY_RETRY_DELAYS_MS.length)
+  assert.equal(loadsOf(calls, FIRST).length, 1 + EMBED_LOAD_RETRY_LIMIT)
+})
+
+test("watchdog does nothing once the new movement is heard, and is scoped per load", () => {
+  const { queue, calls, update, advance } = harness()
+  queue.start([FIRST, SECOND, THIRD], 0)
+  advance(EMBED_STUCK_WATCHDOG_MS - 100)
+  queue.next()
+  advance(150)
+  const plays = calls.filter((call) => call === "play").length
+  update({ isPaused: false, position: 500, playingURI: SECOND })
+  advance(EMBED_STUCK_WATCHDOG_MS * 3)
+  assert.equal(calls.filter((call) => call === "play").length, plays)
+  assert.deepEqual(loadsOf(calls, SECOND), [`loadUri:${SECOND}`])
 })
