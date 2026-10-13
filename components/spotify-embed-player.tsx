@@ -234,9 +234,9 @@ export function SpotifyEmbedPlayer({
                     const node = hostRef.current
                     if (node) fitIframe(node)
                     // loadUri navigates the iframe. play() from that turn is
-                    // dropped when the new document is not ready yet. Try again
-                    // now that this document exists; the queue retries if it
-                    // still does not start.
+                    // dropped when the new document is not ready yet. The queue
+                    // issues one more play() shortly after this, only if the
+                    // load is not advancing by then.
                     queueRef.current?.noteEmbedReady()
                     finish()
                   })
