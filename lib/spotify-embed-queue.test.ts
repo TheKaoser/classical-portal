@@ -1045,3 +1045,71 @@ test("watchdog does nothing once the new movement is heard, and is scoped per lo
   assert.equal(calls.filter((call) => call === "play").length, plays)
   assert.deepEqual(loadsOf(calls, SECOND), [`loadUri:${SECOND}`])
 })
+
+test("a playing track with an advancing position and no id is never retried or reloaded", () => {
+  const { queue, calls, update, setTime, advance } = harness()
+  queue.start([FIRST, SECOND], 0)
+  queue.noteEmbedReady()
+  const plays = calls.filter((call) => call === "play").length
+  setTime(1_000)
+  update({ isPaused: false, position: 1_000, duration: 200_000 })
+  setTime(2_000)
+  update({ isPaused: false, position: 2_000, duration: 200_000 })
+  for (let i = 0; i < 20; i += 1) advance(EMBED_STUCK_WATCHDOG_MS)
+  assert.equal(calls.filter((call) => call === "play").length, plays)
+  assert.deepEqual(loadsOf(calls, FIRST), [`loadUri:${FIRST}`])
+})
+
+test("a buffering flag with a moving playhead counts as playing and cancels pending retries", () => {
+  const { queue, calls, update, setTime, advance } = harness()
+  queue.start([FIRST, SECOND], 0)
+  setTime(300)
+  update({ isPaused: false, isBuffering: true, position: 100, playingURI: FIRST })
+  setTime(1_300)
+  update({ isPaused: false, isBuffering: true, position: 1_100, playingURI: FIRST })
+  const plays = calls.filter((call) => call === "play").length
+  for (let i = 0; i < 20; i += 1) advance(EMBED_STUCK_WATCHDOG_MS)
+  assert.equal(calls.filter((call) => call === "play").length, plays)
+  assert.equal(loadsOf(calls, FIRST).length, 1)
+})
+
+test("a relinked track id on the ready document that is moving is accepted and stops retries", () => {
+  const { queue, calls, update, setTime, advance } = harness()
+  queue.start([FIRST, SECOND], 0)
+  queue.noteEmbedReady()
+  setTime(1_000)
+  update({ isPaused: false, position: 500, playingURI: "spotify:track:relinked" })
+  setTime(2_000)
+  update({ isPaused: false, position: 1_500, playingURI: "spotify:track:relinked" })
+  const plays = calls.filter((call) => call === "play").length
+  for (let i = 0; i < 20; i += 1) advance(EMBED_STUCK_WATCHDOG_MS)
+  assert.equal(calls.filter((call) => call === "play").length, plays)
+  assert.equal(loadsOf(calls, FIRST).length, 1)
+})
+
+test("retries pending when playback starts are all cancelled and play() is not re-called", () => {
+  const { queue, calls, update, setTime, advance } = harness()
+  queue.start([FIRST, SECOND], 0)
+  queue.noteEmbedReady()
+  advance(EMBED_PLAY_RETRY_DELAYS_MS[0])
+  const plays = calls.filter((call) => call === "play").length
+  setTime(5_000)
+  update({ isPaused: false, position: 800, playingURI: FIRST })
+  stepDelays(advance, EMBED_PLAY_RETRY_DELAYS_MS)
+  for (let i = 0; i < 20; i += 1) advance(EMBED_STUCK_WATCHDOG_MS)
+  assert.equal(calls.filter((call) => call === "play").length, plays)
+  assert.equal(loadsOf(calls, FIRST).length, 1)
+})
+
+test("a track that never progresses is still recovered by play retries and a same-URI reload", () => {
+  const { queue, calls, update, setTime, advance } = harness()
+  queue.start([FIRST, SECOND], 0)
+  queue.noteEmbedReady()
+  setTime(100)
+  update({ isPaused: true, position: 0, playingURI: FIRST })
+  stepDelays(advance, EMBED_PLAY_RETRY_DELAYS_MS)
+  advance(EMBED_LOAD_RETRY_DELAY_MS)
+  assert.ok(calls.filter((call) => call === "play").length > 2 + EMBED_PLAY_RETRY_DELAYS_MS.length - 1)
+  assert.equal(loadsOf(calls, FIRST).length, 2)
+  assert.equal(calls.includes(`loadUri:${SECOND}`), false)
+})
