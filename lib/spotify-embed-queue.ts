@@ -91,16 +91,7 @@ export const EMBED_FOREGROUND_DELAY_MS = 200
  * Used for the first play of a session, a hidden-tab resume, and a visible
  * advance, Next, or next work.
  */
-export const EMBED_PLAY_RETRY_DELAYS_MS = [1_500, 1_000, 1_600] as const
-
-/**
- * The embed reports about once a second, so a track that starts right after
- * `loadUri` is silent for the queue until its first update. A retry waits this
- * long past the last sign of life (a playhead that moved; `playback_started`
- * alone is not proof, the track can still be buffering) before it touches the transport, since `play()` or `loadUri` on a
- * track that is already running restarts it.
- */
-export const EMBED_PROGRESS_WINDOW_MS = 2_500
+export const EMBED_PLAY_RETRY_DELAYS_MS = [450, 1_000, 1_600] as const
 
 /**
  * How many times to load the same movement again when those `play()` calls
@@ -283,10 +274,6 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
   let docReady = false
   /** Duration the previous document last reported. A URI-less update that repeats it is still that document. */
   let priorDurationMs: number | null = null
-  /** Last unpaused playhead of this load, to tell a moving track from a frozen one. */
-  let lastMoving: { positionMs: number; atMs: number } | null = null
-  /** Last evidence (an advancing playhead) that this load is running. */
-  let lastLifeAt: number | null = null
 
   function clearEndTimer() {
     cancelEnd?.()
@@ -330,7 +317,7 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       if (token !== loadToken) return
       if (destroyed || userPaused || workEnded || hidden() || sawPlaying || awaitingVisible || unheardHiddenLoad) return
       if (!currentUri()) return
-      if (cancelPlayRetry || recentlyAlive()) {
+      if (cancelPlayRetry) {
         armWatchdog()
         return
       }
@@ -345,29 +332,12 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
     }, EMBED_STUCK_WATCHDOG_MS)
   }
 
-  /** This load showed signs of running recently, so it must not be restarted yet. */
-  function recentlyAlive(): boolean {
-    return lastLifeAt != null && now() - lastLifeAt < EMBED_PROGRESS_WINDOW_MS
-  }
-
-  /** The new track is running: nothing may play(), reload, or watchdog it again. */
-  function cancelRecovery() {
-    resumeArmed = false
-    reloadOnMiss = false
-    playRetriesIssued = 0
-    loadRetriesIssued = 0
-    clearPlayRetry()
-    clearWatchdog()
-  }
-
   function resetProgress() {
     loadToken += 1
     // A reload before anything was heard keeps the duration of the document
     // that was replaced earlier; lastUpdate is empty then.
     if (lastUpdate) priorDurationMs = lastUpdate.duration
     docReady = false
-    lastMoving = null
-    lastLifeAt = null
     sawPlaying = false
     playedIntoTrack = false
     reachedNearEnd = false
@@ -488,11 +458,6 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       cancelPlayRetry = null
       if (token !== loadToken) return
       if (destroyed || userPaused || workEnded || hidden() || sawPlaying || !resumeArmed) return
-      if (recentlyAlive()) {
-        // Running already, just not reported yet. Look again instead of play().
-        armPlayRetry()
-        return
-      }
       playRetriesIssued += 1
       transport.play()
       armPlayRetry()
@@ -509,10 +474,6 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       if (destroyed || userPaused || workEnded || hidden() || sawPlaying || !resumeArmed || !reloadOnMiss) return
       const uri = currentUri()
       if (!uri || loadRetriesIssued >= EMBED_LOAD_RETRY_LIMIT) return
-      if (recentlyAlive()) {
-        scheduleLoadRetry()
-        return
-      }
       loadRetriesIssued += 1
       beginAudible(uri, true, true)
     }, EMBED_LOAD_RETRY_DELAY_MS)
@@ -533,7 +494,7 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
         loadCurrent(true, true)
         return
       }
-      if (!sawPlaying && !recentlyAlive() && currentUri()) transport.play()
+      if (!sawPlaying && currentUri()) transport.play()
     }, EMBED_FOREGROUND_DELAY_MS)
   }
 
@@ -756,7 +717,7 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
         scheduleForegroundLoad()
         return
       }
-      if (sawPlaying || recentlyAlive()) return
+      if (sawPlaying) return
       transport.play()
       if (resumeArmed && !cancelPlayRetry) {
         playRetriesIssued = 0
@@ -769,7 +730,6 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       if (destroyed || userPaused || workEnded || hidden() || sawPlaying || awaitingVisible) return
       if (!currentUri()) return
       docReady = true
-      if (recentlyAlive()) return
       transport.play()
       // Plays issued before this document existed were dropped, including the
       // one from the loadUri turn and any retry that fired while the iframe
@@ -810,26 +770,11 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
       release = advance
 
       const reported = canonicalSpotifyTrackUri(update.playingURI)
-      // A playhead that moved since the last unpaused sample of this load is a
-      // running track even while the embed still says "buffering".
-      const advancing =
-        !update.isPaused &&
-        lastMoving != null &&
-        update.position > lastMoving.positionMs + 200 &&
-        update.position <= lastMoving.positionMs + (now() - lastMoving.atMs) + 5_000
       if (reported && reported !== uri) {
-        // Until this load has been heard, a different URI is the previous
-        // document, unless this load's own document is ready and its playhead is
-        // moving (Spotify can relink a track to another id).
-        if (!heardTrack || userPaused) {
-          if (!(docReady && advancing && !userPaused)) {
-            if (!update.isPaused) lastMoving = { positionMs: update.position, atMs: now() }
-            return
-          }
-        } else {
-          followReported(reported)
-          return
-        }
+        // Until this load has been heard, a different URI is the previous document.
+        if (!heardTrack || userPaused) return
+        followReported(reported)
+        return
       }
       if (!heardTrack && !reported && !docReady && priorDurationMs != null && update.duration === priorDurationMs) {
         // No track id, and the same length as the document this load replaced:
@@ -838,18 +783,20 @@ export function createMovementQueue(transport: EmbedTransport, options: Movement
         return
       }
       if (reported === uri) heardTrack = true
-      if (advancing) lastLifeAt = now()
-      if (!update.isPaused) lastMoving = { positionMs: update.position, atMs: now() }
       // A missing or album URI does not name a movement. Position still advances
       // the queue, which is what keeps the highlight moving when Spotify omits
       // the track id.
 
       lastUpdate = update
 
-      if (!update.isPaused && (!update.isBuffering || advancing)) {
+      if (!update.isPaused && !update.isBuffering) {
         sawPlaying = true
-        lastLifeAt = now()
-        cancelRecovery()
+        resumeArmed = false
+        reloadOnMiss = false
+        playRetriesIssued = 0
+        loadRetriesIssued = 0
+        clearPlayRetry()
+        clearWatchdog()
         playIssuedAt = null
         clearGestureTimer()
         options.onPhase?.("playing")
