@@ -12,6 +12,12 @@ import { pageMetadata, workDescription, workJsonLd, workPageTitle } from "@/lib/
 import { catalogSpotifySearchUrl } from "@/lib/spotify-work-query"
 
 export const revalidate = 600
+export const dynamic = "force-static"
+export const dynamicParams = true
+
+export function generateStaticParams() {
+  return []
+}
 
 export async function generateMetadata({
   params,
