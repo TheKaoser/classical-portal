@@ -6,7 +6,6 @@ import { sortWorksChronologically } from "@/lib/composition-date"
 import { attachCompositionYears } from "@/lib/composition-years"
 import { epochHref } from "@/lib/epochs"
 import { isSpotifyOAuthConfigured } from "@/lib/spotify-model"
-import { readFilterSlug } from "@/lib/filter-history"
 import {
   compareWorksByPopularity,
   dedupeWorks,
@@ -19,8 +18,14 @@ import {
 import { composerDescription, composerJsonLd, pageMetadata } from "@/lib/seo"
 
 export const revalidate = 3600
+export const dynamic = "force-static"
+export const dynamicParams = true
 
-const FILTER_ALIASES = { recommended: "popular" }
+// Generate composer pages on demand, then serve subsequent requests from ISR.
+export function generateStaticParams() {
+  return []
+}
+
 
 export async function generateMetadata({
   params,
@@ -43,13 +48,10 @@ export async function generateMetadata({
 
 export default async function ComposerPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ filter?: string }>
 }) {
   const { id } = await params
-  const { filter: rawFilter } = await searchParams
   const [composer, worksResult] = await Promise.all([getComposer(id), listWorksByComposer(id)])
 
   if (!composer) notFound()
@@ -77,12 +79,6 @@ export default async function ComposerPage({
     ...genreFilters,
   ]
   const defaultFilter = popularCount ? "popular" : "all"
-  const initialFilter = readFilterSlug(
-    rawFilter ? `?filter=${rawFilter.trim()}` : "",
-    new Set(filters.map((item) => item.slug)),
-    defaultFilter,
-    FILTER_ALIASES
-  )
   const popularityOrder = new Map(
     [...works].sort(compareWorksByPopularity).map((work, index) => [work.id, index])
   )
@@ -121,7 +117,7 @@ export default async function ComposerPage({
         }))}
         filters={filters}
         defaultFilter={defaultFilter}
-        initialFilter={initialFilter}
+        initialFilter={defaultFilter}
         oauthConfigured={isSpotifyOAuthConfigured()}
       />
     </div>
