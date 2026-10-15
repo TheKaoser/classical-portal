@@ -2,7 +2,7 @@ import Link from "next/link"
 import { Sparkles } from "lucide-react"
 import { BrandMark } from "@/components/brand-mark"
 import { JsonLd } from "@/components/json-ld"
-import { HomePortal, type PortalVariant } from "@/components/home-portal"
+import { HomePortal } from "@/components/home-portal"
 import { Button } from "@/components/ui/button"
 import { pageMetadata, websiteJsonLd } from "@/lib/seo"
 import { SITE_DESCRIPTION } from "@/lib/site"
@@ -18,27 +18,14 @@ const ENTRIES = [
   { href: "/composers", title: "Composers" },
 ] as const
 
-/** Default ring. Preview the other with `?portal=modern` or `?portal=antique`. */
-const DEFAULT_PORTAL_VARIANT = "modern" satisfies PortalVariant
+// The URL-only portal preview is read by HomePortal after hydration.
+export const dynamic = "force-static"
 
-function portalVariant(value: string | string[] | undefined): PortalVariant {
-  const raw = Array.isArray(value) ? value[0] : value
-  if (raw === "modern" || raw === "antique") return raw
-  return DEFAULT_PORTAL_VARIANT
-}
-
-export default async function HomePage({
-  searchParams,
-}: {
-  searchParams: Promise<{ portal?: string | string[] }>
-}) {
-  const { portal } = await searchParams
-  const variant = portalVariant(portal)
-
+export default function HomePage() {
   return (
     <div className="pt-24 text-center sm:pt-32 md:pt-40">
       <JsonLd data={websiteJsonLd()} />
-      <HomePortal variant={variant}>
+      <HomePortal variant="modern">
         <section className="space-y-3 sm:space-y-4 md:space-y-5">
           <h1 className="font-serif text-[clamp(2rem,(100vw-2.5rem)/6.35,4rem)] leading-none tracking-tight sm:text-7xl">
             <span className="sr-only">Classical Portal</span>
