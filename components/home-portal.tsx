@@ -82,6 +82,17 @@ export function HomePortal({
   variant: PortalVariant
   children: ReactNode
 }) {
+  const [activeVariant, setActiveVariant] = useState<PortalVariant>(variant)
+  useLayoutEffect(() => {
+    const syncVariant = () => {
+      const value = new URLSearchParams(window.location.search).get("portal")
+      setActiveVariant(value === "antique" || value === "modern" ? value : variant)
+    }
+    syncVariant()
+    window.addEventListener("popstate", syncVariant)
+    return () => window.removeEventListener("popstate", syncVariant)
+  }, [variant])
+
   const contentRef = useRef<HTMLDivElement>(null)
   const [layout, setLayout] = useState<PortalLayout | null>(null)
 
@@ -129,7 +140,7 @@ export function HomePortal({
   return (
     <div
       className="home-portal relative isolate"
-      data-portal={variant}
+      data-portal={activeVariant}
       style={layout ? { paddingBottom: layout.padBottom } : undefined}
     >
       {layout
