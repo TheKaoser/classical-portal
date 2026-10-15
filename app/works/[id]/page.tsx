@@ -26,7 +26,8 @@ export async function generateMetadata({
 }) {
   const { id } = await params
   const { composer, work } = await getWork(id)
-  if (!work || !composer) return { title: "Work", robots: { index: false, follow: false } }
+  // Missing records must abort metadata too, not publish a generic 200 page.
+  if (!work || !composer) notFound()
   const compositionDate = storedCompositionDate(composer.id, work)
   const composerName = composer.name || composer.complete_name
   return pageMetadata({
