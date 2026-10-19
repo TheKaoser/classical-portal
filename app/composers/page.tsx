@@ -9,7 +9,9 @@ export const metadata = pageMetadata({
   path: "/composers",
 })
 
-export const revalidate = 3600
+// Catalog pages are rebuilt at most every 30 days: Open Opus data is frozen and
+// every regeneration is billed as Fluid Active CPU (bots revisit constantly).
+export const revalidate = 2592000
 
 export default async function ComposersPage() {
   const composers = await listRankedPopularComposers()

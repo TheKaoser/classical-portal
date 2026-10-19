@@ -12,7 +12,9 @@ import {
 import { listComposersByEpochs } from "@/lib/openopus"
 import { pageMetadata, periodDescription } from "@/lib/seo"
 
-export const revalidate = 3600
+// Catalog pages are rebuilt at most every 30 days: Open Opus data is frozen and
+// every regeneration is billed as Fluid Active CPU (bots revisit constantly).
+export const revalidate = 2592000
 
 export function generateStaticParams() {
   return EPOCHS.map((epoch) => ({ epoch: epoch.slug }))
