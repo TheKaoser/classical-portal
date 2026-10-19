@@ -23,6 +23,16 @@ const nextConfig = {
   },
   async redirects() {
     return [
+      // Alias hosts -> apex. Done in Vercel routing instead of middleware so
+      // no request pays a middleware invocation (Fluid Active CPU). /api/*
+      // stays on the host that received it. Keep in sync with
+      // ALIAS_HOSTS in lib/canonical-host.ts.
+      ...["www\\.classicalportal\\.app", "classical-portal\\.vercel\\.app"].map((host) => ({
+        source: "/:path((?!api(?:/|$)).*)",
+        has: [{ type: "host", value: host }],
+        destination: "https://classicalportal.app/:path",
+        permanent: true,
+      })),
       { source: "/admin", destination: "/", permanent: false },
       { source: "/blog", destination: "/", permanent: false },
       { source: "/piece/:id", destination: "/", permanent: false },

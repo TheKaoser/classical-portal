@@ -17,7 +17,9 @@ import {
 } from "@/lib/openopus"
 import { composerDescription, composerJsonLd, pageMetadata } from "@/lib/seo"
 
-export const revalidate = 3600
+// Catalog pages are rebuilt at most every 30 days: Open Opus data is frozen and
+// every regeneration is billed as Fluid Active CPU (bots revisit constantly).
+export const revalidate = 2592000
 export const dynamic = "force-static"
 export const dynamicParams = true
 

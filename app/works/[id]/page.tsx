@@ -11,7 +11,9 @@ import { getWork, workParts } from "@/lib/openopus"
 import { pageMetadata, workDescription, workJsonLd, workPageTitle } from "@/lib/seo"
 import { catalogSpotifySearchUrl } from "@/lib/spotify-work-query"
 
-export const revalidate = 600
+// Catalog pages are rebuilt at most every 30 days: Open Opus data is frozen and
+// every regeneration is billed as Fluid Active CPU (bots revisit constantly).
+export const revalidate = 2592000
 export const dynamic = "force-static"
 export const dynamicParams = true
 

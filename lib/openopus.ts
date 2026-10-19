@@ -84,7 +84,10 @@ function normalizeWork<T extends OpenOpusWork>(work: T): T {
   }
 }
 
-async function openOpusGet<T>(path: string, revalidate = 3600): Promise<T> {
+/** Open Opus is a frozen catalog; keep its responses in the Data Cache for 30 days. */
+const OPEN_OPUS_REVALIDATE_SECONDS = 60 * 60 * 24 * 30
+
+async function openOpusGet<T>(path: string, revalidate = OPEN_OPUS_REVALIDATE_SECONDS): Promise<T> {
   const url = `${OPEN_OPUS_BASE}${path}`
   const res = await fetch(url, {
     headers: { Accept: "application/json" },
@@ -230,7 +233,7 @@ export async function getWork(id: string): Promise<{
     status: Status
     composer?: Pick<OpenOpusComposer, "id" | "name" | "complete_name" | "epoch">
     work?: OpenOpusWorkDetail
-  }>(`/work/detail/${encodePathSegment(id)}.json`, 3600)
+  }>(`/work/detail/${encodePathSegment(id)}.json`)
 
   if (!isSuccess(data.status) || !data.work) {
     return { composer: data.composer ?? null, work: null }
@@ -408,7 +411,7 @@ async function buildDumpSummary(): Promise<DumpSummary> {
 }
 
 const getDumpSummary = unstable_cache(buildDumpSummary, ["openopus-dump-summary"], {
-  revalidate: 3600,
+  revalidate: OPEN_OPUS_REVALIDATE_SECONDS,
   tags: ["openopus"],
 })
 
